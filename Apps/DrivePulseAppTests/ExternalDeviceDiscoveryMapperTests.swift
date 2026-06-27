@@ -93,6 +93,70 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
         XCTAssertEqual(devices[0].volumes, [])
     }
 
+    func testMapUsesDiskArbitrationWholeDiskRelationshipForMountedVolumes() {
+        let records = [
+            DiskDiscoveryRecord(
+                bsdName: "disk21",
+                parentBSDName: nil,
+                deviceInternal: false,
+                isNetworkVolume: false,
+                isWholeMedia: true,
+                volumePath: nil,
+                mediaName: "Capture",
+                deviceModel: "Portable SSD",
+                deviceVendor: "Acme",
+                busName: "USB",
+                deviceProtocol: "USB",
+                capacityBytes: 2_000,
+                mediaContent: nil,
+                ioClassPath: ["IOUSBHostDevice", "IOMedia"]
+            ),
+            DiskDiscoveryRecord(
+                bsdName: "disk50",
+                parentBSDName: nil,
+                deviceInternal: false,
+                isNetworkVolume: false,
+                isWholeMedia: true,
+                volumePath: nil,
+                mediaName: "Archive",
+                deviceModel: "Portable SSD",
+                deviceVendor: "Acme",
+                busName: "USB",
+                deviceProtocol: "USB",
+                capacityBytes: 2_000,
+                mediaContent: nil,
+                ioClassPath: ["IOUSBHostDevice", "IOMedia"]
+            ),
+            DiskDiscoveryRecord(
+                bsdName: "disk999s1",
+                parentBSDName: "disk50",
+                wholeDiskBSDName: "disk21",
+                deviceInternal: false,
+                isNetworkVolume: false,
+                isWholeMedia: false,
+                volumePath: URL(fileURLWithPath: "/Volumes/Capture"),
+                mediaName: "Capture",
+                deviceModel: nil,
+                deviceVendor: nil,
+                busName: "USB",
+                deviceProtocol: "USB",
+                capacityBytes: 1_000,
+                mediaContent: "Apple_APFS",
+                ioClassPath: ["IOUSBHostDevice", "IOMedia"]
+            )
+        ]
+
+        let devices = ExternalDeviceDiscoveryMapper().map(records)
+
+        XCTAssertEqual(devices.first(where: { $0.id == DeviceID(rawValue: "disk21") })?.volumes, [
+            MountedVolume(bsdName: "disk999s1")
+        ])
+        XCTAssertEqual(
+            devices.first(where: { $0.id == DeviceID(rawValue: "disk50") })?.volumes,
+            [MountedVolume]()
+        )
+    }
+
     func testMapCapturesAPFSContainerBSDName() {
         let records = [
             DiskDiscoveryRecord(

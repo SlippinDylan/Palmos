@@ -132,6 +132,7 @@ private struct LiveExternalDeviceDiscoveryObservation: ExternalDeviceDiscoveryOb
 struct DiskDiscoveryRecord: Equatable {
     let bsdName: String
     let parentBSDName: String?
+    let wholeDiskBSDName: String?
     let deviceInternal: Bool?
     let isNetworkVolume: Bool
     let isWholeMedia: Bool
@@ -144,6 +145,40 @@ struct DiskDiscoveryRecord: Equatable {
     let capacityBytes: Int64?
     let mediaContent: String?
     let ioClassPath: [String]
+
+    init(
+        bsdName: String,
+        parentBSDName: String?,
+        wholeDiskBSDName: String? = nil,
+        deviceInternal: Bool?,
+        isNetworkVolume: Bool,
+        isWholeMedia: Bool,
+        volumePath: URL?,
+        mediaName: String?,
+        deviceModel: String?,
+        deviceVendor: String?,
+        busName: String?,
+        deviceProtocol: String?,
+        capacityBytes: Int64?,
+        mediaContent: String?,
+        ioClassPath: [String]
+    ) {
+        self.bsdName = bsdName
+        self.parentBSDName = parentBSDName
+        self.wholeDiskBSDName = wholeDiskBSDName
+        self.deviceInternal = deviceInternal
+        self.isNetworkVolume = isNetworkVolume
+        self.isWholeMedia = isWholeMedia
+        self.volumePath = volumePath
+        self.mediaName = mediaName
+        self.deviceModel = deviceModel
+        self.deviceVendor = deviceVendor
+        self.busName = busName
+        self.deviceProtocol = deviceProtocol
+        self.capacityBytes = capacityBytes
+        self.mediaContent = mediaContent
+        self.ioClassPath = ioClassPath
+    }
 
     var descriptor: ExternalDeviceDescriptor {
         ExternalDeviceDescriptor(
@@ -172,8 +207,18 @@ struct ExternalDeviceDiscoveryMapper {
         return rootRecords.map { rootRecord in
             let descendants = descendantRecords(for: rootRecord.bsdName, recordsByBSD: recordsByBSD)
 
-            let mountedVolumeBSDNames = descendants
-                .filter { $0.bsdName != rootRecord.bsdName && $0.volumePath != nil && $0.isNetworkVolume == false }
+            let mountedVolumeBSDNames = records
+                .filter {
+                    $0.bsdName != rootRecord.bsdName &&
+                    $0.volumePath != nil &&
+                    $0.isNetworkVolume == false
+                }
+                .filter {
+                    rootBSDName(
+                        forMountedVolume: $0,
+                        recordsByBSD: recordsByBSD
+                    ) == rootRecord.bsdName
+                }
                 .map(\.bsdName)
                 .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
 
@@ -261,6 +306,18 @@ struct ExternalDeviceDiscoveryMapper {
         }
 
         return chain
+    }
+
+    private func rootBSDName(
+        forMountedVolume record: DiskDiscoveryRecord,
+        recordsByBSD: [String: DiskDiscoveryRecord]
+    ) -> String? {
+        let wholeDiskBSDName = record.wholeDiskBSDName ?? record.bsdName
+        guard let wholeDiskRecord = recordsByBSD[wholeDiskBSDName] else {
+            return nil
+        }
+
+        return topLevelExternalRoot(for: wholeDiskRecord, recordsByBSD: recordsByBSD)
     }
 
     private func displayName(for record: DiskDiscoveryRecord) -> String {
@@ -400,10 +457,14 @@ private struct DiskDiscoveryEnumerator {
 
         let bsdName = String(cString: bsdNamePointer)
         let description = DADiskCopyDescription(disk) as? [String: Any]
+        let wholeDiskBSDName = DADiskCopyWholeDisk(disk)
+            .flatMap { DADiskGetBSDName($0) }
+            .map(String.init(cString:))
 
         return DiskDiscoveryRecord(
             bsdName: bsdName,
             parentBSDName: parentBSDName(for: service),
+            wholeDiskBSDName: wholeDiskBSDName,
             deviceInternal: description?[kDADiskDescriptionDeviceInternalKey as String] as? Bool,
             isNetworkVolume: description?[kDADiskDescriptionVolumeNetworkKey as String] as? Bool ?? false,
             isWholeMedia: description?[kDADiskDescriptionMediaWholeKey as String] as? Bool
