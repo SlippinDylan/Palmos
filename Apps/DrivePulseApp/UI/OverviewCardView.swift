@@ -4,6 +4,7 @@ import DrivePulseCore
 
 struct OverviewCardView: View {
     let device: ExternalDevice?
+    @ObservedObject var settings: AppSettings
 
     var body: some View {
         GroupBox("Overview") {
@@ -33,35 +34,48 @@ struct OverviewCardView: View {
     private func healthString(for snapshot: SmartSnapshot) -> String {
         switch snapshot {
         case .notRequested:
-            return "Not requested"
+            return String(localized: "Not requested")
         case .loading:
-            return "Loading"
+            return String(localized: "Loading")
         case .available(let smartData):
-            return smartData.overallHealth ?? "Unavailable"
+            guard let overallHealth = smartData.overallHealth else {
+                return String(localized: "Unavailable")
+            }
+
+            return localizedHealthString(overallHealth)
         case .unsupported, .transportUnsupported:
-            return "Unsupported"
+            return String(localized: "Unsupported")
         case .helperNotInstalled:
-            return "Helper required"
+            return String(localized: "Helper required")
         case .permissionRequired:
-            return "Permission required"
+            return String(localized: "Permission required")
         case .deviceUnavailable:
-            return "Unavailable"
+            return String(localized: "Unavailable")
         case .updateRequired:
-            return "Update required"
+            return String(localized: "Update required")
         case .failed:
-            return "Unavailable"
+            return String(localized: "Unavailable")
         }
     }
 
     private func temperatureString(for snapshot: SmartSnapshot) -> String {
         guard case let .available(smartData) = snapshot else {
-            return "Unavailable"
+            return String(localized: "Unavailable")
         }
 
         guard let temperature = TemperatureSelection.overviewTemperature(for: smartData) else {
-            return "Unavailable"
+            return String(localized: "Unavailable")
         }
 
-        return "\(temperature) C"
+        return settings.temperatureUnit.format(temperature)
+    }
+
+    private func localizedHealthString(_ overallHealth: String) -> String {
+        switch overallHealth {
+        case "Verified":
+            return String(localized: "Verified")
+        default:
+            return overallHealth
+        }
     }
 }

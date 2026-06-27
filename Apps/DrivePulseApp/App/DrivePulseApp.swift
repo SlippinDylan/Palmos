@@ -9,5 +9,12 @@ struct DrivePulseApp: App {
             MenuBarRootView(controller: controller)
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView(
+                settings: controller.settings,
+                launchAtLoginController: controller.launchAtLoginController
+            )
+        }
     }
 }

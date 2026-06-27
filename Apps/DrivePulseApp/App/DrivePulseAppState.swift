@@ -33,17 +33,6 @@ struct DrivePulseAppState: Equatable {
             preferredID: selectedDeviceID
         )
     }
-
-    static var preview: Self {
-        .init(
-            devices: [
-                .preview(id: "disk4"),
-                .preview(id: "disk8")
-            ],
-            selectedDeviceID: nil
-        )
-    }
-
     private static func resolveSelection(
         devices: [ExternalDevice],
         preferredID: DeviceID?

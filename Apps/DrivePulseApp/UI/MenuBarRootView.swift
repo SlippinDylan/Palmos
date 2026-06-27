@@ -16,7 +16,10 @@ struct MenuBarRootView: View {
                             set: { controller.selectDevice($0) }
                         )
                     )
-                    OverviewCardView(device: controller.state.selectedDevice)
+                    OverviewCardView(
+                        device: controller.state.selectedDevice,
+                        settings: controller.settings
+                    )
                     ThroughputCardView(device: controller.state.selectedDevice)
                     VolumesSectionView(device: controller.state.selectedDevice)
                     DetailsSectionView(device: controller.state.selectedDevice)
@@ -25,8 +28,9 @@ struct MenuBarRootView: View {
             }
             Divider()
             ActionBarView(
-                onRefresh: controller.refresh,
-                onQuit: controller.quit
+                actions: controller.selectedDeviceActions,
+                message: controller.actionFeedback,
+                onAction: controller.perform
             )
             .padding(14)
         }

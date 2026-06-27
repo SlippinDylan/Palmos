@@ -18,6 +18,14 @@
 		100000000000000000000009 /* DetailsSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* DetailsSectionView.swift */; };
 		10000000000000000000000A /* ActionBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* ActionBarView.swift */; };
 		10000000000000000000000B /* DrivePulseAppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* DrivePulseAppStateTests.swift */; };
+		10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* Task6SettingsAndActionsTests.swift */; };
+		10000000000000000000000F /* SystemActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000012 /* SystemActions.swift */; };
+		100000000000000000000010 /* LaunchAtLoginController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* LaunchAtLoginController.swift */; };
+		100000000000000000000011 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* SettingsView.swift */; };
+		100000000000000000000012 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* Localizable.xcstrings */; };
+		100000000000000000000013 /* DrivePulseAppControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* DrivePulseAppControllerTests.swift */; };
+		100000000000000000000014 /* ExternalDeviceDiscoveryMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */; };
+		100000000000000000000015 /* ExternalDeviceDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* ExternalDeviceDiscovery.swift */; };
 		10000000000000000000000C /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000001 /* DrivePulseCore */; };
 		10000000000000000000000D /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000002 /* DrivePulseCore */; };
 /* End PBXBuildFile section */
@@ -49,6 +57,14 @@
 		20000000000000000000000E /* App.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xcconfigs/App.xcconfig; sourceTree = "<group>"; };
 		20000000000000000000000F /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xcconfigs/Base.xcconfig; sourceTree = "<group>"; };
 		200000000000000000000010 /* DrivePulseApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Plists/DrivePulseApp-Info.plist; sourceTree = "<group>"; };
+		200000000000000000000011 /* Task6SettingsAndActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Task6SettingsAndActionsTests.swift; sourceTree = "<group>"; };
+		200000000000000000000012 /* SystemActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemActions.swift; sourceTree = "<group>"; };
+		200000000000000000000013 /* LaunchAtLoginController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginController.swift; sourceTree = "<group>"; };
+		200000000000000000000014 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		200000000000000000000015 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		200000000000000000000016 /* DrivePulseAppControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseAppControllerTests.swift; sourceTree = "<group>"; };
+		200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscoveryMapperTests.swift; sourceTree = "<group>"; };
+		200000000000000000000018 /* ExternalDeviceDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscovery.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,7 +101,9 @@
 			isa = PBXGroup;
 			children = (
 				300000000000000000000004 /* App */,
+				300000000000000000000006 /* Integration */,
 				300000000000000000000005 /* UI */,
+				300000000000000000000007 /* Localization */,
 			);
 			path = Apps/DrivePulseApp;
 			sourceTree = "<group>";
@@ -110,14 +128,36 @@
 				200000000000000000000008 /* VolumesSectionView.swift */,
 				200000000000000000000009 /* DetailsSectionView.swift */,
 				20000000000000000000000A /* ActionBarView.swift */,
+				200000000000000000000014 /* SettingsView.swift */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		300000000000000000000006 /* Integration */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000018 /* ExternalDeviceDiscovery.swift */,
+				200000000000000000000012 /* SystemActions.swift */,
+				200000000000000000000013 /* LaunchAtLoginController.swift */,
+			);
+			path = Integration;
+			sourceTree = "<group>";
+		};
+		300000000000000000000007 /* Localization */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000015 /* Localizable.xcstrings */,
+			);
+			path = Localization;
 			sourceTree = "<group>";
 		};
 		300000000000000000000008 /* Apps Tests */ = {
 			isa = PBXGroup;
 			children = (
+				200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */,
+				200000000000000000000016 /* DrivePulseAppControllerTests.swift */,
 				20000000000000000000000B /* DrivePulseAppStateTests.swift */,
+				200000000000000000000011 /* Task6SettingsAndActionsTests.swift */,
 			);
 			path = Apps/DrivePulseAppTests;
 			sourceTree = "<group>";
@@ -208,6 +248,8 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
+				"zh-Hant",
 			);
 			mainGroup = 300000000000000000000002;
 			packageReferences = (
@@ -228,6 +270,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				100000000000000000000012 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -255,6 +298,10 @@
 				100000000000000000000008 /* VolumesSectionView.swift in Sources */,
 				100000000000000000000009 /* DetailsSectionView.swift in Sources */,
 				10000000000000000000000A /* ActionBarView.swift in Sources */,
+				100000000000000000000015 /* ExternalDeviceDiscovery.swift in Sources */,
+				10000000000000000000000F /* SystemActions.swift in Sources */,
+				100000000000000000000010 /* LaunchAtLoginController.swift in Sources */,
+				100000000000000000000011 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -262,7 +309,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				100000000000000000000014 /* ExternalDeviceDiscoveryMapperTests.swift in Sources */,
+				100000000000000000000013 /* DrivePulseAppControllerTests.swift in Sources */,
 				10000000000000000000000B /* DrivePulseAppStateTests.swift in Sources */,
+				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

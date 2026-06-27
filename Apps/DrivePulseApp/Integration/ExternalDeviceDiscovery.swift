@@ -1,0 +1,518 @@
+import DiskArbitration
+import Foundation
+import IOKit
+import IOKit.storage
+
+import DrivePulseCore
+
+protocol ExternalDeviceDiscoveryObservation {
+    func cancel()
+}
+
+protocol ExternalDeviceDiscovering {
+    func discoverDevices() -> [ExternalDevice]
+    func observeDevices(
+        _ onUpdate: @escaping @MainActor ([ExternalDevice]) -> Void
+    ) -> any ExternalDeviceDiscoveryObservation
+}
+
+final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering {
+    private let mapper: ExternalDeviceDiscoveryMapper
+    private let callbackSession: DASession?
+    private let sessionQueue: DispatchQueue
+    private let observerLock = NSLock()
+    private var observers: [UUID: @MainActor ([ExternalDevice]) -> Void] = [:]
+    private var callbacksRegistered = false
+
+    init(
+        mapper: ExternalDeviceDiscoveryMapper = ExternalDeviceDiscoveryMapper(),
+        sessionQueue: DispatchQueue = DispatchQueue(label: "DrivePulse.ExternalDeviceDiscovery")
+    ) {
+        self.mapper = mapper
+        self.callbackSession = DASessionCreate(kCFAllocatorDefault)
+        self.sessionQueue = sessionQueue
+    }
+
+    func discoverDevices() -> [ExternalDevice] {
+        guard let session = DASessionCreate(kCFAllocatorDefault) else {
+            return []
+        }
+
+        let records = DiskDiscoveryEnumerator(session: session).records()
+        return mapper.map(records)
+    }
+
+    func observeDevices(
+        _ onUpdate: @escaping @MainActor ([ExternalDevice]) -> Void
+    ) -> any ExternalDeviceDiscoveryObservation {
+        let observerID = UUID()
+
+        observerLock.lock()
+        observers[observerID] = onUpdate
+        let shouldRegisterCallbacks = callbacksRegistered == false
+        if shouldRegisterCallbacks {
+            callbacksRegistered = true
+        }
+        observerLock.unlock()
+
+        if shouldRegisterCallbacks {
+            startMonitoring()
+        }
+
+        return LiveExternalDeviceDiscoveryObservation { [weak self] in
+            self?.removeObserver(observerID)
+        }
+    }
+
+    deinit {
+        guard let callbackSession else { return }
+        DASessionSetDispatchQueue(callbackSession, nil)
+    }
+
+    private func startMonitoring() {
+        guard let callbackSession else { return }
+
+        DASessionSetDispatchQueue(callbackSession, sessionQueue)
+
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        DARegisterDiskAppearedCallback(
+            callbackSession,
+            nil,
+            liveExternalDeviceDiscoveryDiskAppearedCallback,
+            context
+        )
+        DARegisterDiskDisappearedCallback(
+            callbackSession,
+            nil,
+            liveExternalDeviceDiscoveryDiskDisappearedCallback,
+            context
+        )
+        DARegisterDiskDescriptionChangedCallback(
+            callbackSession,
+            nil,
+            nil,
+            liveExternalDeviceDiscoveryDiskDescriptionChangedCallback,
+            context
+        )
+    }
+
+    private func removeObserver(_ observerID: UUID) {
+        observerLock.lock()
+        observers.removeValue(forKey: observerID)
+        observerLock.unlock()
+    }
+
+    fileprivate func handleDiskEvent() {
+        let devices = discoverDevices()
+
+        observerLock.lock()
+        let handlers = Array(observers.values)
+        observerLock.unlock()
+
+        for handler in handlers {
+            Task { @MainActor in
+                handler(devices)
+            }
+        }
+    }
+}
+
+private struct LiveExternalDeviceDiscoveryObservation: ExternalDeviceDiscoveryObservation {
+    private let onCancel: () -> Void
+
+    init(onCancel: @escaping () -> Void) {
+        self.onCancel = onCancel
+    }
+
+    func cancel() {
+        onCancel()
+    }
+}
+
+struct DiskDiscoveryRecord: Equatable {
+    let bsdName: String
+    let parentBSDName: String?
+    let deviceInternal: Bool?
+    let isNetworkVolume: Bool
+    let isWholeMedia: Bool
+    let volumePath: URL?
+    let mediaName: String?
+    let deviceModel: String?
+    let deviceVendor: String?
+    let busName: String?
+    let deviceProtocol: String?
+    let capacityBytes: Int64?
+    let mediaContent: String?
+    let ioClassPath: [String]
+
+    var descriptor: ExternalDeviceDescriptor {
+        ExternalDeviceDescriptor(
+            deviceInternal: deviceInternal,
+            transportPath: transportPath,
+            isNetworkVolume: isNetworkVolume,
+            isWholeMedia: isWholeMedia
+        )
+    }
+
+    var transportPath: [String] {
+        [busName, deviceProtocol].compactMap { $0 } + ioClassPath
+    }
+}
+
+struct ExternalDeviceDiscoveryMapper {
+    private let reducer = DeviceRegistryReducer()
+
+    func map(_ records: [DiskDiscoveryRecord]) -> [ExternalDevice] {
+        let recordsByBSD = Dictionary(uniqueKeysWithValues: records.map { ($0.bsdName, $0) })
+        let rootRecords = records
+            .filter { DeviceIdentityResolver.isExternalPhysicalDevice($0.descriptor) }
+            .filter { topLevelExternalRoot(for: $0, recordsByBSD: recordsByBSD) == $0.bsdName }
+            .sorted { $0.bsdName.localizedStandardCompare($1.bsdName) == .orderedAscending }
+
+        return rootRecords.map { rootRecord in
+            let descendants = descendantRecords(for: rootRecord.bsdName, recordsByBSD: recordsByBSD)
+
+            let mountedVolumeBSDNames = descendants
+                .filter { $0.bsdName != rootRecord.bsdName && $0.volumePath != nil && $0.isNetworkVolume == false }
+                .map(\.bsdName)
+                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+
+            let apfsContainerBSDName = descendants
+                .filter { $0.bsdName != rootRecord.bsdName && $0.isWholeMedia && isAPFSContent($0.mediaContent) }
+                .sorted { lhs, rhs in
+                    let leftDepth = ancestorDepth(of: lhs.bsdName, recordsByBSD: recordsByBSD)
+                    let rightDepth = ancestorDepth(of: rhs.bsdName, recordsByBSD: recordsByBSD)
+
+                    if leftDepth == rightDepth {
+                        return lhs.bsdName.localizedStandardCompare(rhs.bsdName) == .orderedAscending
+                    }
+
+                    return leftDepth < rightDepth
+                }
+                .first?
+                .bsdName
+
+            var device = reducer.reduce(
+                physicalBSDName: rootRecord.bsdName,
+                containerBSDName: apfsContainerBSDName,
+                volumeBSDNames: mountedVolumeBSDNames
+            )
+            device.displayName = displayName(for: rootRecord)
+            device.transportName = transportName(for: rootRecord)
+            device.capacityBytes = rootRecord.capacityBytes
+            return device
+        }
+    }
+
+    private func topLevelExternalRoot(
+        for record: DiskDiscoveryRecord,
+        recordsByBSD: [String: DiskDiscoveryRecord]
+    ) -> String? {
+        var candidate = record.bsdName
+        var currentParentBSDName = record.parentBSDName
+        var visited = Set([record.bsdName])
+
+        while let parentBSDName = currentParentBSDName,
+              let parent = recordsByBSD[parentBSDName],
+              visited.insert(parentBSDName).inserted {
+            if DeviceIdentityResolver.isExternalPhysicalDevice(parent.descriptor) {
+                candidate = parent.bsdName
+            }
+
+            currentParentBSDName = parent.parentBSDName
+        }
+
+        return candidate
+    }
+
+    private func descendantRecords(
+        for rootBSDName: String,
+        recordsByBSD: [String: DiskDiscoveryRecord]
+    ) -> [DiskDiscoveryRecord] {
+        recordsByBSD.values.filter { record in
+            guard record.bsdName != rootBSDName else {
+                return true
+            }
+
+            return ancestorChain(for: record.bsdName, recordsByBSD: recordsByBSD).contains(rootBSDName)
+        }
+    }
+
+    private func ancestorDepth(
+        of bsdName: String,
+        recordsByBSD: [String: DiskDiscoveryRecord]
+    ) -> Int {
+        ancestorChain(for: bsdName, recordsByBSD: recordsByBSD).count
+    }
+
+    private func ancestorChain(
+        for bsdName: String,
+        recordsByBSD: [String: DiskDiscoveryRecord]
+    ) -> [String] {
+        var chain: [String] = []
+        var currentBSDName = recordsByBSD[bsdName]?.parentBSDName
+        var visited = Set([bsdName])
+
+        while let parentBSDName = currentBSDName,
+              let parent = recordsByBSD[parentBSDName],
+              visited.insert(parentBSDName).inserted {
+            chain.append(parentBSDName)
+            currentBSDName = parent.parentBSDName
+        }
+
+        return chain
+    }
+
+    private func displayName(for record: DiskDiscoveryRecord) -> String {
+        let vendor = normalizedString(record.deviceVendor)
+        let model = normalizedString(record.deviceModel)
+        let mediaName = normalizedString(record.mediaName)
+
+        let vendorAndModel = [vendor, model]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if vendorAndModel.isEmpty == false {
+            return vendorAndModel
+        }
+
+        if let mediaName {
+            return mediaName
+        }
+
+        if let model {
+            return model
+        }
+
+        return record.bsdName.uppercased()
+    }
+
+    private func transportName(for record: DiskDiscoveryRecord) -> String {
+        let normalizedPath = record.transportPath
+            .map { $0.lowercased() }
+            .joined(separator: " ")
+
+        if normalizedPath.contains("thunderbolt") {
+            return "Thunderbolt"
+        }
+
+        if normalizedPath.contains("usb4") {
+            return "USB4"
+        }
+
+        if normalizedPath.contains("usb") {
+            return "USB"
+        }
+
+        if matchesSDTransport(in: normalizedPath) {
+            return "SD"
+        }
+
+        if let busName = normalizedString(record.busName) {
+            return busName
+        }
+
+        if let deviceProtocol = normalizedString(record.deviceProtocol) {
+            return deviceProtocol
+        }
+
+        return "External"
+    }
+
+    private func isAPFSContent(_ mediaContent: String?) -> Bool {
+        normalizedString(mediaContent)?
+            .lowercased()
+            .contains("apfs") == true
+    }
+
+    private func matchesSDTransport(in normalizedPath: String) -> Bool {
+        let sdPhrases = [
+            "sd card",
+            "sd reader",
+            "sd slot",
+            "sd bus",
+            "sd host",
+            "sdxc",
+            "sdhc",
+            "microsd"
+        ]
+
+        if sdPhrases.contains(where: normalizedPath.contains) {
+            return true
+        }
+
+        let separators = CharacterSet.alphanumerics.inverted
+        let tokens = normalizedPath
+            .components(separatedBy: separators)
+            .filter { $0.isEmpty == false }
+        return tokens.contains("sd")
+    }
+
+    private func normalizedString(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              trimmed.isEmpty == false else {
+            return nil
+        }
+
+        return trimmed
+    }
+}
+
+private struct DiskDiscoveryEnumerator {
+    private let session: DASession
+
+    init(session: DASession) {
+        self.session = session
+    }
+
+    func records() -> [DiskDiscoveryRecord] {
+        guard let matching = IOServiceMatching(kIOMediaClass) else {
+            return []
+        }
+
+        var iterator: io_iterator_t = 0
+        let result = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator)
+        guard result == KERN_SUCCESS else {
+            return []
+        }
+        defer { IOObjectRelease(iterator) }
+
+        var discoveredRecords: [DiskDiscoveryRecord] = []
+        while case let service = IOIteratorNext(iterator), service != 0 {
+            defer { IOObjectRelease(service) }
+
+            guard let record = makeRecord(for: service) else {
+                continue
+            }
+
+            discoveredRecords.append(record)
+        }
+
+        return discoveredRecords
+    }
+
+    private func makeRecord(for service: io_service_t) -> DiskDiscoveryRecord? {
+        guard let disk = DADiskCreateFromIOMedia(kCFAllocatorDefault, session, service),
+              let bsdNamePointer = DADiskGetBSDName(disk) else {
+            return nil
+        }
+
+        let bsdName = String(cString: bsdNamePointer)
+        let description = DADiskCopyDescription(disk) as? [String: Any]
+
+        return DiskDiscoveryRecord(
+            bsdName: bsdName,
+            parentBSDName: parentBSDName(for: service),
+            deviceInternal: description?[kDADiskDescriptionDeviceInternalKey as String] as? Bool,
+            isNetworkVolume: description?[kDADiskDescriptionVolumeNetworkKey as String] as? Bool ?? false,
+            isWholeMedia: description?[kDADiskDescriptionMediaWholeKey as String] as? Bool
+                ?? boolProperty(named: kIOMediaWholeKey, for: service)
+                ?? false,
+            volumePath: description?[kDADiskDescriptionVolumePathKey as String] as? URL,
+            mediaName: description?[kDADiskDescriptionMediaNameKey as String] as? String,
+            deviceModel: description?[kDADiskDescriptionDeviceModelKey as String] as? String,
+            deviceVendor: description?[kDADiskDescriptionDeviceVendorKey as String] as? String,
+            busName: description?[kDADiskDescriptionBusNameKey as String] as? String,
+            deviceProtocol: description?[kDADiskDescriptionDeviceProtocolKey as String] as? String,
+            capacityBytes: description?[kDADiskDescriptionMediaSizeKey as String] as? Int64
+                ?? (description?[kDADiskDescriptionMediaSizeKey as String] as? NSNumber)?.int64Value
+                ?? int64Property(named: kIOMediaSizeKey, for: service),
+            mediaContent: description?[kDADiskDescriptionMediaContentKey as String] as? String,
+            ioClassPath: ioClassPath(for: service)
+        )
+    }
+
+    private func parentBSDName(for service: io_service_t) -> String? {
+        var current = service
+        var ownsCurrent = false
+
+        while true {
+            var parent: io_registry_entry_t = 0
+            let result = IORegistryEntryGetParentEntry(current, "IOService", &parent)
+
+            if ownsCurrent {
+                IOObjectRelease(current)
+            }
+
+            guard result == KERN_SUCCESS else {
+                return nil
+            }
+
+            if let bsdName = stringProperty(named: "BSD Name", for: parent) {
+                IOObjectRelease(parent)
+                return bsdName
+            }
+
+            current = parent
+            ownsCurrent = true
+        }
+    }
+
+    private func ioClassPath(for service: io_service_t) -> [String] {
+        var classes: [String] = []
+        var current = service
+        var ownsCurrent = false
+
+        while true {
+            if let className = IOObjectCopyClass(current)?.takeRetainedValue() as String? {
+                classes.append(className)
+            }
+
+            var parent: io_registry_entry_t = 0
+            let result = IORegistryEntryGetParentEntry(current, "IOService", &parent)
+
+            if ownsCurrent {
+                IOObjectRelease(current)
+            }
+
+            guard result == KERN_SUCCESS else {
+                return classes
+            }
+
+            current = parent
+            ownsCurrent = true
+        }
+    }
+
+    private func stringProperty(named key: String, for service: io_service_t) -> String? {
+        IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? String
+    }
+
+    private func boolProperty(named key: String, for service: io_service_t) -> Bool? {
+        IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? Bool
+    }
+
+    private func int64Property(named key: String, for service: io_service_t) -> Int64? {
+        if let number = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? NSNumber {
+            return number.int64Value
+        }
+
+        return nil
+    }
+}
+
+private let liveExternalDeviceDiscoveryDiskAppearedCallback: DADiskAppearedCallback = { _, context in
+    liveExternalDeviceDiscovery(from: context)?.handleDiskEvent()
+}
+
+private let liveExternalDeviceDiscoveryDiskDisappearedCallback: DADiskDisappearedCallback = { _, context in
+    liveExternalDeviceDiscovery(from: context)?.handleDiskEvent()
+}
+
+private let liveExternalDeviceDiscoveryDiskDescriptionChangedCallback: DADiskDescriptionChangedCallback = { _, _, context in
+    liveExternalDeviceDiscovery(from: context)?.handleDiskEvent()
+}
+
+private func liveExternalDeviceDiscovery(
+    from context: UnsafeMutableRawPointer?
+) -> LiveExternalDeviceDiscovery? {
+    guard let context else {
+        return nil
+    }
+
+    return Unmanaged<LiveExternalDeviceDiscovery>.fromOpaque(context).takeUnretainedValue()
+}
