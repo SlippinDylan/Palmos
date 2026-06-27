@@ -13,6 +13,17 @@ final class XPCCompatibilityPolicyTests: XCTestCase {
         XCTAssertEqual(result, .compatible)
     }
 
+    func testNewerHelperMinorVersionRemainsCompatible() {
+        let result = XPCCompatibilityPolicy.evaluate(
+            appMajor: 1,
+            appMinor: 3,
+            helperMajor: 1,
+            helperMinor: 4
+        )
+
+        XCTAssertEqual(result, .compatible)
+    }
+
     func testMajorMismatchRequiresUpdate() {
         let result = XPCCompatibilityPolicy.evaluate(
             appMajor: 1,
