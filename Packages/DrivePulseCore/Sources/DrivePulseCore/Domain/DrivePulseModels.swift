@@ -46,3 +46,47 @@ public struct DeviceSessionMetrics: Equatable, Sendable {
         )
     }
 }
+
+public struct SmartData: Equatable, Sendable {
+    public var overallHealth: String?
+    public var primaryTemperature: Int?
+    public var highestTemperature: Int?
+    public var sensorTemperatures: [String: Int]
+
+    public init(
+        overallHealth: String? = nil,
+        primaryTemperature: Int? = nil,
+        highestTemperature: Int? = nil,
+        sensorTemperatures: [String: Int] = [:]
+    ) {
+        self.overallHealth = overallHealth
+        self.primaryTemperature = primaryTemperature
+        self.highestTemperature = highestTemperature
+        self.sensorTemperatures = sensorTemperatures
+    }
+}
+
+public enum XPCCompatibilityResult: Equatable, Sendable {
+    case compatible
+    case degraded
+    case updateRequired
+}
+
+public enum XPCCompatibilityPolicy {
+    public static func evaluate(
+        appMajor: Int,
+        appMinor: Int,
+        helperMajor: Int,
+        helperMinor: Int
+    ) -> XPCCompatibilityResult {
+        guard appMajor == helperMajor else {
+            return .updateRequired
+        }
+
+        if helperMinor < appMinor {
+            return .degraded
+        }
+
+        return .compatible
+    }
+}
