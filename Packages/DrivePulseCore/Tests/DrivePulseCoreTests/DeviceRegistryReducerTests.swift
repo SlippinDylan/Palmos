@@ -11,8 +11,16 @@ final class DeviceRegistryReducerTests: XCTestCase {
             volumeBSDNames: ["disk5s1", "disk5s2"]
         )
 
-        XCTAssertEqual(snapshot.physicalStoreBSDName, "disk4")
-        XCTAssertEqual(snapshot.apfsContainerBSDName, "disk5")
-        XCTAssertEqual(snapshot.volumes.map(\.bsdName), ["disk5s1", "disk5s2"])
+        XCTAssertEqual(
+            snapshot,
+            ExternalDevice(
+                physicalStoreBSDName: "disk4",
+                apfsContainerBSDName: "disk5",
+                volumes: [
+                    MountedVolume(bsdName: "disk5s1"),
+                    MountedVolume(bsdName: "disk5s2")
+                ]
+            )
+        )
     }
 }
