@@ -7,7 +7,7 @@ import DrivePulseCore
 
 @MainActor
 final class DrivePulseAppControllerTests: XCTestCase {
-    func testControllerBootstrapsStateFromDiscovery() {
+    func testControllerBootstrapsStateFromDiscoveryAsynchronously() async {
         let discoveredDevices = [
             makeDevice(id: "disk21", volumes: ["disk21s1"])
         ]
@@ -15,12 +15,23 @@ final class DrivePulseAppControllerTests: XCTestCase {
 
         let controller = DrivePulseAppController(deviceDiscovery: discovery)
 
+        XCTAssertEqual(controller.state.devices, [])
+        let initialInvocationCount = await discovery.invocationCountSnapshot()
+        XCTAssertEqual(initialInvocationCount, 0)
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(
+            controller,
+            equals: discoveredDevices
+        )
+
         XCTAssertEqual(controller.state.devices, discoveredDevices)
         XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk21"))
-        XCTAssertEqual(discovery.invocationCount, 1)
+        let bootstrapInvocationCount = await discovery.invocationCountSnapshot()
+        XCTAssertEqual(bootstrapInvocationCount, 1)
     }
 
-    func testRefreshRequeriesDiscoveryAndReplacesDevices() {
+    func testRefreshRequeriesDiscoveryAndReplacesDevicesAsynchronously() async {
         let initialDevices = [
             makeDevice(id: "disk21", volumes: ["disk21s1"])
         ]
@@ -31,11 +42,26 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let discovery = StubExternalDeviceDiscovery(results: [initialDevices, refreshedDevices])
         let controller = DrivePulseAppController(deviceDiscovery: discovery)
 
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(
+            controller,
+            equals: initialDevices
+        )
+
         controller.refresh()
+
+        XCTAssertEqual(controller.state.devices, initialDevices)
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(
+            controller,
+            equals: refreshedDevices
+        )
 
         XCTAssertEqual(controller.state.devices, refreshedDevices)
         XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk42"))
-        XCTAssertEqual(discovery.invocationCount, 2)
+        let refreshInvocationCount = await discovery.invocationCountSnapshot()
+        XCTAssertEqual(refreshInvocationCount, 2)
     }
 
     func testControllerSubscribesToDiscoveryStreamAndAppliesUpdates() {
@@ -143,24 +169,29 @@ final class DrivePulseAppControllerTests: XCTestCase {
             volumes: volumes.map(MountedVolume.init(bsdName:))
         )
     }
+
+    private func waitUntilStateDevices(
+        _ controller: DrivePulseAppController,
+        equals devices: [ExternalDevice]
+    ) async {
+        while controller.state.devices != devices {
+            await Task.yield()
+        }
+    }
 }
 
 private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering, @unchecked Sendable {
-    private let results: [[ExternalDevice]]
-    private(set) var invocationCount = 0
+    private let state: State
     private(set) var subscriptionCount = 0
     private(set) var cancellationCount = 0
     private var onUpdate: (@MainActor @Sendable ([ExternalDevice]) -> Void)?
 
     init(results: [[ExternalDevice]]) {
-        self.results = results
+        self.state = State(results: results)
     }
 
-    func discoverDevices() -> [ExternalDevice] {
-        defer { invocationCount += 1 }
-
-        let index = min(invocationCount, results.count - 1)
-        return results[index]
+    func discoverDevices() async -> [ExternalDevice] {
+        await state.discoverDevices()
     }
 
     func observeDevices(
@@ -176,6 +207,48 @@ private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering, @unc
     @MainActor
     func emit(_ devices: [ExternalDevice]) {
         onUpdate?(devices)
+    }
+
+    func resolveNextDiscovery() async {
+        await state.resolveNextDiscovery()
+    }
+
+    func invocationCountSnapshot() async -> Int {
+        await state.invocationCountSnapshot()
+    }
+
+    private actor State {
+        private let results: [[ExternalDevice]]
+        private var invocationCount = 0
+        private var pendingContinuations: [CheckedContinuation<Void, Never>] = []
+
+        init(results: [[ExternalDevice]]) {
+            self.results = results
+        }
+
+        func discoverDevices() async -> [ExternalDevice] {
+            await withCheckedContinuation { continuation in
+                pendingContinuations.append(continuation)
+            }
+
+            defer { invocationCount += 1 }
+
+            let index = min(invocationCount, results.count - 1)
+            return results[index]
+        }
+
+        func resolveNextDiscovery() async {
+            while pendingContinuations.isEmpty {
+                await Task.yield()
+            }
+
+            let continuation = pendingContinuations.removeFirst()
+            continuation.resume()
+        }
+
+        func invocationCountSnapshot() -> Int {
+            invocationCount
+        }
     }
 }
 

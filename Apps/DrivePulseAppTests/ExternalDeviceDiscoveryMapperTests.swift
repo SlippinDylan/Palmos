@@ -157,6 +157,35 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
         )
     }
 
+    func testMapIncludesMountedWholeDiskRootAsVolume() {
+        let records = [
+            DiskDiscoveryRecord(
+                bsdName: "disk3",
+                parentBSDName: nil,
+                wholeDiskBSDName: "disk3",
+                deviceInternal: false,
+                isNetworkVolume: false,
+                isWholeMedia: true,
+                volumePath: URL(fileURLWithPath: "/Volumes/CAMERA_CARD"),
+                mediaName: "CAMERA_CARD",
+                deviceModel: nil,
+                deviceVendor: "Acme",
+                busName: "SD",
+                deviceProtocol: "SD",
+                capacityBytes: 256_000,
+                mediaContent: "DOS_FAT_32",
+                ioClassPath: ["IOSDHostDevice", "IOMedia"]
+            )
+        ]
+
+        let devices = ExternalDeviceDiscoveryMapper().map(records)
+
+        XCTAssertEqual(devices.count, 1)
+        XCTAssertEqual(devices[0].id, DeviceID(rawValue: "disk3"))
+        XCTAssertEqual(devices[0].transportName, "SD")
+        XCTAssertEqual(devices[0].volumes, [MountedVolume(bsdName: "disk3")])
+    }
+
     func testMapCapturesAPFSContainerBSDName() {
         let records = [
             DiskDiscoveryRecord(

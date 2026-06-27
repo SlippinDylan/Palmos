@@ -106,30 +106,23 @@ struct SystemActions: SystemActionPerforming {
     }
 
     func perform(_ action: SystemAction) async throws {
-        try await withCheckedThrowingContinuation { continuation in
-            actionQueue.async {
-                do {
-                    try performSynchronously(action)
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-    }
-
-    private func performSynchronously(_ action: SystemAction) throws {
         switch action.intent {
         case .revealInFinder(let volumeBSDName):
-            let volumeURL = try mountedVolumeURL(for: volumeBSDName)
-            workspace.reveal([volumeURL])
+            let volumeURL = try await runOnActionQueue {
+                try mountedVolumeURL(for: volumeBSDName)
+            }
+            await workspace.reveal([volumeURL])
         case .ejectPhysicalDevice(let bsdName):
-            try diskArbitration.ejectWholeDisk(bsdName: bsdName)
+            try await runOnActionQueue {
+                try diskArbitration.ejectWholeDisk(bsdName: bsdName)
+            }
         case .openDiskUtility(let bsdName):
-            _ = try commandRunner.run(
-                "/usr/bin/open",
-                arguments: ["-b", "com.apple.DiskUtility", "/dev/\(bsdName)"]
-            )
+            try await runOnActionQueue {
+                _ = try commandRunner.run(
+                    "/usr/bin/open",
+                    arguments: ["-b", "com.apple.DiskUtility", "/dev/\(bsdName)"]
+                )
+            }
         case .openSettings:
             break
         }
@@ -137,6 +130,20 @@ struct SystemActions: SystemActionPerforming {
 
     private func mountedVolumeURL(for bsdName: String) throws -> URL {
         try diskArbitration.volumeURL(for: bsdName)
+    }
+
+    private func runOnActionQueue<T>(
+        _ operation: @escaping @Sendable () throws -> T
+    ) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            actionQueue.async {
+                do {
+                    continuation.resume(returning: try operation())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 }
 
@@ -169,7 +176,8 @@ protocol DiskArbitrationClient: Sendable {
 }
 
 protocol WorkspaceClient: Sendable {
-    func reveal(_ urls: [URL])
+    @MainActor
+    func reveal(_ urls: [URL]) async
 }
 
 protocol CommandRunner: Sendable {
@@ -177,7 +185,8 @@ protocol CommandRunner: Sendable {
 }
 
 private struct LiveWorkspaceClient: WorkspaceClient {
-    func reveal(_ urls: [URL]) {
+    @MainActor
+    func reveal(_ urls: [URL]) async {
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 }

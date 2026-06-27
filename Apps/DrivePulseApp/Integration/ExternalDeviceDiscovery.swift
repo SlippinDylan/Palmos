@@ -9,8 +9,8 @@ protocol ExternalDeviceDiscoveryObservation: Sendable {
     func cancel()
 }
 
-protocol ExternalDeviceDiscovering {
-    func discoverDevices() -> [ExternalDevice]
+protocol ExternalDeviceDiscovering: Sendable {
+    func discoverDevices() async -> [ExternalDevice]
     func observeDevices(
         _ onUpdate: @escaping @MainActor ([ExternalDevice]) -> Void
     ) -> any ExternalDeviceDiscoveryObservation
@@ -28,7 +28,7 @@ protocol DiskArbitrationMonitoringSession: Sendable {
     func deactivate()
 }
 
-final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering {
+final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering, @unchecked Sendable {
     private let mapper: ExternalDeviceDiscoveryMapper
     private let monitoringSession: (any DiskArbitrationMonitoringSession)?
     private let sessionQueue: DispatchQueue
@@ -49,7 +49,15 @@ final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering {
         self.sessionQueue.setSpecific(key: sessionQueueKey, value: ())
     }
 
-    func discoverDevices() -> [ExternalDevice] {
+    func discoverDevices() async -> [ExternalDevice] {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                continuation.resume(returning: self?.enumerateDevices() ?? [])
+            }
+        }
+    }
+
+    private func enumerateDevices() -> [ExternalDevice] {
         guard let session = DASessionCreate(kCFAllocatorDefault) else {
             return []
         }
@@ -155,7 +163,7 @@ final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering {
     }
 
     fileprivate func handleDiskEvent() {
-        let devices = discoverDevices()
+        let devices = enumerateDevices()
 
         observerLock.lock()
         let handlers = Array(observers.values)
@@ -296,7 +304,6 @@ struct ExternalDeviceDiscoveryMapper {
 
             let mountedVolumeBSDNames = records
                 .filter {
-                    $0.bsdName != rootRecord.bsdName &&
                     $0.volumePath != nil &&
                     $0.isNetworkVolume == false
                 }

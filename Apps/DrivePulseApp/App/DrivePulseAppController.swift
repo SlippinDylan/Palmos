@@ -12,6 +12,7 @@ final class DrivePulseAppController: ObservableObject {
     let launchAtLoginController: LaunchAtLoginController
 
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
+    private var discoveryLoadTask: Task<Void, Never>?
     private let deviceDiscovery: any ExternalDeviceDiscovering
     private let systemActions: any SystemActionPerforming
 
@@ -27,15 +28,20 @@ final class DrivePulseAppController: ObservableObject {
         self.deviceDiscovery = deviceDiscovery
         self.systemActions = systemActions
         self.state = state ?? DrivePulseAppState(
-            devices: deviceDiscovery.discoverDevices(),
+            devices: [],
             selectedDeviceID: nil
         )
         self.discoveryObservation = deviceDiscovery.observeDevices { [weak self] devices in
             self?.state.replaceDevices(devices)
         }
+
+        if state == nil {
+            loadDiscoveredDevices()
+        }
     }
 
     deinit {
+        discoveryLoadTask?.cancel()
         discoveryObservation?.cancel()
     }
 
@@ -63,10 +69,23 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     func refresh() {
-        state.replaceDevices(deviceDiscovery.discoverDevices())
+        loadDiscoveredDevices()
     }
 
     func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    private func loadDiscoveredDevices() {
+        discoveryLoadTask?.cancel()
+        let deviceDiscovery = deviceDiscovery
+        discoveryLoadTask = Task { [weak self] in
+            let devices = await deviceDiscovery.discoverDevices()
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            self?.state.replaceDevices(devices)
+        }
     }
 }

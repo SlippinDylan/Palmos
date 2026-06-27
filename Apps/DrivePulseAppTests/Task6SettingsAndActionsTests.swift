@@ -113,7 +113,8 @@ private final class StubDiskArbitrationClient: DiskArbitrationClient, @unchecked
 private final class StubWorkspaceClient: WorkspaceClient, @unchecked Sendable {
     private(set) var revealedURLs: [URL] = []
 
-    func reveal(_ urls: [URL]) {
+    @MainActor
+    func reveal(_ urls: [URL]) async {
         revealedURLs = urls
     }
 
