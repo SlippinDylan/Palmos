@@ -57,4 +57,26 @@ final class DeviceIdentityResolverTests: XCTestCase {
             )
         }
     }
+
+    func testResolverDoesNotTreatAppleSSDControllerAsSDTransport() {
+        let descriptor = ExternalDeviceDescriptor(
+            deviceInternal: nil,
+            transportPath: ["Apple SSD Controller"],
+            isNetworkVolume: false,
+            isWholeMedia: true
+        )
+
+        XCTAssertFalse(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
+    }
+
+    func testResolverRejectsUnsupportedTransportWithoutExternalSignal() {
+        let descriptor = ExternalDeviceDescriptor(
+            deviceInternal: nil,
+            transportPath: ["PCI Storage Controller"],
+            isNetworkVolume: false,
+            isWholeMedia: true
+        )
+
+        XCTAssertFalse(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
+    }
 }
