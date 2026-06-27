@@ -41,7 +41,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertEqual(ejectAction.intent, .ejectPhysicalDevice(bsdName: "disk42"))
     }
 
-    func testRevealActionUsesNativeVolumeLookup() throws {
+    func testRevealActionUsesNativeVolumeLookup() async throws {
         let diskArbitration = StubDiskArbitrationClient(volumeURLs: [
             "disk42s1": URL(fileURLWithPath: "/Volumes/Field")
         ])
@@ -52,7 +52,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
             commandRunner: StubCommandRunner()
         )
 
-        try actions.perform(
+        try await actions.perform(
             SystemAction(kind: .openInFinder, intent: .revealInFinder(volumeBSDName: "disk42s1"))
         )
 
@@ -60,7 +60,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertEqual(workspace.revealedURLs, [URL(fileURLWithPath: "/Volumes/Field")])
     }
 
-    func testEjectActionUsesNativeDiskArbitrationSequence() throws {
+    func testEjectActionUsesNativeDiskArbitrationSequence() async throws {
         let diskArbitration = StubDiskArbitrationClient()
         let actions = SystemActions(
             diskArbitration: diskArbitration,
@@ -68,15 +68,25 @@ final class Task6SettingsAndActionsTests: XCTestCase {
             commandRunner: StubCommandRunner()
         )
 
-        try actions.perform(
+        try await actions.perform(
             SystemAction(kind: .eject, intent: .ejectPhysicalDevice(bsdName: "disk42"))
         )
 
         XCTAssertEqual(diskArbitration.ejectedWholeDiskBSDNames, ["disk42"])
     }
+
+    func testDiskArbitrationCompletionTimesOut() {
+        let completion = DiskArbitrationCompletion(ignoringStatuses: [])
+
+        XCTAssertThrowsError(
+            try completion.waitForCompletion(timeout: .milliseconds(10))
+        ) { error in
+            XCTAssertEqual(error.localizedDescription, "Action timed out.")
+        }
+    }
 }
 
-private final class StubDiskArbitrationClient: DiskArbitrationClient {
+private final class StubDiskArbitrationClient: DiskArbitrationClient, @unchecked Sendable {
     var volumeURLs: [String: URL] = [:]
     private(set) var lookedUpVolumeBSDNames: [String] = []
     private(set) var ejectedWholeDiskBSDNames: [String] = []
@@ -100,7 +110,7 @@ private final class StubDiskArbitrationClient: DiskArbitrationClient {
     }
 }
 
-private final class StubWorkspaceClient: WorkspaceClient {
+private final class StubWorkspaceClient: WorkspaceClient, @unchecked Sendable {
     private(set) var revealedURLs: [URL] = []
 
     func reveal(_ urls: [URL]) {

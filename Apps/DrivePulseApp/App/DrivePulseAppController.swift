@@ -13,13 +13,13 @@ final class DrivePulseAppController: ObservableObject {
 
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
     private let deviceDiscovery: any ExternalDeviceDiscovering
-    private let systemActions: SystemActions
+    private let systemActions: any SystemActionPerforming
 
     init(
         state: DrivePulseAppState? = nil,
         settings: AppSettings = AppSettings(),
         launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController(),
-        systemActions: SystemActions = SystemActions(),
+        systemActions: any SystemActionPerforming = SystemActions(),
         deviceDiscovery: any ExternalDeviceDiscovering = LiveExternalDeviceDiscovery()
     ) {
         self.settings = settings
@@ -35,6 +35,10 @@ final class DrivePulseAppController: ObservableObject {
         }
     }
 
+    deinit {
+        discoveryObservation?.cancel()
+    }
+
     func selectDevice(_ id: DeviceID?) {
         state.selectDevice(id)
     }
@@ -44,11 +48,17 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     func perform(_ action: SystemAction) {
-        do {
-            try systemActions.perform(action)
-            actionFeedback = nil
-        } catch {
-            actionFeedback = error.localizedDescription
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                try await systemActions.perform(action)
+                actionFeedback = nil
+            } catch {
+                actionFeedback = error.localizedDescription
+            }
         }
     }
 

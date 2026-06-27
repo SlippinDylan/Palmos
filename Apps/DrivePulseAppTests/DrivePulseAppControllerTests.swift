@@ -1,6 +1,8 @@
 import XCTest
 @testable import DrivePulseApp
 
+import DiskArbitration
+import Foundation
 import DrivePulseCore
 
 @MainActor
@@ -54,6 +56,81 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
     }
 
+    func testControllerCancelsDiscoveryObservationOnDeinit() {
+        let discovery = StubExternalDeviceDiscovery(results: [[makeDevice(id: "disk21", volumes: [])]])
+        var controller: DrivePulseAppController? = DrivePulseAppController(deviceDiscovery: discovery)
+
+        XCTAssertEqual(discovery.cancellationCount, 0)
+
+        controller = nil
+
+        XCTAssertNil(controller)
+        XCTAssertEqual(discovery.cancellationCount, 1)
+    }
+
+    func testPerformRunsActionAsynchronouslyAndPublishesFailureFeedback() async {
+        let actionPerformer = StubSystemActionPerformer()
+        let controller = DrivePulseAppController(
+            systemActions: actionPerformer,
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[makeDevice(id: "disk21", volumes: [])]])
+        )
+        let action = SystemAction(kind: .eject, intent: .ejectPhysicalDevice(bsdName: "disk21"))
+
+        controller.perform(action)
+
+        XCTAssertNil(controller.actionFeedback)
+        await actionPerformer.waitUntilStarted()
+        let performedActions = await actionPerformer.performedActionsSnapshot()
+        XCTAssertEqual(performedActions, [action])
+
+        await actionPerformer.finish(
+            with: TestActionError.failed(message: "Action couldn't be completed.")
+        )
+
+        let feedbackExpectation = expectation(description: "feedback updated")
+        Task { @MainActor in
+            while controller.actionFeedback == nil {
+                await Task.yield()
+            }
+
+            feedbackExpectation.fulfill()
+        }
+
+        await fulfillment(of: [feedbackExpectation], timeout: 1.0)
+        XCTAssertEqual(controller.actionFeedback, "Action couldn't be completed.")
+    }
+
+    func testDiscoveryObservationCancelStopsMonitoringWhenLastObserverIsRemoved() {
+        let monitoringSession = StubDiskArbitrationMonitoringSession()
+        let discovery = LiveExternalDeviceDiscovery(monitoringSession: monitoringSession)
+
+        let observation = discovery.observeDevices { _ in }
+
+        XCTAssertEqual(monitoringSession.activateCallCount, 1)
+        XCTAssertEqual(monitoringSession.deactivateCallCount, 0)
+
+        observation.cancel()
+
+        XCTAssertEqual(monitoringSession.deactivateCallCount, 1)
+    }
+
+    func testDiscoveryKeepsMonitoringActiveWhileAnotherObserverExists() {
+        let monitoringSession = StubDiskArbitrationMonitoringSession()
+        let discovery = LiveExternalDeviceDiscovery(monitoringSession: monitoringSession)
+
+        let firstObservation = discovery.observeDevices { _ in }
+        let secondObservation = discovery.observeDevices { _ in }
+
+        firstObservation.cancel()
+
+        XCTAssertEqual(monitoringSession.activateCallCount, 1)
+        XCTAssertEqual(monitoringSession.deactivateCallCount, 0)
+
+        secondObservation.cancel()
+
+        XCTAssertEqual(monitoringSession.deactivateCallCount, 1)
+    }
+
     private func makeDevice(id rawID: String, volumes: [String]) -> ExternalDevice {
         ExternalDevice(
             id: DeviceID(rawValue: rawID),
@@ -68,10 +145,11 @@ final class DrivePulseAppControllerTests: XCTestCase {
     }
 }
 
-private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering {
+private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering, @unchecked Sendable {
     private let results: [[ExternalDevice]]
     private(set) var invocationCount = 0
     private(set) var subscriptionCount = 0
+    private(set) var cancellationCount = 0
     private var onUpdate: (@MainActor @Sendable ([ExternalDevice]) -> Void)?
 
     init(results: [[ExternalDevice]]) {
@@ -90,7 +168,9 @@ private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering {
     ) -> any ExternalDeviceDiscoveryObservation {
         subscriptionCount += 1
         self.onUpdate = onUpdate
-        return StubExternalDeviceDiscoveryObservation()
+        return StubExternalDeviceDiscoveryObservation { [weak self] in
+            self?.cancellationCount += 1
+        }
     }
 
     @MainActor
@@ -99,6 +179,105 @@ private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering {
     }
 }
 
-private struct StubExternalDeviceDiscoveryObservation: ExternalDeviceDiscoveryObservation {
-    func cancel() {}
+private final class StubExternalDeviceDiscoveryObservation: ExternalDeviceDiscoveryObservation, @unchecked Sendable {
+    private let onCancel: @Sendable () -> Void
+    private let lock = NSLock()
+    private var didCancel = false
+
+    init(onCancel: @escaping @Sendable () -> Void) {
+        self.onCancel = onCancel
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard didCancel == false else {
+            return
+        }
+
+        didCancel = true
+        onCancel()
+    }
+}
+
+private actor StubSystemActionPerformer: SystemActionPerforming {
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private(set) var performedActions: [SystemAction] = []
+    private var didStart = false
+
+    func perform(_ action: SystemAction) async throws {
+        performedActions.append(action)
+        didStart = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func waitUntilStarted() async {
+        if didStart {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            startedContinuation = continuation
+        }
+    }
+
+    func finish(with error: Error? = nil) {
+        guard let continuation else {
+            return
+        }
+
+        self.continuation = nil
+
+        if let error {
+            continuation.resume(throwing: error)
+        } else {
+            continuation.resume()
+        }
+    }
+
+    func performedActionsSnapshot() -> [SystemAction] {
+        performedActions
+    }
+}
+
+private enum TestActionError: LocalizedError {
+    case failed(message: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .failed(let message):
+            return message
+        }
+    }
+}
+
+private final class StubDiskArbitrationMonitoringSession: DiskArbitrationMonitoringSession, @unchecked Sendable {
+    private(set) var activateCallCount = 0
+    private(set) var deactivateCallCount = 0
+
+    func activate(
+        on queue: DispatchQueue,
+        context: UnsafeMutableRawPointer,
+        appearedCallback: @escaping DADiskAppearedCallback,
+        disappearedCallback: @escaping DADiskDisappearedCallback,
+        descriptionChangedCallback: @escaping DADiskDescriptionChangedCallback
+    ) {
+        _ = queue
+        _ = context
+        _ = appearedCallback
+        _ = disappearedCallback
+        _ = descriptionChangedCallback
+        activateCallCount += 1
+    }
+
+    func deactivate() {
+        deactivateCallCount += 1
+    }
 }

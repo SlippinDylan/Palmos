@@ -83,22 +83,42 @@ struct SystemAction: Identifiable, Equatable {
     }
 }
 
-struct SystemActions {
+protocol SystemActionPerforming: Sendable {
+    func perform(_ action: SystemAction) async throws
+}
+
+struct SystemActions: SystemActionPerforming {
     private let diskArbitration: any DiskArbitrationClient
     private let workspace: any WorkspaceClient
     private let commandRunner: any CommandRunner
+    private let actionQueue: DispatchQueue
 
     init(
         diskArbitration: any DiskArbitrationClient = LiveDiskArbitrationClient(),
         workspace: any WorkspaceClient = LiveWorkspaceClient(),
-        commandRunner: any CommandRunner = ProcessCommandRunner()
+        commandRunner: any CommandRunner = ProcessCommandRunner(),
+        actionQueue: DispatchQueue = DispatchQueue(label: "DrivePulse.SystemActions")
     ) {
         self.diskArbitration = diskArbitration
         self.workspace = workspace
         self.commandRunner = commandRunner
+        self.actionQueue = actionQueue
     }
 
-    func perform(_ action: SystemAction) throws {
+    func perform(_ action: SystemAction) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            actionQueue.async {
+                do {
+                    try performSynchronously(action)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func performSynchronously(_ action: SystemAction) throws {
         switch action.intent {
         case .revealInFinder(let volumeBSDName):
             let volumeURL = try mountedVolumeURL(for: volumeBSDName)
@@ -123,6 +143,7 @@ struct SystemActions {
 private enum SystemActionError: LocalizedError {
     case volumeNotMounted
     case diskNotFound
+    case operationTimedOut
     case commandFailed(message: String?)
     case diskArbitrationFailed(status: DAReturn, message: String?)
 
@@ -132,6 +153,8 @@ private enum SystemActionError: LocalizedError {
             return String(localized: "No mounted volume available.")
         case .diskNotFound:
             return String(localized: "Action couldn't be completed.")
+        case .operationTimedOut:
+            return String(localized: "Action timed out.")
         case .commandFailed:
             return String(localized: "Action couldn't be completed.")
         case .diskArbitrationFailed:
@@ -140,16 +163,16 @@ private enum SystemActionError: LocalizedError {
     }
 }
 
-protocol DiskArbitrationClient {
+protocol DiskArbitrationClient: Sendable {
     func volumeURL(for bsdName: String) throws -> URL
     func ejectWholeDisk(bsdName: String) throws
 }
 
-protocol WorkspaceClient {
+protocol WorkspaceClient: Sendable {
     func reveal(_ urls: [URL])
 }
 
-protocol CommandRunner {
+protocol CommandRunner: Sendable {
     func run(_ executablePath: String, arguments: [String]) throws -> Data
 }
 
@@ -187,8 +210,13 @@ private struct ProcessCommandRunner: CommandRunner {
     }
 }
 
-private final class LiveDiskArbitrationClient: DiskArbitrationClient {
+private final class LiveDiskArbitrationClient: DiskArbitrationClient, @unchecked Sendable {
     private let sessionQueue = DispatchQueue(label: "DrivePulse.SystemActions.DiskArbitration")
+    private let operationTimeout: DispatchTimeInterval
+
+    init(operationTimeout: DispatchTimeInterval = .seconds(10)) {
+        self.operationTimeout = operationTimeout
+    }
 
     func volumeURL(for bsdName: String) throws -> URL {
         guard let session = DASessionCreate(kCFAllocatorDefault),
@@ -241,11 +269,11 @@ private final class LiveDiskArbitrationClient: DiskArbitrationClient {
         let completion = DiskArbitrationCompletion(ignoringStatuses: ignoringStatuses)
         let context = Unmanaged.passRetained(completion).toOpaque()
         operation(context)
-        try completion.waitForCompletion()
+        try completion.waitForCompletion(timeout: operationTimeout)
     }
 }
 
-private final class DiskArbitrationCompletion {
+final class DiskArbitrationCompletion: @unchecked Sendable {
     private let semaphore = DispatchSemaphore(value: 0)
     private let ignoringStatuses: Set<DAReturn>
     private var result: Result<Void, Error> = .success(())
@@ -266,8 +294,12 @@ private final class DiskArbitrationCompletion {
         semaphore.signal()
     }
 
-    func waitForCompletion() throws {
-        semaphore.wait()
+    func waitForCompletion(timeout: DispatchTimeInterval = .seconds(10)) throws {
+        let waitResult = semaphore.wait(timeout: .now() + timeout)
+        guard waitResult == .success else {
+            throw SystemActionError.operationTimedOut
+        }
+
         try result.get()
     }
 }

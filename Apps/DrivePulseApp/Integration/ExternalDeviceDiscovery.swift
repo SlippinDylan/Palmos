@@ -5,7 +5,7 @@ import IOKit.storage
 
 import DrivePulseCore
 
-protocol ExternalDeviceDiscoveryObservation {
+protocol ExternalDeviceDiscoveryObservation: Sendable {
     func cancel()
 }
 
@@ -16,21 +16,37 @@ protocol ExternalDeviceDiscovering {
     ) -> any ExternalDeviceDiscoveryObservation
 }
 
+protocol DiskArbitrationMonitoringSession: Sendable {
+    func activate(
+        on queue: DispatchQueue,
+        context: UnsafeMutableRawPointer,
+        appearedCallback: @escaping DADiskAppearedCallback,
+        disappearedCallback: @escaping DADiskDisappearedCallback,
+        descriptionChangedCallback: @escaping DADiskDescriptionChangedCallback
+    )
+
+    func deactivate()
+}
+
 final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering {
     private let mapper: ExternalDeviceDiscoveryMapper
-    private let callbackSession: DASession?
+    private let monitoringSession: (any DiskArbitrationMonitoringSession)?
     private let sessionQueue: DispatchQueue
     private let observerLock = NSLock()
+    private let sessionQueueKey = DispatchSpecificKey<Void>()
     private var observers: [UUID: @MainActor ([ExternalDevice]) -> Void] = [:]
-    private var callbacksRegistered = false
+    private var callbackContext: UnsafeMutableRawPointer?
+    private var isMonitoring = false
 
     init(
         mapper: ExternalDeviceDiscoveryMapper = ExternalDeviceDiscoveryMapper(),
+        monitoringSession: (any DiskArbitrationMonitoringSession)? = LiveDiskArbitrationMonitoringSession(),
         sessionQueue: DispatchQueue = DispatchQueue(label: "DrivePulse.ExternalDeviceDiscovery")
     ) {
         self.mapper = mapper
-        self.callbackSession = DASessionCreate(kCFAllocatorDefault)
+        self.monitoringSession = monitoringSession
         self.sessionQueue = sessionQueue
+        self.sessionQueue.setSpecific(key: sessionQueueKey, value: ())
     }
 
     func discoverDevices() -> [ExternalDevice] {
@@ -49,13 +65,10 @@ final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering {
 
         observerLock.lock()
         observers[observerID] = onUpdate
-        let shouldRegisterCallbacks = callbacksRegistered == false
-        if shouldRegisterCallbacks {
-            callbacksRegistered = true
-        }
+        let shouldStartMonitoring = isMonitoring == false
         observerLock.unlock()
 
-        if shouldRegisterCallbacks {
+        if shouldStartMonitoring {
             startMonitoring()
         }
 
@@ -65,41 +78,80 @@ final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering {
     }
 
     deinit {
-        guard let callbackSession else { return }
-        DASessionSetDispatchQueue(callbackSession, nil)
+        stopMonitoring()
     }
 
     private func startMonitoring() {
-        guard let callbackSession else { return }
+        guard let monitoringSession else {
+            return
+        }
 
-        DASessionSetDispatchQueue(callbackSession, sessionQueue)
+        observerLock.lock()
+        guard isMonitoring == false else {
+            observerLock.unlock()
+            return
+        }
 
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        DARegisterDiskAppearedCallback(
-            callbackSession,
-            nil,
-            liveExternalDeviceDiscoveryDiskAppearedCallback,
-            context
-        )
-        DARegisterDiskDisappearedCallback(
-            callbackSession,
-            nil,
-            liveExternalDeviceDiscoveryDiskDisappearedCallback,
-            context
-        )
-        DARegisterDiskDescriptionChangedCallback(
-            callbackSession,
-            nil,
-            nil,
-            liveExternalDeviceDiscoveryDiskDescriptionChangedCallback,
-            context
+        let callbackState = LiveExternalDeviceDiscoveryCallbackState(discovery: self)
+        let context = Unmanaged.passRetained(callbackState).toOpaque()
+        callbackContext = context
+        isMonitoring = true
+        observerLock.unlock()
+
+        monitoringSession.activate(
+            on: sessionQueue,
+            context: context,
+            appearedCallback: liveExternalDeviceDiscoveryDiskAppearedCallback,
+            disappearedCallback: liveExternalDeviceDiscoveryDiskDisappearedCallback,
+            descriptionChangedCallback: liveExternalDeviceDiscoveryDiskDescriptionChangedCallback
         )
     }
 
+    private func stopMonitoring() {
+        let context: UnsafeMutableRawPointer?
+        let monitoringSession: (any DiskArbitrationMonitoringSession)?
+
+        observerLock.lock()
+        guard isMonitoring else {
+            observerLock.unlock()
+            return
+        }
+
+        isMonitoring = false
+        context = callbackContext
+        callbackContext = nil
+        monitoringSession = self.monitoringSession
+        observerLock.unlock()
+
+        if let context {
+            Unmanaged<LiveExternalDeviceDiscoveryCallbackState>
+                .fromOpaque(context)
+                .takeUnretainedValue()
+                .invalidate()
+        }
+
+        monitoringSession?.deactivate()
+
+        if DispatchQueue.getSpecific(key: sessionQueueKey) == nil {
+            sessionQueue.sync {}
+        }
+
+        if let context {
+            Unmanaged<LiveExternalDeviceDiscoveryCallbackState>.fromOpaque(context).release()
+        }
+    }
+
     private func removeObserver(_ observerID: UUID) {
+        var shouldStopMonitoring = false
+
         observerLock.lock()
         observers.removeValue(forKey: observerID)
+        shouldStopMonitoring = observers.isEmpty
         observerLock.unlock()
+
+        if shouldStopMonitoring {
+            stopMonitoring()
+        }
     }
 
     fileprivate func handleDiskEvent() {
@@ -117,15 +169,50 @@ final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering {
     }
 }
 
-private struct LiveExternalDeviceDiscoveryObservation: ExternalDeviceDiscoveryObservation {
+private final class LiveExternalDeviceDiscoveryObservation: ExternalDeviceDiscoveryObservation, @unchecked Sendable {
     private let onCancel: () -> Void
+    private let lock = NSLock()
+    private var didCancel = false
 
     init(onCancel: @escaping () -> Void) {
         self.onCancel = onCancel
     }
 
     func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard didCancel == false else {
+            return
+        }
+
+        didCancel = true
         onCancel()
+    }
+}
+
+private final class LiveExternalDeviceDiscoveryCallbackState: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var discovery: LiveExternalDeviceDiscovery?
+    private var isActive = true
+
+    init(discovery: LiveExternalDeviceDiscovery) {
+        self.discovery = discovery
+    }
+
+    func invalidate() {
+        lock.lock()
+        isActive = false
+        discovery = nil
+        lock.unlock()
+    }
+
+    func handleDiskEvent() {
+        lock.lock()
+        let discovery = isActive ? discovery : nil
+        lock.unlock()
+
+        discovery?.handleDiskEvent()
     }
 }
 
@@ -557,23 +644,56 @@ private struct DiskDiscoveryEnumerator {
 }
 
 private let liveExternalDeviceDiscoveryDiskAppearedCallback: DADiskAppearedCallback = { _, context in
-    liveExternalDeviceDiscovery(from: context)?.handleDiskEvent()
+    liveExternalDeviceDiscoveryCallbackState(from: context)?.handleDiskEvent()
 }
 
 private let liveExternalDeviceDiscoveryDiskDisappearedCallback: DADiskDisappearedCallback = { _, context in
-    liveExternalDeviceDiscovery(from: context)?.handleDiskEvent()
+    liveExternalDeviceDiscoveryCallbackState(from: context)?.handleDiskEvent()
 }
 
 private let liveExternalDeviceDiscoveryDiskDescriptionChangedCallback: DADiskDescriptionChangedCallback = { _, _, context in
-    liveExternalDeviceDiscovery(from: context)?.handleDiskEvent()
+    liveExternalDeviceDiscoveryCallbackState(from: context)?.handleDiskEvent()
 }
 
-private func liveExternalDeviceDiscovery(
+private func liveExternalDeviceDiscoveryCallbackState(
     from context: UnsafeMutableRawPointer?
-) -> LiveExternalDeviceDiscovery? {
+) -> LiveExternalDeviceDiscoveryCallbackState? {
     guard let context else {
         return nil
     }
 
-    return Unmanaged<LiveExternalDeviceDiscovery>.fromOpaque(context).takeUnretainedValue()
+    return Unmanaged<LiveExternalDeviceDiscoveryCallbackState>.fromOpaque(context).takeUnretainedValue()
+}
+
+private final class LiveDiskArbitrationMonitoringSession: DiskArbitrationMonitoringSession, @unchecked Sendable {
+    private let session: DASession?
+
+    init(session: DASession? = DASessionCreate(kCFAllocatorDefault)) {
+        self.session = session
+    }
+
+    func activate(
+        on queue: DispatchQueue,
+        context: UnsafeMutableRawPointer,
+        appearedCallback: @escaping DADiskAppearedCallback,
+        disappearedCallback: @escaping DADiskDisappearedCallback,
+        descriptionChangedCallback: @escaping DADiskDescriptionChangedCallback
+    ) {
+        guard let session else {
+            return
+        }
+
+        DASessionSetDispatchQueue(session, queue)
+        DARegisterDiskAppearedCallback(session, nil, appearedCallback, context)
+        DARegisterDiskDisappearedCallback(session, nil, disappearedCallback, context)
+        DARegisterDiskDescriptionChangedCallback(session, nil, nil, descriptionChangedCallback, context)
+    }
+
+    func deactivate() {
+        guard let session else {
+            return
+        }
+
+        DASessionSetDispatchQueue(session, nil)
+    }
 }
