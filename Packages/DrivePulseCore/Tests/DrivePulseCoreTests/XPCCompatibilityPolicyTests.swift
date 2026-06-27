@@ -2,6 +2,17 @@ import XCTest
 @testable import DrivePulseCore
 
 final class XPCCompatibilityPolicyTests: XCTestCase {
+    func testMatchingMajorAndMinorIsCompatible() {
+        let result = XPCCompatibilityPolicy.evaluate(
+            appMajor: 1,
+            appMinor: 3,
+            helperMajor: 1,
+            helperMinor: 3
+        )
+
+        XCTAssertEqual(result, .compatible)
+    }
+
     func testMajorMismatchRequiresUpdate() {
         let result = XPCCompatibilityPolicy.evaluate(
             appMajor: 1,
