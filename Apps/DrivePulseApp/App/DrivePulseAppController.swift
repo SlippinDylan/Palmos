@@ -14,6 +14,7 @@ final class DrivePulseAppController: ObservableObject {
 
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
     private var discoveryLoadTask: Task<Void, Never>?
+    private var discoveryWriteGeneration = 0
     private let deviceDiscovery: any ExternalDeviceDiscovering
     private let systemActions: any SystemActionPerforming
 
@@ -33,7 +34,7 @@ final class DrivePulseAppController: ObservableObject {
             selectedDeviceID: nil
         )
         self.discoveryObservation = deviceDiscovery.observeDevices { [weak self] devices in
-            self?.state.replaceDevices(devices)
+            self?.applyObservedDevices(devices)
         }
 
         if state == nil {
@@ -86,6 +87,8 @@ final class DrivePulseAppController: ObservableObject {
 
     private func loadDiscoveredDevices() {
         discoveryLoadTask?.cancel()
+        discoveryWriteGeneration += 1
+        let generation = discoveryWriteGeneration
         let deviceDiscovery = deviceDiscovery
         discoveryLoadTask = Task { [weak self] in
             let devices = await deviceDiscovery.discoverDevices()
@@ -93,7 +96,20 @@ final class DrivePulseAppController: ObservableObject {
                 return
             }
 
-            self?.state.replaceDevices(devices)
+            self?.applyDiscoveredDevices(devices, generation: generation)
         }
+    }
+
+    private func applyObservedDevices(_ devices: [ExternalDevice]) {
+        discoveryWriteGeneration += 1
+        state.replaceDevices(devices)
+    }
+
+    private func applyDiscoveredDevices(_ devices: [ExternalDevice], generation: Int) {
+        guard generation == discoveryWriteGeneration else {
+            return
+        }
+
+        state.replaceDevices(devices)
     }
 }

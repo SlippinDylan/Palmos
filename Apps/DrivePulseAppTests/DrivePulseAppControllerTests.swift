@@ -82,6 +82,29 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
     }
 
+    func testObserverUpdatePreventsPendingDiscoveryResultFromOverwritingNewerDevices() async {
+        let bootstrapDevices = [
+            makeDevice(id: "disk21", volumes: ["disk21s1"])
+        ]
+        let observedDevices = [
+            makeDevice(id: "disk84", volumes: []),
+            makeDevice(id: "disk126", volumes: ["disk126s1"])
+        ]
+        let discovery = StubExternalDeviceDiscovery(results: [bootstrapDevices])
+        let controller = DrivePulseAppController(deviceDiscovery: discovery)
+
+        await discovery.waitUntilNextDiscoveryIsPending()
+
+        discovery.emit(observedDevices)
+        XCTAssertEqual(controller.state.devices, observedDevices)
+
+        await discovery.resolveNextDiscovery()
+        await Task.yield()
+
+        XCTAssertEqual(controller.state.devices, observedDevices)
+        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
+    }
+
     func testControllerCancelsDiscoveryObservationOnDeinit() {
         let discovery = StubExternalDeviceDiscovery(results: [[makeDevice(id: "disk21", volumes: [])]])
         var controller: DrivePulseAppController? = DrivePulseAppController(deviceDiscovery: discovery)
@@ -248,6 +271,10 @@ private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering, @unc
         await state.resolveNextDiscovery()
     }
 
+    func waitUntilNextDiscoveryIsPending() async {
+        await state.waitUntilNextDiscoveryIsPending()
+    }
+
     func invocationCountSnapshot() async -> Int {
         await state.invocationCountSnapshot()
     }
@@ -279,6 +306,12 @@ private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering, @unc
 
             let continuation = pendingContinuations.removeFirst()
             continuation.resume()
+        }
+
+        func waitUntilNextDiscoveryIsPending() async {
+            while pendingContinuations.isEmpty {
+                await Task.yield()
+            }
         }
 
         func invocationCountSnapshot() -> Int {
