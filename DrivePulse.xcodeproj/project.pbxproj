@@ -1,0 +1,417 @@
+// !$*UTF8*$!
+{
+	objectVersion = 56;
+	archiveVersion = 1;
+	classes = {
+	};
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* DrivePulseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* DrivePulseApp.swift */; };
+		100000000000000000000002 /* DrivePulseAppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* DrivePulseAppController.swift */; };
+		100000000000000000000003 /* DrivePulseAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* DrivePulseAppState.swift */; };
+		100000000000000000000004 /* MenuBarRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* MenuBarRootView.swift */; };
+		100000000000000000000005 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* DevicePickerView.swift */; };
+		100000000000000000000006 /* OverviewCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* OverviewCardView.swift */; };
+		100000000000000000000007 /* ThroughputCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* ThroughputCardView.swift */; };
+		100000000000000000000008 /* VolumesSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* VolumesSectionView.swift */; };
+		100000000000000000000009 /* DetailsSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* DetailsSectionView.swift */; };
+		10000000000000000000000A /* ActionBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* ActionBarView.swift */; };
+		10000000000000000000000B /* DrivePulseAppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* DrivePulseAppStateTests.swift */; };
+		10000000000000000000000C /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000001 /* DrivePulseCore */; };
+		10000000000000000000000D /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000002 /* DrivePulseCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		100000000000000000000020 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 300000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 400000000000000000000001;
+			remoteInfo = DrivePulseApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		200000000000000000000001 /* DrivePulseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* DrivePulseAppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseAppController.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* DrivePulseAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseAppState.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* MenuBarRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarRootView.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
+		200000000000000000000006 /* OverviewCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000007 /* ThroughputCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* VolumesSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumesSectionView.swift; sourceTree = "<group>"; };
+		200000000000000000000009 /* DetailsSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsSectionView.swift; sourceTree = "<group>"; };
+		20000000000000000000000A /* ActionBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionBarView.swift; sourceTree = "<group>"; };
+		20000000000000000000000B /* DrivePulseAppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseAppStateTests.swift; sourceTree = "<group>"; };
+		20000000000000000000000C /* DrivePulseApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DrivePulseApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000D /* DrivePulseAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DrivePulseAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000E /* App.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xcconfigs/App.xcconfig; sourceTree = "<group>"; };
+		20000000000000000000000F /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xcconfigs/Base.xcconfig; sourceTree = "<group>"; };
+		200000000000000000000010 /* DrivePulseApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Plists/DrivePulseApp-Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		300000000000000000000010 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000000C /* DrivePulseCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000011 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000000D /* DrivePulseCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		300000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000003 /* Apps */,
+				300000000000000000000008 /* Apps Tests */,
+				300000000000000000000009 /* Config */,
+				30000000000000000000000A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		300000000000000000000003 /* Apps */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000004 /* App */,
+				300000000000000000000005 /* UI */,
+			);
+			path = Apps/DrivePulseApp;
+			sourceTree = "<group>";
+		};
+		300000000000000000000004 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* DrivePulseApp.swift */,
+				200000000000000000000002 /* DrivePulseAppController.swift */,
+				200000000000000000000003 /* DrivePulseAppState.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		300000000000000000000005 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000004 /* MenuBarRootView.swift */,
+				200000000000000000000005 /* DevicePickerView.swift */,
+				200000000000000000000006 /* OverviewCardView.swift */,
+				200000000000000000000007 /* ThroughputCardView.swift */,
+				200000000000000000000008 /* VolumesSectionView.swift */,
+				200000000000000000000009 /* DetailsSectionView.swift */,
+				20000000000000000000000A /* ActionBarView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		300000000000000000000008 /* Apps Tests */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000B /* DrivePulseAppStateTests.swift */,
+			);
+			path = Apps/DrivePulseAppTests;
+			sourceTree = "<group>";
+		};
+		300000000000000000000009 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000E /* App.xcconfig */,
+				20000000000000000000000F /* Base.xcconfig */,
+				200000000000000000000010 /* DrivePulseApp-Info.plist */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000C /* DrivePulseApp.app */,
+				20000000000000000000000D /* DrivePulseAppTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		400000000000000000000001 /* DrivePulseApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 600000000000000000000002 /* Build configuration list for PBXNativeTarget "DrivePulseApp" */;
+			buildPhases = (
+				300000000000000000000012 /* Sources */,
+				300000000000000000000010 /* Frameworks */,
+				300000000000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DrivePulseApp;
+			packageProductDependencies = (
+				500000000000000000000001 /* DrivePulseCore */,
+			);
+			productName = DrivePulseApp;
+			productReference = 20000000000000000000000C /* DrivePulseApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		400000000000000000000002 /* DrivePulseAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 600000000000000000000003 /* Build configuration list for PBXNativeTarget "DrivePulseAppTests" */;
+			buildPhases = (
+				300000000000000000000014 /* Sources */,
+				300000000000000000000011 /* Frameworks */,
+				300000000000000000000015 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				400000000000000000000003 /* PBXTargetDependency */,
+			);
+			name = DrivePulseAppTests;
+			packageProductDependencies = (
+				500000000000000000000002 /* DrivePulseCore */,
+			);
+			productName = DrivePulseAppTests;
+			productReference = 20000000000000000000000D /* DrivePulseAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		300000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					400000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					400000000000000000000002 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 600000000000000000000001 /* Build configuration list for PBXProject "DrivePulse" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 300000000000000000000002;
+			packageReferences = (
+				500000000000000000000003 /* XCLocalSwiftPackageReference "Packages/DrivePulseCore" */,
+			);
+			productRefGroup = 30000000000000000000000A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				400000000000000000000001 /* DrivePulseApp */,
+				400000000000000000000002 /* DrivePulseAppTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		300000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000015 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		300000000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* DrivePulseApp.swift in Sources */,
+				100000000000000000000002 /* DrivePulseAppController.swift in Sources */,
+				100000000000000000000003 /* DrivePulseAppState.swift in Sources */,
+				100000000000000000000004 /* MenuBarRootView.swift in Sources */,
+				100000000000000000000005 /* DevicePickerView.swift in Sources */,
+				100000000000000000000006 /* OverviewCardView.swift in Sources */,
+				100000000000000000000007 /* ThroughputCardView.swift in Sources */,
+				100000000000000000000008 /* VolumesSectionView.swift in Sources */,
+				100000000000000000000009 /* DetailsSectionView.swift in Sources */,
+				10000000000000000000000A /* ActionBarView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000014 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000000B /* DrivePulseAppStateTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		400000000000000000000003 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 400000000000000000000001 /* DrivePulseApp */;
+			targetProxy = 100000000000000000000020 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		600000000000000000000004 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		600000000000000000000005 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		600000000000000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000E /* App.xcconfig */;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_TESTABILITY = YES;
+				MARKETING_VERSION = 1.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		600000000000000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000E /* App.xcconfig */;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		600000000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000F /* Base.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
+				MARKETING_VERSION = 1.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.drivepulse.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DrivePulseApp.app/Contents/MacOS/DrivePulseApp";
+			};
+			name = Debug;
+		};
+		600000000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000F /* Base.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.drivepulse.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DrivePulseApp.app/Contents/MacOS/DrivePulseApp";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		600000000000000000000001 /* Build configuration list for PBXProject "DrivePulse" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				600000000000000000000004 /* Debug */,
+				600000000000000000000005 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		600000000000000000000002 /* Build configuration list for PBXNativeTarget "DrivePulseApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				600000000000000000000006 /* Debug */,
+				600000000000000000000007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		600000000000000000000003 /* Build configuration list for PBXNativeTarget "DrivePulseAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				600000000000000000000008 /* Debug */,
+				600000000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		500000000000000000000003 /* XCLocalSwiftPackageReference "Packages/DrivePulseCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/DrivePulseCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		500000000000000000000001 /* DrivePulseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 500000000000000000000003 /* XCLocalSwiftPackageReference "Packages/DrivePulseCore" */;
+			productName = DrivePulseCore;
+		};
+		500000000000000000000002 /* DrivePulseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 500000000000000000000003 /* XCLocalSwiftPackageReference "Packages/DrivePulseCore" */;
+			productName = DrivePulseCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 300000000000000000000001 /* Project object */;
+}
