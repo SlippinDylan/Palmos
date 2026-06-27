@@ -3,6 +3,7 @@ import SwiftUI
 import DrivePulseCore
 
 struct SettingsView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var settings: AppSettings
     @ObservedObject var launchAtLoginController: LaunchAtLoginController
 
@@ -49,5 +50,15 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(20)
         .frame(width: 420)
+        .onAppear {
+            launchAtLoginController.refreshStatus()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else {
+                return
+            }
+
+            launchAtLoginController.refreshStatus()
+        }
     }
 }

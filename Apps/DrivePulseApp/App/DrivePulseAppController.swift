@@ -7,6 +7,7 @@ import DrivePulseCore
 final class DrivePulseAppController: ObservableObject {
     @Published private(set) var state: DrivePulseAppState
     @Published private(set) var actionFeedback: String?
+    @Published private(set) var isPerformingSystemAction = false
 
     let settings: AppSettings
     let launchAtLoginController: LaunchAtLoginController
@@ -54,6 +55,12 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     func perform(_ action: SystemAction) {
+        guard isPerformingSystemAction == false else {
+            return
+        }
+
+        isPerformingSystemAction = true
+        actionFeedback = nil
         Task { @MainActor [weak self] in
             guard let self else {
                 return
@@ -61,10 +68,11 @@ final class DrivePulseAppController: ObservableObject {
 
             do {
                 try await systemActions.perform(action)
-                actionFeedback = nil
             } catch {
                 actionFeedback = error.localizedDescription
             }
+
+            isPerformingSystemAction = false
         }
     }
 

@@ -126,6 +126,35 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(controller.actionFeedback, "Action couldn't be completed.")
     }
 
+    func testPerformIgnoresSecondActionWhileAnotherActionIsInFlight() async {
+        let actionPerformer = StubSystemActionPerformer()
+        let controller = DrivePulseAppController(
+            systemActions: actionPerformer,
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[makeDevice(id: "disk21", volumes: [])]])
+        )
+        let firstAction = SystemAction(
+            kind: .eject,
+            intent: .ejectPhysicalDevice(bsdName: "disk21")
+        )
+        let secondAction = SystemAction(
+            kind: .openDiskUtility,
+            intent: .openDiskUtility(bsdName: "disk21")
+        )
+
+        controller.perform(firstAction)
+        await actionPerformer.waitUntilStarted()
+        XCTAssertTrue(controller.isPerformingSystemAction)
+
+        controller.perform(secondAction)
+
+        let performedActions = await actionPerformer.performedActionsSnapshot()
+        XCTAssertEqual(performedActions, [firstAction])
+
+        await actionPerformer.finish()
+        await waitUntilActionCompletes(controller)
+        XCTAssertFalse(controller.isPerformingSystemAction)
+    }
+
     func testDiscoveryObservationCancelStopsMonitoringWhenLastObserverIsRemoved() {
         let monitoringSession = StubDiskArbitrationMonitoringSession()
         let discovery = LiveExternalDeviceDiscovery(monitoringSession: monitoringSession)
@@ -175,6 +204,12 @@ final class DrivePulseAppControllerTests: XCTestCase {
         equals devices: [ExternalDevice]
     ) async {
         while controller.state.devices != devices {
+            await Task.yield()
+        }
+    }
+
+    private func waitUntilActionCompletes(_ controller: DrivePulseAppController) async {
+        while controller.isPerformingSystemAction {
             await Task.yield()
         }
     }

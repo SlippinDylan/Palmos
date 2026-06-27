@@ -2,9 +2,24 @@ import XCTest
 @testable import DrivePulseApp
 
 import Foundation
+import ServiceManagement
 import DrivePulseCore
 
 final class Task6SettingsAndActionsTests: XCTestCase {
+    @MainActor
+    func testLaunchAtLoginRefreshStatusPicksUpExternalSystemChanges() {
+        let service = StubLaunchAtLoginService(status: .notRegistered)
+        let controller = LaunchAtLoginController(service: service)
+
+        XCTAssertFalse(controller.isEnabled)
+
+        service.status = .enabled
+        controller.refreshStatus()
+
+        XCTAssertEqual(controller.status, .enabled)
+        XCTAssertTrue(controller.isEnabled)
+    }
+
     func testSettingsRoundTripTemperatureUnit() {
         let suiteName = "Task6SettingsAndActionsTests.\(#function).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -128,5 +143,19 @@ private struct StubCommandRunner: CommandRunner {
         _ = executablePath
         _ = arguments
         return Data()
+    }
+}
+
+private final class StubLaunchAtLoginService: LaunchAtLoginServicing, @unchecked Sendable {
+    var status: SMAppService.Status
+
+    init(status: SMAppService.Status) {
+        self.status = status
+    }
+
+    func register() throws {}
+
+    func unregister(completionHandler: @escaping (Error?) -> Void) {
+        completionHandler(nil)
     }
 }

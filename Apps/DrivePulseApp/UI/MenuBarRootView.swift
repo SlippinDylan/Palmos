@@ -29,6 +29,7 @@ struct MenuBarRootView: View {
             Divider()
             ActionBarView(
                 actions: controller.selectedDeviceActions,
+                isPerformingAction: controller.isPerformingSystemAction,
                 message: controller.actionFeedback,
                 onAction: controller.perform
             )

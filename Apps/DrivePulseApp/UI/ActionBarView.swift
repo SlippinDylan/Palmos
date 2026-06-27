@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ActionBarView: View {
     let actions: [SystemAction]
+    let isPerformingAction: Bool
     let message: String?
     let onAction: (SystemAction) -> Void
 
@@ -26,6 +27,7 @@ struct ActionBarView: View {
             }
             .labelStyle(.titleAndIcon)
             .controlSize(.small)
+            .disabled(isPerformingAction)
 
             if let message, message.isEmpty == false {
                 Text(message)
