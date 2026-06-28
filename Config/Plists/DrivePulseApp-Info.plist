@@ -8,5 +8,10 @@
     <string>DrivePulse</string>
     <key>LSUIElement</key>
     <true/>
+    <key>SMPrivilegedExecutables</key>
+    <dict>
+        <key>com.drivepulse.smartservice</key>
+        <string>identifier "$(HELPER_BUNDLE_IDENTIFIER)"</string>
+    </dict>
 </dict>
 </plist>

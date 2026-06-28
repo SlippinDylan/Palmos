@@ -12,6 +12,10 @@ final class SMARTServiceClient {
         )
     }
 
+    func evaluateHandshake(from data: Data) throws -> XPCCompatibilityResult {
+        evaluateHandshake(try decodeHandshake(from: data))
+    }
+
     func decodeHandshake(from data: Data) throws -> HelperHandshake {
         try DrivePulseXPCMessages.decode(HelperHandshake.self, from: data)
     }
