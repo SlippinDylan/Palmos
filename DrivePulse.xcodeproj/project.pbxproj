@@ -17,6 +17,7 @@
 		100000000000000000000008 /* VolumesSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* VolumesSectionView.swift */; };
 		100000000000000000000009 /* DetailsSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* DetailsSectionView.swift */; };
 		10000000000000000000000A /* ActionBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* ActionBarView.swift */; };
+		100000000000000000000029 /* PanelSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000029 /* PanelSection.swift */; };
 		10000000000000000000000B /* DrivePulseAppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* DrivePulseAppStateTests.swift */; };
 		10000000000000000000000C /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000001 /* DrivePulseCore */; };
 		10000000000000000000000D /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000002 /* DrivePulseCore */; };
@@ -111,6 +112,7 @@
 		200000000000000000000008 /* VolumesSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumesSectionView.swift; sourceTree = "<group>"; };
 		200000000000000000000009 /* DetailsSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsSectionView.swift; sourceTree = "<group>"; };
 		20000000000000000000000A /* ActionBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionBarView.swift; sourceTree = "<group>"; };
+		200000000000000000000029 /* PanelSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelSection.swift; sourceTree = "<group>"; };
 		20000000000000000000000B /* DrivePulseAppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseAppStateTests.swift; sourceTree = "<group>"; };
 		20000000000000000000000C /* DrivePulseApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DrivePulseApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000D /* DrivePulseAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DrivePulseAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -214,6 +216,7 @@
 				200000000000000000000008 /* VolumesSectionView.swift */,
 				200000000000000000000009 /* DetailsSectionView.swift */,
 				20000000000000000000000A /* ActionBarView.swift */,
+				200000000000000000000029 /* PanelSection.swift */,
 				200000000000000000000014 /* SettingsView.swift */,
 			);
 			path = UI;
@@ -472,6 +475,7 @@
 				100000000000000000000008 /* VolumesSectionView.swift in Sources */,
 				100000000000000000000009 /* DetailsSectionView.swift in Sources */,
 				10000000000000000000000A /* ActionBarView.swift in Sources */,
+				100000000000000000000029 /* PanelSection.swift in Sources */,
 				100000000000000000000015 /* ExternalDeviceDiscovery.swift in Sources */,
 				100000000000000000000016 /* SMARTServiceClient.swift in Sources */,
 				100000000000000000000028 /* HelperInstaller.swift in Sources */,

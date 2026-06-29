@@ -7,7 +7,7 @@ struct OverviewCardView: View {
     @ObservedObject var settings: AppSettings
 
     var body: some View {
-        GroupBox("Overview") {
+        PanelSection("Overview") {
             if let device {
                 VStack(alignment: .leading, spacing: 8) {
                     LabeledContent("Connection", value: device.transportName)
@@ -18,7 +18,6 @@ struct OverviewCardView: View {
             } else {
                 Text("No device selected")
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

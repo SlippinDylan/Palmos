@@ -9,7 +9,7 @@ struct DetailsSectionView: View {
     let onSMARTAction: (SMARTPresentationPrimaryAction) -> Void
 
     var body: some View {
-        GroupBox("Details") {
+        PanelSection("Details") {
             VStack(alignment: .leading, spacing: 12) {
                 if let device {
                     Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
@@ -29,11 +29,9 @@ struct DetailsSectionView: View {
                             Text(device.id.rawValue)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text("No device details available")
                         .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 Divider()

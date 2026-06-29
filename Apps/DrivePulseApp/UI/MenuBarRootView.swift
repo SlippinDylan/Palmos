@@ -7,33 +7,33 @@ struct MenuBarRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    DevicePickerView(
-                        devices: controller.state.devices,
-                        selectedDeviceID: Binding(
-                            get: { controller.state.selectedDeviceID },
-                            set: { controller.selectDevice($0) }
-                        )
+            VStack(alignment: .leading, spacing: 12) {
+                DevicePickerView(
+                    devices: controller.state.devices,
+                    selectedDeviceID: Binding(
+                        get: { controller.state.selectedDeviceID },
+                        set: { controller.selectDevice($0) }
                     )
-                    OverviewCardView(
-                        device: controller.state.selectedDevice,
-                        settings: controller.settings
-                    )
-                    ThroughputCardView(device: controller.state.selectedDevice)
-                    VolumesSectionView(device: controller.state.selectedDevice)
-                    DetailsSectionView(
-                        device: controller.state.selectedDevice,
-                        smartDetails: controller.state.selectedSMARTDetails,
-                        settings: controller.settings,
-                        onSMARTAction: { _ in
-                            controller.performSMARTPrimaryAction()
-                        }
-                    )
-                }
-                .padding(14)
+                )
+                OverviewCardView(
+                    device: controller.state.selectedDevice,
+                    settings: controller.settings
+                )
+                ThroughputCardView(device: controller.state.selectedDevice)
+                VolumesSectionView(device: controller.state.selectedDevice)
+                DetailsSectionView(
+                    device: controller.state.selectedDevice,
+                    smartDetails: controller.state.selectedSMARTDetails,
+                    settings: controller.settings,
+                    onSMARTAction: { _ in
+                        controller.performSMARTPrimaryAction()
+                    }
+                )
             }
+            .padding(14)
+
             Divider()
+
             ActionBarView(
                 actions: controller.selectedDeviceActions,
                 isPerformingAction: controller.isPerformingSystemAction,
@@ -42,7 +42,7 @@ struct MenuBarRootView: View {
             )
             .padding(14)
         }
-        .frame(width: 360, height: 520, alignment: .top)
+        .frame(width: 360)
         .alert(
             "Install Advanced Monitoring",
             isPresented: installPromptBinding

@@ -6,7 +6,7 @@ struct ThroughputCardView: View {
     let device: ExternalDevice?
 
     var body: some View {
-        GroupBox("Throughput") {
+        PanelSection("Throughput") {
             if let metrics = device?.sessionMetrics {
                 VStack(alignment: .leading, spacing: 8) {
                     LabeledContent("Read", value: rateString(metrics.currentReadBytesPerSecond))
@@ -17,7 +17,6 @@ struct ThroughputCardView: View {
             } else {
                 Text("No throughput data")
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
