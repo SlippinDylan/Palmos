@@ -12,7 +12,7 @@
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>SMAuthorizedClients</key>
     <array>
-        <string>identifier "$(APP_BUNDLE_IDENTIFIER)"</string>
+        <string>anchor apple generic and certificate leaf[subject.OU] = "$(TEAM_IDENTIFIER)" and identifier "$(APP_BUNDLE_IDENTIFIER)"</string>
     </array>
 </dict>
 </plist>

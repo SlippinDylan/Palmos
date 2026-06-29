@@ -11,7 +11,7 @@
     <key>SMPrivilegedExecutables</key>
     <dict>
         <key>com.drivepulse.smartservice</key>
-        <string>identifier "$(HELPER_BUNDLE_IDENTIFIER)"</string>
+        <string>anchor apple generic and certificate leaf[subject.OU] = "$(TEAM_IDENTIFIER)" and identifier "$(HELPER_BUNDLE_IDENTIFIER)"</string>
     </dict>
 </dict>
 </plist>

@@ -31,7 +31,7 @@ struct OverviewCardView: View {
         return ByteCountFormatter.string(fromByteCount: capacityBytes, countStyle: .file)
     }
 
-    private func healthString(for snapshot: SmartSnapshot) -> String {
+    func healthString(for snapshot: SmartSnapshot) -> String {
         switch snapshot {
         case .notRequested:
             return String(localized: "Not requested")
@@ -43,8 +43,10 @@ struct OverviewCardView: View {
             }
 
             return localizedHealthString(overallHealth)
-        case .unsupported, .transportUnsupported:
+        case .unsupported:
             return String(localized: "Unsupported")
+        case .transportUnsupported:
+            return String(localized: "Transport support required")
         case .helperNotInstalled:
             return String(localized: "Helper required")
         case .permissionRequired:
