@@ -7,15 +7,23 @@ struct DevicePickerView: View {
     @Binding var selectedDeviceID: DeviceID?
 
     var body: some View {
-        PanelSection("Device") {
-            Picker("Device", selection: $selectedDeviceID) {
-                ForEach(devices) { device in
-                    Text(device.displayName).tag(Optional(device.id))
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Device")
+                .font(.headline)
+
+            // NSPopUpButton ignores frame(maxWidth: .infinity); read the
+            // available width explicitly and pin the button to it.
+            GeometryReader { proxy in
+                Picker("Device", selection: $selectedDeviceID) {
+                    ForEach(devices) { device in
+                        Text(device.displayName).tag(Optional(device.id))
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: proxy.size.width)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(maxWidth: .infinity)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
