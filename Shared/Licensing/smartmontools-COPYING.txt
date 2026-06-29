@@ -1,0 +1,19 @@
+This file must contain the verbatim COPYING file from the exact smartmontools
+release bundled with DrivePulse.
+
+smartmontools is licensed under the GNU General Public License, version 2.
+The canonical upstream source is:
+
+  https://www.smartmontools.org
+
+Before distributing DrivePulse with a bundled smartctl binary, replace the
+contents of this file with the complete GPL v2 text from the corresponding
+upstream smartmontools release. The file to copy is named COPYING in the
+smartmontools source distribution.
+
+The GPL v2 full text is also available at:
+
+  https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
+
+Failure to include the license text with the distributed binary is a violation
+of the GPL v2 terms.
