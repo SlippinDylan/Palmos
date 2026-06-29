@@ -116,11 +116,13 @@ struct SystemActions: SystemActionPerforming {
             try await runOnActionQueue {
                 try diskArbitration.ejectWholeDisk(bsdName: bsdName)
             }
-        case .openDiskUtility(let bsdName):
+        case .openDiskUtility:
             try await runOnActionQueue {
+                // Passing /dev/diskN as an argument causes Launch Services to show
+                // a "no permission" dialog. Open Disk Utility without a file argument.
                 _ = try commandRunner.run(
                     "/usr/bin/open",
-                    arguments: ["-b", "com.apple.DiskUtility", "/dev/\(bsdName)"]
+                    arguments: ["-b", "com.apple.DiskUtility"]
                 )
             }
         case .openSettings:

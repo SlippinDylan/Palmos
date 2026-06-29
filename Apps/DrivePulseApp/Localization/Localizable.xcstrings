@@ -1,28 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "APFS Container" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "APFS Container"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "APFS 容器"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "APFS 容器"
-          }
-        }
-      }
-    },
     "Action couldn't be completed." : {
       "localizations" : {
         "en" : {
@@ -41,6 +19,31 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法完成此操作。"
+          }
+        }
+      }
+    },
+    "Action timed out." : {
+
+    },
+    "APFS Container" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APFS Container"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APFS 容器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APFS 容器"
           }
         }
       }
@@ -66,6 +69,9 @@
           }
         }
       }
+    },
+    "Cancel" : {
+
     },
     "Capacity" : {
       "localizations" : {
@@ -221,6 +227,9 @@
         }
       }
     },
+    "DrivePulse" : {
+
+    },
     "DrivePulse can launch automatically when you sign in." : {
       "localizations" : {
         "en" : {
@@ -242,6 +251,12 @@
           }
         }
       }
+    },
+    "DrivePulse needs to install the privileged SMART helper to read drive health data." : {
+
+    },
+    "DrivePulse needs to update the privileged SMART helper before SMART data can be refreshed." : {
+
     },
     "Eject" : {
       "localizations" : {
@@ -352,6 +367,12 @@
           }
         }
       }
+    },
+    "Install" : {
+
+    },
+    "Install Advanced Monitoring" : {
+
     },
     "Launch at Login" : {
       "localizations" : {
@@ -484,6 +505,9 @@
           }
         }
       }
+    },
+    "No SMART details available" : {
+
     },
     "No throughput data" : {
       "localizations" : {
@@ -683,6 +707,9 @@
         }
       }
     },
+    "SMART" : {
+
+    },
     "Temperature" : {
       "localizations" : {
         "en" : {
@@ -793,6 +820,9 @@
         }
       }
     },
+    "Transport support required" : {
+
+    },
     "Unavailable" : {
       "localizations" : {
         "en" : {
@@ -836,6 +866,12 @@
           }
         }
       }
+    },
+    "Update" : {
+
+    },
+    "Update Advanced Monitoring" : {
+
     },
     "Update required" : {
       "localizations" : {

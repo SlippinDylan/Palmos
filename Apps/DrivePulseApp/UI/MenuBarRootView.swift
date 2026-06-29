@@ -42,8 +42,7 @@ struct MenuBarRootView: View {
             )
             .padding(14)
         }
-        .frame(width: 360, alignment: .top)
-        .frame(maxHeight: 520, alignment: .top)
+        .frame(width: 360, height: 520, alignment: .top)
         .alert(
             "Install Advanced Monitoring",
             isPresented: installPromptBinding

@@ -334,11 +334,16 @@ struct ExternalDeviceDiscoveryMapper {
                     $0.volumePath != nil &&
                     $0.isNetworkVolume == false
                 }
-                .filter {
-                    rootBSDName(
-                        forMountedVolume: $0,
+                .filter { volumeRecord in
+                    let resolvedRoot = rootBSDName(
+                        forMountedVolume: volumeRecord,
                         recordsByBSD: recordsByBSD
-                    ) == rootRecord.bsdName
+                    )
+                    let match = resolvedRoot == rootRecord.bsdName
+                    discoveryLog.debug(
+                        "  volumeMap: \(volumeRecord.bsdName) whole=\(volumeRecord.wholeDiskBSDName ?? "nil") → root=\(resolvedRoot ?? "nil") match=\(match) (expect \(rootRecord.bsdName))"
+                    )
+                    return match
                 }
                 .map(\.bsdName)
                 .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -574,7 +579,15 @@ private struct DiskDiscoveryEnumerator {
     }
 
     private func makeRecord(for service: io_service_t) -> DiskDiscoveryRecord? {
-        guard let disk = DADiskCreateFromIOMedia(kCFAllocatorDefault, session, service),
+        // DADiskCreateFromIOMedia may return nil for synthesized disks such as APFS
+        // containers (disk5). Fall back to BSD-name-based creation so those entries
+        // remain in recordsByBSD and can serve as chain links during volume mapping.
+        let disk: DADisk? = DADiskCreateFromIOMedia(kCFAllocatorDefault, session, service)
+            ?? stringProperty(named: "BSD Name", for: service).flatMap { bsdName in
+                bsdName.withCString { DADiskCreateFromBSDName(kCFAllocatorDefault, session, $0) }
+            }
+
+        guard let disk,
               let bsdNamePointer = DADiskGetBSDName(disk) else {
             return nil
         }
