@@ -7,10 +7,7 @@ struct DevicePickerView: View {
     @Binding var selectedDeviceID: DeviceID?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Device")
-                .font(.headline)
-
+        PanelSection("Device") {
             Picker("Device", selection: $selectedDeviceID) {
                 ForEach(devices) { device in
                     Text(device.displayName).tag(Optional(device.id))
@@ -18,7 +15,7 @@ struct DevicePickerView: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
     }
 }

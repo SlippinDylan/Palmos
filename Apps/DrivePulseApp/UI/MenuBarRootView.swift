@@ -43,6 +43,7 @@ struct MenuBarRootView: View {
             .padding(14)
         }
         .frame(width: 360)
+        .containerBackground(.regularMaterial, for: .window)
         .alert(
             "Install Advanced Monitoring",
             isPresented: installPromptBinding
