@@ -709,6 +709,7 @@
       }
     },
     "Read" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -800,6 +801,7 @@
       }
     },
     "Throughput" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -822,6 +824,7 @@
       }
     },
     "Total Read" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -844,6 +847,7 @@
       }
     },
     "Total Write" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -985,6 +989,7 @@
       }
     },
     "Write" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {

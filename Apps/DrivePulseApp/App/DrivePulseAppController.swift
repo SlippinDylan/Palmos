@@ -5,6 +5,9 @@ import DrivePulseCore
 
 @MainActor
 final class DrivePulseAppController: ObservableObject {
+    private static let throughputSamplingInterval: TimeInterval = 0.25
+    private static let throughputHistoryLimit = 300
+
     @Published private(set) var state: DrivePulseAppState
     @Published private(set) var actionFeedback: String?
     @Published private(set) var isPerformingSystemAction = false
@@ -15,7 +18,11 @@ final class DrivePulseAppController: ObservableObject {
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
     private var discoveryLoadTask: Task<Void, Never>?
     private var discoveryWriteGeneration = 0
+    private var throughputSamplingTimer: Timer?
+    private var lastDiskCountersByDeviceID: [DeviceID: DiskIOCounters] = [:]
+    private var sessionMetricsReducersByDeviceID: [DeviceID: SessionMetricsReducer] = [:]
     private let deviceDiscovery: any ExternalDeviceDiscovering
+    private let diskSampler: any DiskSampling
     private let smartService: any SMARTServiceProviding
     private let helperInstaller: any HelperInstalling
     private let systemActions: any SystemActionPerforming
@@ -27,11 +34,13 @@ final class DrivePulseAppController: ObservableObject {
         systemActions: any SystemActionPerforming = SystemActions(),
         smartService: any SMARTServiceProviding = SMARTServiceClient(),
         helperInstaller: any HelperInstalling = HelperInstaller(),
+        diskSampler: any DiskSampling = IOKitDiskSampler(),
         deviceDiscovery: any ExternalDeviceDiscovering = LiveExternalDeviceDiscovery()
     ) {
         self.settings = settings
         self.launchAtLoginController = launchAtLoginController
         self.deviceDiscovery = deviceDiscovery
+        self.diskSampler = diskSampler
         self.smartService = smartService
         self.helperInstaller = helperInstaller
         self.systemActions = systemActions
@@ -42,6 +51,7 @@ final class DrivePulseAppController: ObservableObject {
         self.discoveryObservation = deviceDiscovery.observeDevices { [weak self] devices in
             self?.applyObservedDevices(devices)
         }
+        startThroughputSampling()
 
         if state == nil {
             loadDiscoveredDevices()
@@ -49,8 +59,11 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     deinit {
-        discoveryLoadTask?.cancel()
-        discoveryObservation?.cancel()
+        MainActor.assumeIsolated {
+            discoveryLoadTask?.cancel()
+            discoveryObservation?.cancel()
+            throughputSamplingTimer?.invalidate()
+        }
     }
 
     func selectDevice(_ id: DeviceID?) {
@@ -169,6 +182,36 @@ final class DrivePulseAppController: ObservableObject {
         NSApplication.shared.terminate(nil)
     }
 
+    func sampleDeviceThroughput(at timestamp: Date = Date()) {
+        pruneSamplingState()
+
+        for device in state.devices {
+            guard let counters = diskSampler.counters(forBSDName: device.physicalStoreBSDName) else {
+                continue
+            }
+
+            defer {
+                lastDiskCountersByDeviceID[device.id] = counters
+            }
+
+            guard let previousCounters = lastDiskCountersByDeviceID[device.id] else {
+                continue
+            }
+
+            let readDelta = max(0, counters.readBytes - previousCounters.readBytes)
+            let writeDelta = max(0, counters.writeBytes - previousCounters.writeBytes)
+            var reducer = sessionMetricsReducersByDeviceID[device.id]
+                ?? SessionMetricsReducer(historyLimit: Self.throughputHistoryLimit)
+            reducer.ingest(
+                readBytes: readDelta,
+                writeBytes: writeDelta,
+                at: timestamp
+            )
+            sessionMetricsReducersByDeviceID[device.id] = reducer
+            state.applySessionMetrics(reducer.metrics, for: device.id)
+        }
+    }
+
     private func loadDiscoveredDevices() {
         discoveryLoadTask?.cancel()
         discoveryWriteGeneration += 1
@@ -187,6 +230,7 @@ final class DrivePulseAppController: ObservableObject {
     private func applyObservedDevices(_ devices: [ExternalDevice]) {
         discoveryWriteGeneration += 1
         state.replaceDevices(devices)
+        pruneSamplingState()
     }
 
     private func applyDiscoveredDevices(_ devices: [ExternalDevice], generation: Int) {
@@ -195,6 +239,7 @@ final class DrivePulseAppController: ObservableObject {
         }
 
         state.replaceDevices(devices)
+        pruneSamplingState()
     }
 
     private func refreshSelectedDeviceSMARTAfterInstall(for deviceID: DeviceID) async {
@@ -233,6 +278,26 @@ final class DrivePulseAppController: ObservableObject {
                 compatibility: nil,
                 lastError: message
             )
+        }
+    }
+
+    private func startThroughputSampling() {
+        throughputSamplingTimer?.invalidate()
+        throughputSamplingTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.throughputSamplingInterval,
+            repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.sampleDeviceThroughput()
+            }
+        }
+    }
+
+    private func pruneSamplingState() {
+        let liveDeviceIDs = Set(state.devices.map(\.id))
+        lastDiskCountersByDeviceID = lastDiskCountersByDeviceID.filter { liveDeviceIDs.contains($0.key) }
+        sessionMetricsReducersByDeviceID = sessionMetricsReducersByDeviceID.filter {
+            liveDeviceIDs.contains($0.key)
         }
     }
 }

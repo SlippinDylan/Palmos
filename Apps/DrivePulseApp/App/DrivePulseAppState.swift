@@ -77,12 +77,16 @@ struct DrivePulseAppState: Equatable {
         for index in self.devices.indices {
             let deviceID = self.devices[index].id
             let existingSnapshot = existingDevicesByID[deviceID]?.smartSnapshot
+            let existingMetrics = existingDevicesByID[deviceID]?.sessionMetrics
             let storedDetails = smartDetailsByDeviceID[deviceID]
             self.devices[index].smartSnapshot = Self.preservedSnapshot(
                 incoming: self.devices[index].smartSnapshot,
                 existing: existingSnapshot,
                 storedDetails: storedDetails
             )
+            if let existingMetrics {
+                self.devices[index].sessionMetrics = existingMetrics
+            }
         }
 
         smartDetailsByDeviceID = smartDetailsByDeviceID.filter { presentDeviceIDs.contains($0.key) }
@@ -162,6 +166,14 @@ struct DrivePulseAppState: Equatable {
             isInstalling: false,
             lastError: lastError
         )
+    }
+
+    mutating func applySessionMetrics(_ sessionMetrics: DeviceSessionMetrics, for deviceID: DeviceID) {
+        guard let deviceIndex = devices.firstIndex(where: { $0.id == deviceID }) else {
+            return
+        }
+
+        devices[deviceIndex].sessionMetrics = sessionMetrics
     }
 
     mutating func presentSMARTPrompt(for action: SMARTPresentationPrimaryAction) {

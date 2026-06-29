@@ -19,6 +19,8 @@ public struct SpeedPoint: Equatable, Sendable {
 }
 
 public struct DeviceSessionMetrics: Equatable, Sendable {
+    public static let defaultHistoryLimit = 60
+
     public var currentReadBytesPerSecond: Double
     public var currentWriteBytesPerSecond: Double
     public var cumulativeReadBytes: Int64
@@ -43,7 +45,6 @@ public struct DeviceSessionMetrics: Equatable, Sendable {
     }
 
     public static func empty(historyLimit: Int) -> Self {
-        _ = historyLimit
         return .init(
             currentReadBytesPerSecond: 0,
             currentWriteBytesPerSecond: 0,
@@ -128,7 +129,7 @@ public struct ExternalDevice: Equatable, Sendable, Identifiable {
         transportName: String,
         capacityBytes: Int64? = nil,
         smartSnapshot: SmartSnapshot = .notRequested,
-        sessionMetrics: DeviceSessionMetrics = .empty(historyLimit: 0),
+        sessionMetrics: DeviceSessionMetrics = .empty(historyLimit: DeviceSessionMetrics.defaultHistoryLimit),
         physicalStoreBSDName: String,
         apfsContainerBSDName: String?,
         volumes: [MountedVolume]

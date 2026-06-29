@@ -21,6 +21,9 @@ final class SessionMetricsReducerTests: XCTestCase {
         XCTAssertEqual(reducer.metrics.cumulativeReadBytes, 125)
         XCTAssertEqual(reducer.metrics.cumulativeWriteBytes, 125)
         XCTAssertEqual(reducer.metrics.readHistory.count, 2)
+        XCTAssertEqual(reducer.metrics.writeHistory.count, 2)
+        XCTAssertEqual(reducer.metrics.readHistory.last?.bytesPerSecond ?? -1, 25.0 / 60.0, accuracy: 0.0001)
+        XCTAssertEqual(reducer.metrics.writeHistory.last?.bytesPerSecond ?? -1, 75.0 / 60.0, accuracy: 0.0001)
     }
 
     func testSessionReducerTrimsHistoryToHistoryLimit() {
@@ -39,6 +42,26 @@ final class SessionMetricsReducerTests: XCTestCase {
         XCTAssertEqual(reducer.metrics.writeHistory.count, 2)
         XCTAssertEqual(reducer.metrics.readHistory.map(\.timestamp), Array(timestamps.suffix(2)))
         XCTAssertEqual(reducer.metrics.writeHistory.map(\.timestamp), Array(timestamps.suffix(2)))
+    }
+
+    func testSessionReducerTrimsHistoryToSixtySamplesForLongRunningSession() {
+        var reducer = SessionMetricsReducer(historyLimit: 60)
+        let timestamps = (0..<61).map { Date(timeIntervalSince1970: 10_000 + Double($0)) }
+
+        for (index, timestamp) in timestamps.enumerated() {
+            reducer.ingest(
+                readBytes: Int64(index + 1),
+                writeBytes: Int64((index + 1) * 2),
+                at: timestamp
+            )
+        }
+
+        XCTAssertEqual(reducer.metrics.readHistory.count, 60)
+        XCTAssertEqual(reducer.metrics.writeHistory.count, 60)
+        XCTAssertEqual(reducer.metrics.readHistory.first?.timestamp, timestamps[1])
+        XCTAssertEqual(reducer.metrics.readHistory.last?.timestamp, timestamps[60])
+        XCTAssertEqual(reducer.metrics.writeHistory.first?.timestamp, timestamps[1])
+        XCTAssertEqual(reducer.metrics.writeHistory.last?.timestamp, timestamps[60])
     }
 
     func testSessionReducerCalculatesThroughputUsingSubsecondIntervals() {

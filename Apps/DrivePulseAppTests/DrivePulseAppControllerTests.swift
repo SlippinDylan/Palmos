@@ -105,6 +105,85 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
     }
 
+    func testControllerWritesNonZeroSessionMetricsAfterSamplingDelta() throws {
+        let initialDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let sampler = StubDiskSampler(samplesByBSDName: [
+            "disk21": [
+                DiskIOCounters(readBytes: 1_000, writeBytes: 2_000),
+                DiskIOCounters(readBytes: 2_500, writeBytes: 2_750)
+            ]
+        ])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(
+                devices: [initialDevice],
+                selectedDeviceID: initialDevice.id
+            ),
+            diskSampler: sampler,
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[initialDevice]])
+        )
+
+        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 1_000))
+        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 1_001))
+
+        let sampledDevice = try XCTUnwrap(controller.state.selectedDevice)
+        XCTAssertGreaterThan(
+            sampledDevice.sessionMetrics.currentReadBytesPerSecond,
+            0,
+            "Expected periodic sampling to publish a non-zero read throughput for the selected device."
+        )
+        XCTAssertGreaterThan(
+            sampledDevice.sessionMetrics.currentWriteBytesPerSecond,
+            0,
+            "Expected periodic sampling to publish a non-zero write throughput for the selected device."
+        )
+    }
+
+    func testRefreshPreservesExistingSessionMetricsWhenRediscoveryReturnsSameDeviceID() async throws {
+        let sampledMetrics = DeviceSessionMetrics(
+            currentReadBytesPerSecond: 512,
+            currentWriteBytesPerSecond: 256,
+            cumulativeReadBytes: 4_096,
+            cumulativeWriteBytes: 2_048,
+            readHistory: [
+                SpeedPoint(
+                    timestamp: Date(timeIntervalSince1970: 1_000),
+                    bytesPerSecond: 512
+                )
+            ],
+            writeHistory: [
+                SpeedPoint(
+                    timestamp: Date(timeIntervalSince1970: 1_000),
+                    bytesPerSecond: 256
+                )
+            ]
+        )
+        let initialDevice = makeDevice(
+            id: "disk21",
+            volumes: ["disk21s1"],
+            sessionMetrics: sampledMetrics
+        )
+        let rediscoveredDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let discovery = StubExternalDeviceDiscovery(results: [[rediscoveredDevice]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(
+                devices: [initialDevice],
+                selectedDeviceID: initialDevice.id
+            ),
+            deviceDiscovery: discovery
+        )
+
+        controller.refresh()
+        await discovery.resolveNextDiscovery()
+        await waitUntilSelectedDeviceDisplayName(
+            controller,
+            equals: rediscoveredDevice.displayName
+        )
+
+        let selectedDevice = try XCTUnwrap(controller.state.selectedDevice)
+        XCTAssertEqual(selectedDevice.id, initialDevice.id)
+        XCTAssertEqual(selectedDevice.sessionMetrics, sampledMetrics)
+    }
+
     func testControllerCancelsDiscoveryObservationOnDeinit() {
         let discovery = StubExternalDeviceDiscovery(results: [[makeDevice(id: "disk21", volumes: [])]])
         var controller: DrivePulseAppController? = DrivePulseAppController(deviceDiscovery: discovery)
@@ -209,13 +288,17 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(monitoringSession.deactivateCallCount, 1)
     }
 
-    private func makeDevice(id rawID: String, volumes: [String]) -> ExternalDevice {
+    private func makeDevice(
+        id rawID: String,
+        volumes: [String],
+        sessionMetrics: DeviceSessionMetrics = .empty(historyLimit: 0)
+    ) -> ExternalDevice {
         ExternalDevice(
             id: DeviceID(rawValue: rawID),
             displayName: "Device \(rawID)",
             transportName: "USB",
             smartSnapshot: .notRequested,
-            sessionMetrics: .empty(historyLimit: 0),
+            sessionMetrics: sessionMetrics,
             physicalStoreBSDName: rawID,
             apfsContainerBSDName: nil,
             volumes: volumes.map(MountedVolume.init(bsdName:))
@@ -235,6 +318,37 @@ final class DrivePulseAppControllerTests: XCTestCase {
         while controller.isPerformingSystemAction {
             await Task.yield()
         }
+    }
+
+    private func waitUntilSelectedDeviceDisplayName(
+        _ controller: DrivePulseAppController,
+        equals displayName: String
+    ) async {
+        while controller.state.selectedDevice?.displayName != displayName {
+            await Task.yield()
+        }
+    }
+}
+
+private final class StubDiskSampler: DiskSampling, @unchecked Sendable {
+    private let lock = NSLock()
+    private var samplesByBSDName: [String: [DiskIOCounters]]
+
+    init(samplesByBSDName: [String: [DiskIOCounters]]) {
+        self.samplesByBSDName = samplesByBSDName
+    }
+
+    func counters(forBSDName bsdName: String) -> DiskIOCounters? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var samples = samplesByBSDName[bsdName], samples.isEmpty == false else {
+            return nil
+        }
+
+        let nextSample = samples.removeFirst()
+        samplesByBSDName[bsdName] = samples
+        return nextSample
     }
 }
 
