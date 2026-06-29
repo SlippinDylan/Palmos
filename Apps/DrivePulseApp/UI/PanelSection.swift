@@ -17,7 +17,7 @@ struct PanelSection<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
-                .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color(.controlColor), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }

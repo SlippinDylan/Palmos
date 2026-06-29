@@ -11,19 +11,15 @@ struct DevicePickerView: View {
             Text("Device")
                 .font(.headline)
 
-            // NSPopUpButton ignores frame(maxWidth: .infinity); read the
-            // available width explicitly and pin the button to it.
-            GeometryReader { proxy in
-                Picker("Device", selection: $selectedDeviceID) {
-                    ForEach(devices) { device in
-                        Text(device.displayName).tag(Optional(device.id))
-                    }
+            Picker("Device", selection: $selectedDeviceID) {
+                ForEach(devices) { device in
+                    Text(device.displayName).tag(Optional(device.id))
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: proxy.size.width)
             }
-            .fixedSize(horizontal: false, vertical: true)
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
