@@ -79,4 +79,28 @@ final class DeviceIdentityResolverTests: XCTestCase {
 
         XCTAssertFalse(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
     }
+
+    func testResolverAcceptsExplicitExternalFlagRegardlessOfTransportPath() {
+        // Thunderbolt 3 PCIe-tunneled NVMe enclosures report Protocol=PCI-Express,
+        // which doesn't match usb/thunderbolt/usb4. DA still marks them external.
+        let descriptor = ExternalDeviceDescriptor(
+            deviceInternal: false,
+            transportPath: ["PCI-Express", "IONVMeController", "AppleT6000PCIeC"],
+            isNetworkVolume: false,
+            isWholeMedia: true
+        )
+
+        XCTAssertTrue(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
+    }
+
+    func testResolverRejectsExplicitInternalWithPCIeTransport() {
+        let descriptor = ExternalDeviceDescriptor(
+            deviceInternal: true,
+            transportPath: ["PCI-Express", "AppleNVMeController"],
+            isNetworkVolume: false,
+            isWholeMedia: true
+        )
+
+        XCTAssertFalse(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
+    }
 }

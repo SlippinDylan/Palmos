@@ -2,8 +2,11 @@ import DiskArbitration
 import Foundation
 import IOKit
 import IOKit.storage
+import os.log
 
 import DrivePulseCore
+
+private let discoveryLog = Logger(subsystem: "com.drivepulse.app", category: "DeviceDiscovery")
 
 protocol ExternalDeviceDiscoveryObservation: Sendable {
     func cancel()
@@ -294,10 +297,34 @@ struct ExternalDeviceDiscoveryMapper {
 
     func map(_ records: [DiskDiscoveryRecord]) -> [ExternalDevice] {
         let recordsByBSD = Dictionary(uniqueKeysWithValues: records.map { ($0.bsdName, $0) })
+
+        discoveryLog.debug("Discovery: enumerating \(records.count) IOMedia records")
+        for r in records {
+            let pass = DeviceIdentityResolver.isExternalPhysicalDevice(r.descriptor)
+            discoveryLog.debug(
+                "  \(r.bsdName) whole=\(r.isWholeMedia) internal=\(r.deviceInternal.map(String.init) ?? "nil") net=\(r.isNetworkVolume) transport=[\(r.transportPath.joined(separator: ","))] → externalPhysical=\(pass)"
+            )
+        }
+
         let rootRecords = records
-            .filter { DeviceIdentityResolver.isExternalPhysicalDevice($0.descriptor) }
-            .filter { topLevelExternalRoot(for: $0, recordsByBSD: recordsByBSD) == $0.bsdName }
+            .filter {
+                let pass = DeviceIdentityResolver.isExternalPhysicalDevice($0.descriptor)
+                if !pass {
+                    discoveryLog.debug("  FILTERED OUT \($0.bsdName): not external physical device")
+                }
+                return pass
+            }
+            .filter {
+                let root = topLevelExternalRoot(for: $0, recordsByBSD: recordsByBSD)
+                let isRoot = root == $0.bsdName
+                if !isRoot {
+                    discoveryLog.debug("  FILTERED OUT \($0.bsdName): topLevelRoot=\(root ?? "nil") ≠ self")
+                }
+                return isRoot
+            }
             .sorted { $0.bsdName.localizedStandardCompare($1.bsdName) == .orderedAscending }
+
+        discoveryLog.debug("Discovery: \(rootRecords.count) root external device(s) after filtering: \(rootRecords.map(\.bsdName).joined(separator: ", "))")
 
         return rootRecords.map { rootRecord in
             let descendants = descendantRecords(for: rootRecord.bsdName, recordsByBSD: recordsByBSD)
@@ -537,6 +564,9 @@ private struct DiskDiscoveryEnumerator {
                 continue
             }
 
+            discoveryLog.debug(
+                "IOMedia: \(record.bsdName) protocol=\(record.deviceProtocol ?? "-") bus=\(record.busName ?? "-") internal=\(record.deviceInternal.map(String.init) ?? "nil") whole=\(record.isWholeMedia) ioPath=[\(record.ioClassPath.prefix(5).joined(separator: "→"))]"
+            )
             discoveredRecords.append(record)
         }
 

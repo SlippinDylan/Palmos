@@ -6,6 +6,13 @@ public enum DeviceIdentityResolver {
         guard descriptor.isNetworkVolume == false else { return false }
         guard descriptor.deviceInternal != true else { return false }
 
+        // DA explicitly marks this disk as not-internal: trust it.
+        // Thunderbolt-tunneled PCIe NVMe enclosures report Protocol=PCI-Express,
+        // so transport-path heuristics alone cannot classify them correctly.
+        if descriptor.deviceInternal == false {
+            return true
+        }
+
         return descriptor.transportPath.contains(where: isSupportedExternalTransportPath)
     }
 
