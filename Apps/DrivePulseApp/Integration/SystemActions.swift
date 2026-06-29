@@ -10,6 +10,7 @@ struct SystemAction: Identifiable, Equatable {
         case eject
         case openDiskUtility
         case settings
+        case quit
     }
 
     enum Intent: Equatable {
@@ -17,6 +18,7 @@ struct SystemAction: Identifiable, Equatable {
         case ejectPhysicalDevice(bsdName: String)
         case openDiskUtility(bsdName: String)
         case openSettings
+        case quit
     }
 
     let kind: Kind
@@ -29,11 +31,13 @@ struct SystemAction: Identifiable, Equatable {
         case .openInFinder:
             return String(localized: "Open in Finder")
         case .eject:
-            return String(localized: "Eject")
+            return String(localized: "Eject Disk")
         case .openDiskUtility:
             return String(localized: "Disk Utility")
         case .settings:
             return String(localized: "Settings")
+        case .quit:
+            return String(localized: "Quit")
         }
     }
 
@@ -47,6 +51,8 @@ struct SystemAction: Identifiable, Equatable {
             return "internaldrive"
         case .settings:
             return "gearshape"
+        case .quit:
+            return "power"
         }
     }
 
@@ -79,6 +85,7 @@ struct SystemAction: Identifiable, Equatable {
             )
         )
         actions.append(Self(kind: .settings, intent: .openSettings))
+        actions.append(Self(kind: .quit, intent: .quit))
         return actions
     }
 }
@@ -127,6 +134,10 @@ struct SystemActions: SystemActionPerforming {
             }
         case .openSettings:
             break
+        case .quit:
+            await MainActor.run {
+                NSApplication.shared.terminate(nil)
+            }
         }
     }
 

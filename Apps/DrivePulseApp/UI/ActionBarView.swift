@@ -9,6 +9,8 @@ struct ActionBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
+                Spacer(minLength: 0)
+
                 ForEach(actions) { action in
                     if action.kind == .settings {
                         SettingsLink {
