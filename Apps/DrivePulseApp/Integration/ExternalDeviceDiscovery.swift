@@ -624,9 +624,14 @@ private struct DiskDiscoveryEnumerator {
 
         let bsdName = String(cString: bsdNamePointer)
         let description = DADiskCopyDescription(disk) as? [String: Any]
-        let wholeDiskBSDName = DADiskCopyWholeDisk(disk)
-            .flatMap { DADiskGetBSDName($0) }
-            .map(String.init(cString:))
+        let wholeDisk = DADiskCopyWholeDisk(disk)
+        let wholeDiskBSDName: String?
+        if let wholeDisk,
+           let wholeDiskBSDNamePointer = DADiskGetBSDName(wholeDisk) {
+            wholeDiskBSDName = String(cString: wholeDiskBSDNamePointer)
+        } else {
+            wholeDiskBSDName = nil
+        }
 
         return DiskDiscoveryRecord(
             bsdName: bsdName,
