@@ -1,0 +1,5 @@
+#include "Base.xcconfig"
+
+INFOPLIST_FILE = Config/Plists/DrivePulseSMARTService-Info.plist
+PRODUCT_BUNDLE_IDENTIFIER = com.drivepulse.smartservice
+SWIFT_EMIT_LOC_STRINGS = YES
