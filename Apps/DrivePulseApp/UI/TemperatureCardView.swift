@@ -9,9 +9,9 @@ struct TemperatureCardView: View {
     var body: some View {
         PanelSection("Temperature") {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                TemperatureRow("Composite", celsius: smartData?.primaryTemperature, unit: settings.temperatureUnit)
-                TemperatureRow("Sensor 1", celsius: sensor1Temperature, unit: settings.temperatureUnit)
-                TemperatureRow("Sensor 2", celsius: sensor2Temperature, unit: settings.temperatureUnit)
+                TemperatureRow(label: "Composite", celsius: smartData?.primaryTemperature, unit: settings.temperatureUnit)
+                TemperatureRow(label: "Sensor 1", celsius: sensor1Temperature, unit: settings.temperatureUnit)
+                TemperatureRow(label: "Sensor 2", celsius: sensor2Temperature, unit: settings.temperatureUnit)
                 InfoRow("Warning Threshold", value: warningThresholdString)
                 InfoRow("Critical Threshold", value: criticalThresholdString)
                 InfoRow("Warning Temp Time", value: warningTempTimeString)
