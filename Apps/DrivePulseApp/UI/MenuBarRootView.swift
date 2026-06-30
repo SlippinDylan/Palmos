@@ -7,7 +7,7 @@ struct MenuBarRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.vertical, showsIndicators: true) {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 12) {
                     DevicePickerView(
                         devices: controller.state.devices,
@@ -38,7 +38,7 @@ struct MenuBarRootView: View {
                 }
                 .padding(14)
             }
-            .frame(height: 500)
+            .frame(height: (NSScreen.main?.frame.height ?? 900) * 3 / 5)
 
             Divider()
 
