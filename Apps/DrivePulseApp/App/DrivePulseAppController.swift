@@ -26,6 +26,9 @@ final class DrivePulseAppController: ObservableObject {
     private let smartService: any SMARTServiceProviding
     private let helperInstaller: any HelperInstalling
     private let systemActions: any SystemActionPerforming
+    private let systemProfilerProvider: any SystemProfilerProviding
+    private let diskUtilAPFSProvider: any DiskUtilAPFSProviding
+    private let volumeCapacityRefresher: VolumeCapacityRefresher
 
     init(
         state: DrivePulseAppState? = nil,
@@ -35,7 +38,10 @@ final class DrivePulseAppController: ObservableObject {
         smartService: any SMARTServiceProviding = SMARTServiceClient(),
         helperInstaller: any HelperInstalling = HelperInstaller(),
         diskSampler: any DiskSampling = IOKitDiskSampler(),
-        deviceDiscovery: any ExternalDeviceDiscovering = LiveExternalDeviceDiscovery()
+        deviceDiscovery: any ExternalDeviceDiscovering = LiveExternalDeviceDiscovery(),
+        systemProfilerProvider: any SystemProfilerProviding = LiveSystemProfilerProvider(),
+        diskUtilAPFSProvider: any DiskUtilAPFSProviding = LiveDiskUtilAPFSProvider(),
+        volumeCapacityRefresher: VolumeCapacityRefresher = VolumeCapacityRefresher()
     ) {
         self.settings = settings
         self.launchAtLoginController = launchAtLoginController
@@ -44,10 +50,16 @@ final class DrivePulseAppController: ObservableObject {
         self.smartService = smartService
         self.helperInstaller = helperInstaller
         self.systemActions = systemActions
+        self.systemProfilerProvider = systemProfilerProvider
+        self.diskUtilAPFSProvider = diskUtilAPFSProvider
+        self.volumeCapacityRefresher = volumeCapacityRefresher
         self.state = state ?? DrivePulseAppState(
             devices: [],
             selectedDeviceID: nil
         )
+        volumeCapacityRefresher.onUpdate = { [weak self] updates in
+            Task { @MainActor [weak self] in self?.applyCapacityUpdates(updates) }
+        }
         self.discoveryObservation = deviceDiscovery.observeDevices { [weak self] devices in
             self?.applyObservedDevices(devices)
         }
@@ -63,6 +75,7 @@ final class DrivePulseAppController: ObservableObject {
             discoveryLoadTask?.cancel()
             discoveryObservation?.cancel()
             throughputSamplingTimer?.invalidate()
+            volumeCapacityRefresher.stop()
         }
     }
 
@@ -217,20 +230,35 @@ final class DrivePulseAppController: ObservableObject {
         discoveryWriteGeneration += 1
         let generation = discoveryWriteGeneration
         let deviceDiscovery = deviceDiscovery
+        let systemProfilerProvider = systemProfilerProvider
+        let diskUtilAPFSProvider = diskUtilAPFSProvider
         discoveryLoadTask = Task { [weak self] in
             let devices = await deviceDiscovery.discoverDevices()
-            guard Task.isCancelled == false else {
-                return
-            }
-
-            self?.applyDiscoveredDevices(devices, generation: generation)
+            guard !Task.isCancelled else { return }
+            await systemProfilerProvider.fetchIfNeeded()
+            guard !Task.isCancelled, let self else { return }
+            let enriched = await self.enrichDevices(devices, diskUtilAPFSProvider: diskUtilAPFSProvider)
+            guard !Task.isCancelled else { return }
+            self.applyDiscoveredDevices(enriched, generation: generation)
         }
     }
 
     private func applyObservedDevices(_ devices: [ExternalDevice]) {
         discoveryWriteGeneration += 1
-        state.replaceDevices(devices)
-        pruneSamplingState()
+        let generation = discoveryWriteGeneration
+        let systemProfilerProvider = systemProfilerProvider
+        let diskUtilAPFSProvider = diskUtilAPFSProvider
+        Task { [weak self] in
+            guard let self else { return }
+            await systemProfilerProvider.refresh()
+            await diskUtilAPFSProvider.refresh()
+            let enriched = await self.enrichDevices(devices, diskUtilAPFSProvider: diskUtilAPFSProvider)
+            guard generation == self.discoveryWriteGeneration else { return }
+            self.state.replaceDevices(enriched)
+            self.pruneSamplingState()
+            self.updateCapacityRefresher(from: enriched)
+            self.triggerInitialSMARTForNewDevices(enriched)
+        }
     }
 
     private func applyDiscoveredDevices(_ devices: [ExternalDevice], generation: Int) {
@@ -240,6 +268,74 @@ final class DrivePulseAppController: ObservableObject {
 
         state.replaceDevices(devices)
         pruneSamplingState()
+        updateCapacityRefresher(from: devices)
+        triggerInitialSMARTForNewDevices(devices)
+    }
+
+    private func enrichDevices(
+        _ devices: [ExternalDevice],
+        diskUtilAPFSProvider: any DiskUtilAPFSProviding
+    ) async -> [ExternalDevice] {
+        var result = devices
+        let thunderboltDeviceCount = result.filter { $0.transportName == "Thunderbolt" }.count
+        for i in result.indices {
+            var device = result[i]
+            // NVMe + PCI
+            if let nvmeInfo = systemProfilerProvider.nvmeInfo(forBSDName: device.physicalStoreBSDName) {
+                device.nvmeInfo = nvmeInfo
+                device.pciInfo = systemProfilerProvider.pciInfo(forNVMeSerialNumber: nvmeInfo.serialNumber)
+            }
+            // Thunderbolt
+            if device.transportName == "Thunderbolt", thunderboltDeviceCount == 1 {
+                device.thunderboltInfo = systemProfilerProvider.thunderboltInfo()
+            }
+            // APFS container
+            if let containerBSDName = device.apfsContainerBSDName {
+                device.apfsContainerDetails = await diskUtilAPFSProvider.containerInfo(
+                    forContainerBSDName: containerBSDName
+                )
+            }
+            // Physical partitions (skip if already populated by discovery)
+            if device.physicalPartitions.isEmpty {
+                device.physicalPartitions = await diskUtilAPFSProvider.physicalPartitions(
+                    forDiskBSDName: device.physicalStoreBSDName
+                )
+            }
+            result[i] = device
+        }
+        return result
+    }
+
+    private func applyCapacityUpdates(_ updates: [VolumeCapacityRefresher.CapacityUpdate]) {
+        let updatesByBSDName = Dictionary(uniqueKeysWithValues: updates.map { ($0.bsdName, $0) })
+        for i in state.devices.indices {
+            guard var containerDetails = state.devices[i].apfsContainerDetails else { continue }
+            if let containerUpdate = containerDetails.volumes
+                .compactMap({ updatesByBSDName[$0.bsdName] })
+                .first {
+                containerDetails.totalCapacityBytes = containerUpdate.totalBytes
+                containerDetails.capacityInUseBytes = containerUpdate.consumedBytes
+                containerDetails.capacityNotAllocatedBytes = containerUpdate.availableBytes
+            }
+            state.devices[i].apfsContainerDetails = containerDetails
+        }
+    }
+
+    private func updateCapacityRefresher(from devices: [ExternalDevice]) {
+        var mountPoints: [String: String] = [:]
+        for device in devices {
+            guard let volumes = device.apfsContainerDetails?.volumes else { continue }
+            for volume in volumes {
+                if let mountPoint = volume.mountPoint, !mountPoint.isEmpty {
+                    mountPoints[volume.bsdName] = mountPoint
+                }
+            }
+        }
+        if mountPoints.isEmpty {
+            volumeCapacityRefresher.stop()
+        } else {
+            volumeCapacityRefresher.start(mountPoints: mountPoints)
+        }
     }
 
     private func refreshSelectedDeviceSMARTAfterInstall(for deviceID: DeviceID) async {
@@ -289,6 +385,20 @@ final class DrivePulseAppController: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.sampleDeviceThroughput()
+            }
+        }
+    }
+
+    private func triggerInitialSMARTForNewDevices(_ devices: [ExternalDevice]) {
+        for device in devices {
+            let deviceID = device.id
+            guard state.smartDetails(for: deviceID)?.snapshot == .notRequested else { continue }
+            state.setSMARTRefreshing(for: deviceID)
+            let capturedDevice = device
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let result = await smartService.refreshSMART(for: capturedDevice)
+                applySMARTRefreshResult(result, for: deviceID)
             }
         }
     }
