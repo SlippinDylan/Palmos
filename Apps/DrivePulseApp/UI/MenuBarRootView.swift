@@ -38,6 +38,7 @@ struct MenuBarRootView: View {
                 }
                 .padding(14)
             }
+            .frame(maxHeight: 520)
 
             Divider()
 
@@ -50,7 +51,6 @@ struct MenuBarRootView: View {
             .padding(14)
         }
         .frame(width: 360)
-        .frame(maxHeight: 600)
         .containerBackground(.regularMaterial, for: .window)
         .alert(
             "Install Advanced Monitoring",
