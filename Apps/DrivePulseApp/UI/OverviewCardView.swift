@@ -3,6 +3,13 @@ import SwiftUI
 import DrivePulseCore
 
 struct OverviewCardView: View {
+    struct Row: Identifiable, Equatable {
+        let label: String
+        let value: String
+
+        var id: String { label }
+    }
+
     let device: ExternalDevice?
     let smartDetails: SMARTPresentationDetails?
     @ObservedObject var settings: AppSettings
@@ -11,19 +18,9 @@ struct OverviewCardView: View {
         PanelSection("Overview") {
             if let device {
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                    PanelKeyValueRow("Model", value: modelString(device))
-                    PanelKeyValueRow("Connection", value: connectionString(device))
-                    PanelKeyValueRow("Total Capacity", value: totalCapacityString(device))
-                    PanelKeyValueRow("Used", value: usedSpaceString(device))
-                    PanelKeyValueRow("Available", value: availableSpaceString(device))
-                    PanelKeyValueRow(
-                        "File System",
-                        value: device.apfsContainerBSDName != nil ? "APFS" : PanelDisplayValue.missing
-                    )
-                    PanelKeyValueRow("SMART Status", value: smartStatusString)
-                    PanelKeyValueRow("Wear Level", value: wearLevelString)
-                    PanelKeyValueRow("Temperature", value: overviewTemperatureString)
-                    PanelKeyValueRow("Mounted", value: device.volumes.isEmpty ? "Not Mounted" : "Mounted")
+                    ForEach(Self.rows(for: device, smartDetails: smartDetails, settings: settings)) { row in
+                        PanelKeyValueRow(LocalizedStringKey(row.label), value: row.value)
+                    }
                 }
             } else {
                 Text("No device selected")
@@ -32,25 +29,25 @@ struct OverviewCardView: View {
         }
     }
 
-    private var smartData: SmartData? {
-        guard case .available(let data) = smartDetails?.snapshot else { return nil }
-        return data
-    }
+    static func rows(
+        for device: ExternalDevice,
+        smartDetails: SMARTPresentationDetails?,
+        settings: AppSettings
+    ) -> [Row] {
+        let view = OverviewCardView(device: device, smartDetails: smartDetails, settings: settings)
 
-    private var smartStatusString: String {
-        guard let snapshot = smartDetails?.snapshot else { return PanelDisplayValue.missing }
-        if case .available(let data) = snapshot { return PanelDisplayValue.string(data.overallHealth) }
-        return PanelDisplayValue.missing
-    }
-
-    private var wearLevelString: String {
-        guard let pct = smartData?.percentageUsed else { return PanelDisplayValue.missing }
-        return "\(pct)%"
-    }
-
-    private var overviewTemperatureString: String {
-        guard let temp = smartData?.primaryTemperature else { return PanelDisplayValue.missing }
-        return settings.temperatureUnit.format(temp)
+        return [
+            Row(label: "Model", value: view.modelString(device)),
+            Row(label: "Connection", value: view.connectionString(device)),
+            Row(label: "Total Capacity", value: view.totalCapacityString(device)),
+            Row(label: "Used", value: view.usedSpaceString(device)),
+            Row(label: "Available", value: view.availableSpaceString(device)),
+            Row(
+                label: "File System",
+                value: device.apfsContainerBSDName != nil ? "APFS" : PanelDisplayValue.missing
+            ),
+            Row(label: "Mounted", value: device.volumes.isEmpty ? "Not Mounted" : "Mounted")
+        ]
     }
 
     private func modelString(_ device: ExternalDevice) -> String {

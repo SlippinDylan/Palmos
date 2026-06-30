@@ -50,6 +50,7 @@ struct VolumesPartitionsCardView: View {
                 row("Sealed", boolStr(volume.sealed))
                 row("Volume UUID", PanelDisplayValue.string(volume.volumeUUID))
             }
+            .font(.system(size: 12))
         }
     }
 
@@ -67,6 +68,7 @@ struct VolumesPartitionsCardView: View {
                 row("Container UUID", PanelDisplayValue.string(container.containerUUID))
                 row("Physical Store UUID", PanelDisplayValue.string(container.physicalStoreUUID))
             }
+            .font(.system(size: 12))
         }
     }
 
@@ -75,21 +77,23 @@ struct VolumesPartitionsCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Physical Partitions")
                 .font(.system(size: 12, weight: .semibold))
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
-                ForEach(partitions, id: \.bsdName) { partition in
-                    GridRow {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(partitions.enumerated()), id: \.element.bsdName) { index, partition in
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(partition.bsdName)
-                            .font(.system(size: 12))
+                            .font(.system(size: 12, weight: .semibold))
                             .monospacedDigit()
-                        Text(PanelDisplayValue.string(partition.partitionType))
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                        Text(PanelDisplayValue.string(partition.name))
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                        Text(capacityStr(partition.sizeBytes))
-                            .font(.system(size: 12))
-                            .monospacedDigit()
+
+                        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                            row("Partition Type", PanelDisplayValue.string(partition.partitionType))
+                            row("Name", PanelDisplayValue.string(partition.name))
+                            row("Size", capacityStr(partition.sizeBytes))
+                        }
+                        .font(.system(size: 12))
+                    }
+
+                    if index < partitions.count - 1 {
+                        Divider()
                     }
                 }
             }
@@ -98,14 +102,7 @@ struct VolumesPartitionsCardView: View {
 
     @ViewBuilder
     private func row(_ label: LocalizedStringKey, _ value: String) -> some View {
-        GridRow {
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(size: 12))
-                .monospacedDigit()
-        }
+        PanelKeyValueRow(label, value: value, usesMonospacedDigits: true)
     }
 
     private func capacityStr(_ bytes: Int64?) -> String {

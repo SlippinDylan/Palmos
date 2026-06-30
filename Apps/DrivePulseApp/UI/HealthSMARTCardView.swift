@@ -17,26 +17,26 @@ struct HealthSMARTCardView: View {
                 }
 
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                    InfoRow("Overall Health", value: PanelDisplayValue.string(smartData?.overallHealth))
-                    InfoRow("Critical Warning", value: criticalWarningString)
-                    InfoRow("Wear Level", value: wearLevelString)
-                    InfoRow("Available Spare", value: availableSpareString)
-                    InfoRow("Media Integrity Errors", value: mediaIntegrityErrorsString)
-                    InfoRow("Error Log Entries", value: errorLogEntriesString)
+                    PanelKeyValueRow("Overall Health", value: PanelDisplayValue.string(smartData?.overallHealth))
+                    PanelKeyValueRow("Critical Warning", value: criticalWarningString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Wear Level", value: wearLevelString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Available Spare", value: availableSpareString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Media Integrity Errors", value: mediaIntegrityErrorsString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Error Log Entries", value: errorLogEntriesString, usesMonospacedDigits: true)
                 }
 
                 Divider()
                     .padding(.vertical, 6)
 
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                    InfoRow("Power-On Hours", value: powerOnHoursString)
-                    InfoRow("Power Cycles", value: powerCyclesString)
-                    InfoRow("Unsafe Shutdowns", value: unsafeShutdownsString)
-                    InfoRow("Total Written", value: totalWrittenString)
-                    InfoRow("Total Read", value: totalReadString)
-                    InfoRow("Controller Busy Time", value: controllerBusyTimeString)
-                    InfoRow("Warning Temp Time", value: warningTempTimeString)
-                    InfoRow("Critical Temp Time", value: criticalTempTimeString)
+                    PanelKeyValueRow("Power-On Hours", value: powerOnHoursString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Power Cycles", value: powerCyclesString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Unsafe Shutdowns", value: unsafeShutdownsString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Total Written", value: totalWrittenString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Total Read", value: totalReadString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Controller Busy Time", value: controllerBusyTimeString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Warning Temp Time", value: warningTempTimeString, usesMonospacedDigits: true)
+                    PanelKeyValueRow("Critical Temp Time", value: criticalTempTimeString, usesMonospacedDigits: true)
                 }
 
                 if isHelperNotInstalled {
@@ -143,24 +143,5 @@ struct HealthSMARTCardView: View {
     private var criticalTempTimeString: String {
         guard let value = smartData?.criticalTempTime else { return PanelDisplayValue.missing }
         return "\(value) min"
-    }
-}
-
-private struct InfoRow: View {
-    let label: LocalizedStringKey
-    let value: String
-
-    init(_ label: LocalizedStringKey, value: String) {
-        self.label = label
-        self.value = value
-    }
-
-    var body: some View {
-        GridRow {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
     }
 }

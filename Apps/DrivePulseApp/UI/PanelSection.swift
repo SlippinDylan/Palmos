@@ -37,19 +37,40 @@ struct PanelSection<Content: View>: View {
 struct PanelKeyValueRow: View {
     let label: LocalizedStringKey
     let value: String
+    let valueColor: Color
+    let usesMonospacedDigits: Bool
 
-    init(_ label: LocalizedStringKey, value: String) {
+    init(
+        _ label: LocalizedStringKey,
+        value: String,
+        valueColor: Color = .primary,
+        usesMonospacedDigits: Bool = false
+    ) {
         self.label = label
         self.value = value
+        self.valueColor = valueColor
+        self.usesMonospacedDigits = usesMonospacedDigits
     }
 
     var body: some View {
         GridRow {
             Text(label)
                 .foregroundStyle(.secondary)
-            Text(value)
+            valueText
+                .foregroundStyle(valueColor)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var valueText: some View {
+        if usesMonospacedDigits {
+            Text(value)
+                .monospacedDigit()
+        } else {
+            Text(value)
         }
     }
 }

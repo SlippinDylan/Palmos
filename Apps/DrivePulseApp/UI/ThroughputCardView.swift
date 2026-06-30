@@ -10,11 +10,11 @@ struct ThroughputChartModel {
     let chartPeakBytesPerSecond: Double
 
     init(metrics: DeviceSessionMetrics) {
-        self.readSamples = Self.rightAlignedSamples(
+        self.readSamples = Self.visibleSamples(
             values: metrics.readHistory.map(\.bytesPerSecond),
             visibleSampleCount: Self.visibleSampleCount
         )
-        self.writeSamples = Self.rightAlignedSamples(
+        self.writeSamples = Self.visibleSamples(
             values: metrics.writeHistory.map(\.bytesPerSecond),
             visibleSampleCount: Self.visibleSampleCount
         )
@@ -31,20 +31,60 @@ struct ThroughputChartModel {
         writeSamples.contains(where: { $0 != nil })
     }
 
+    func displayedReadSamples(windowSampleCount: Int = visibleSampleCount) -> [Double?] {
+        Self.rightAlignedWindowSamples(
+            readSamples,
+            windowSampleCount: windowSampleCount
+        )
+    }
+
+    func displayedWriteSamples(windowSampleCount: Int = visibleSampleCount) -> [Double?] {
+        Self.rightAlignedWindowSamples(
+            writeSamples,
+            windowSampleCount: windowSampleCount
+        )
+    }
+
     private static func peakBytesPerSecond(for samples: [Double?]) -> Double {
         let peak = samples.compactMap { $0 }.max() ?? 0
         return peak > 0 ? peak : 1
     }
 
-    private static func rightAlignedSamples(
+    private static func visibleSamples(
         values: [Double],
         visibleSampleCount: Int
     ) -> [Double?] {
         let count = max(visibleSampleCount, 1)
-        let trimmedValues = Array(values.suffix(count))
-        let leadingGapCount = max(count - trimmedValues.count, 0)
-        let leadingGap = Array<Double?>(repeating: nil, count: leadingGapCount)
-        return leadingGap + trimmedValues.map(Optional.some)
+        return Array(values.suffix(count)).map(Optional.some)
+    }
+
+    private static func rightAlignedWindowSamples(
+        _ samples: [Double?],
+        windowSampleCount: Int
+    ) -> [Double?] {
+        let clampedWindowCount = max(windowSampleCount, 1)
+        let visibleTail = Array(samples.suffix(clampedWindowCount))
+        let leadingGap = Array<Double?>(
+            repeating: nil,
+            count: max(clampedWindowCount - visibleTail.count, 0)
+        )
+        return leadingGap + visibleTail
+    }
+}
+
+enum ThroughputChartLayout {
+    static func xPosition(
+        index: Int,
+        count: Int,
+        width: CGFloat,
+        leadingInset: CGFloat
+    ) -> CGFloat {
+        guard count > 1 else {
+            return width
+        }
+
+        let drawableWidth = max(width - leadingInset, 1)
+        return leadingInset + CGFloat(index) * (drawableWidth / CGFloat(count - 1))
     }
 }
 
@@ -71,50 +111,52 @@ struct ThroughputCardView: View {
 
 private struct ThroughputChartCanvas: View {
     let metrics: DeviceSessionMetrics
-    private let labelColumnWidth: CGFloat = 76
+    private let labelHeight: CGFloat = 18
+    private let chartHeight: CGFloat = 68
 
     var body: some View {
         let model = ThroughputChartModel(metrics: metrics)
         let readSpeed = rateString(metrics.currentReadBytesPerSecond)
         let writeSpeed = rateString(metrics.currentWriteBytesPerSecond)
 
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 0) {
-                rateLabel(readSpeed, color: .blue)
-                Spacer(minLength: 0)
-                rateLabel(writeSpeed, color: .red)
-            }
-            .frame(width: labelColumnWidth, alignment: .leading)
-            .frame(maxHeight: .infinity, alignment: .leading)
-            .padding(.vertical, 6)
+        VStack(alignment: .leading, spacing: 4) {
+            rateLabel(readSpeed, color: .blue)
+                .frame(height: labelHeight, alignment: .leading)
 
             VStack(spacing: 0) {
                 ThroughputHalfSeriesLayer(
-                    samples: model.readSamples,
+                    samples: model.displayedReadSamples(),
                     maxValue: model.chartPeakBytesPerSecond,
                     color: .blue,
-                    alignment: .top
+                    alignment: .top,
+                    horizontalInset: 0
                 )
                 .clipped()
 
                 ThroughputHalfSeriesLayer(
-                    samples: model.writeSamples,
+                    samples: model.displayedWriteSamples(),
                     maxValue: model.chartPeakBytesPerSecond,
                     color: .red,
-                    alignment: .bottom
+                    alignment: .bottom,
+                    horizontalInset: 0
                 )
                 .clipped()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
+            .frame(height: chartHeight)
+
+            rateLabel(writeSpeed, color: .red)
+                .frame(height: labelHeight, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 96)
+        .frame(height: labelHeight * 2 + chartHeight + 8)
     }
 
     private func rateLabel(_ value: String, color: Color) -> some View {
         Text(value)
             .font(.system(size: 10, weight: .medium))
             .monospacedDigit()
+            .lineLimit(1)
             .foregroundStyle(color)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -130,6 +172,7 @@ private struct ThroughputHalfSeriesLayer: View {
     let maxValue: Double
     let color: Color
     let alignment: VerticalAlignment
+    let horizontalInset: CGFloat
 
     var body: some View {
         Canvas { context, size in
@@ -226,10 +269,12 @@ private struct ThroughputHalfSeriesLayer: View {
     }
 
     private func x(for index: Int, count: Int, width: CGFloat) -> CGFloat {
-        guard count > 1 else {
-            return width
-        }
-        return CGFloat(index) * (width / CGFloat(count - 1))
+        ThroughputChartLayout.xPosition(
+            index: index,
+            count: count,
+            width: width,
+            leadingInset: horizontalInset
+        )
     }
 
     private func y(for value: Double, maxValue: Double, size: CGSize) -> CGFloat {
@@ -296,7 +341,7 @@ private struct ThroughputTotalsView: View {
         }
     }
 
-    private func totalRow(title: String, value: String) -> some View {
+    private func totalRow(title: LocalizedStringKey, value: String) -> some View {
         HStack(spacing: 8) {
             Text(title)
                 .font(.system(size: 11))

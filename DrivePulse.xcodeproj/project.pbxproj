@@ -60,6 +60,7 @@
 		100000000000000000000037 /* StorageLocationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000037 /* StorageLocationsTests.swift */; };
 		100000000000000000000038 /* StorageLocations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000038 /* StorageLocations.swift */; };
 		100000000000000000000039 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000039 /* PrivacyInfo.xcprivacy */; };
+		10000000000000000000003A /* OverviewCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003A /* OverviewCardViewTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -173,6 +174,7 @@
 		200000000000000000000037 /* StorageLocationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageLocationsTests.swift; sourceTree = "<group>"; };
 		200000000000000000000038 /* StorageLocations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageLocations.swift; sourceTree = "<group>"; };
 		200000000000000000000039 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		20000000000000000000003A /* OverviewCardViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewCardViewTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -293,6 +295,7 @@
 				200000000000000000000036 /* PanelPlaceholderTests.swift */,
 				20000000000000000000001F /* SMARTServiceClientTests.swift */,
 				200000000000000000000037 /* StorageLocationsTests.swift */,
+				20000000000000000000003A /* OverviewCardViewTests.swift */,
 				200000000000000000000022 /* Task7HelperPackagingTests.swift */,
 				200000000000000000000011 /* Task6SettingsAndActionsTests.swift */,
 				20000000000000000000002B /* ThroughputChartModelTests.swift */,
@@ -562,6 +565,7 @@
 				100000000000000000000036 /* PanelPlaceholderTests.swift in Sources */,
 				10000000000000000000001D /* SMARTServiceClientTests.swift in Sources */,
 				100000000000000000000037 /* StorageLocationsTests.swift in Sources */,
+				10000000000000000000003A /* OverviewCardViewTests.swift in Sources */,
 				100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */,
 				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
 				10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */,

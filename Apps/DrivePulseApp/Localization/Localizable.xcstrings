@@ -94,6 +94,7 @@
       }
     },
     "Available" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -233,6 +234,7 @@
       }
     },
     "Connection" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1193,6 +1195,7 @@
       }
     },
     "Mounted" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1213,6 +1216,9 @@
           }
         }
       }
+    },
+    "Name" : {
+
     },
     "No" : {
       "localizations" : {
@@ -1612,6 +1618,9 @@
           }
         }
       }
+    },
+    "Partition Type" : {
+
     },
     "PCI Device ID" : {
 
@@ -2109,7 +2118,6 @@
       }
     },
     "Session Read" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2132,7 +2140,6 @@
       }
     },
     "Session Write" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2176,10 +2183,14 @@
         }
       }
     },
+    "Size" : {
+
+    },
     "SMART" : {
 
     },
     "SMART Status" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2314,6 +2325,7 @@
       }
     },
     "Total Capacity" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {

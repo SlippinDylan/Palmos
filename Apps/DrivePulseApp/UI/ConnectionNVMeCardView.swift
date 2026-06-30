@@ -43,6 +43,7 @@ struct ConnectionNVMeCardView: View {
             row("Link Controller Firmware", PanelDisplayValue.string(tb.linkControllerFirmwareVersion))
             row("Upstream Port", PanelDisplayValue.string(tb.upstreamPortStatus))
         }
+        .font(.system(size: 12))
     }
 
     @ViewBuilder
@@ -70,18 +71,12 @@ struct ConnectionNVMeCardView: View {
                 row("PCI Link Width", PanelDisplayValue.string(device?.pciInfo?.linkWidth))
                 row("PCI Link Speed", PanelDisplayValue.string(device?.pciInfo?.linkSpeed))
             }
+            .font(.system(size: 12))
         }
     }
 
     @ViewBuilder
     private func row(_ label: LocalizedStringKey, _ value: String) -> some View {
-        GridRow {
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(size: 12))
-                .monospacedDigit()
-        }
+        PanelKeyValueRow(label, value: value, usesMonospacedDigits: true)
     }
 }

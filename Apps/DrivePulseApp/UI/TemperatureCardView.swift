@@ -9,13 +9,13 @@ struct TemperatureCardView: View {
     var body: some View {
         PanelSection("Temperature") {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                TemperatureRow(label: "Composite", celsius: smartData?.primaryTemperature, unit: settings.temperatureUnit)
-                TemperatureRow(label: "Sensor 1", celsius: sensor1Temperature, unit: settings.temperatureUnit)
-                TemperatureRow(label: "Sensor 2", celsius: sensor2Temperature, unit: settings.temperatureUnit)
-                InfoRow("Warning Threshold", value: warningThresholdString)
-                InfoRow("Critical Threshold", value: criticalThresholdString)
-                InfoRow("Warning Temp Time", value: warningTempTimeString)
-                InfoRow("Critical Temp Time", value: criticalTempTimeString)
+                temperatureRow(label: "Composite", celsius: smartData?.primaryTemperature)
+                temperatureRow(label: "Sensor 1", celsius: sensor1Temperature)
+                temperatureRow(label: "Sensor 2", celsius: sensor2Temperature)
+                PanelKeyValueRow("Warning Threshold", value: warningThresholdString, usesMonospacedDigits: true)
+                PanelKeyValueRow("Critical Threshold", value: criticalThresholdString, usesMonospacedDigits: true)
+                PanelKeyValueRow("Warning Temp Time", value: warningTempTimeString, usesMonospacedDigits: true)
+                PanelKeyValueRow("Critical Temp Time", value: criticalTempTimeString, usesMonospacedDigits: true)
             }
         }
     }
@@ -52,50 +52,24 @@ struct TemperatureCardView: View {
         guard let value = smartData?.criticalTempTime else { return PanelDisplayValue.missing }
         return "\(value) min"
     }
+
+    @ViewBuilder
+    private func temperatureRow(label: LocalizedStringKey, celsius: Int?) -> some View {
+        if let celsius {
+            PanelKeyValueRow(
+                label,
+                value: settings.temperatureUnit.format(celsius),
+                valueColor: temperatureColor(celsius),
+                usesMonospacedDigits: true
+            )
+        } else {
+            PanelKeyValueRow(label, value: PanelDisplayValue.missing)
+        }
+    }
 }
 
 private func temperatureColor(_ celsius: Int) -> Color {
     if celsius > 75 { return .red }
     if celsius >= 60 { return .orange }
     return .primary
-}
-
-private struct TemperatureRow: View {
-    let label: LocalizedStringKey
-    let celsius: Int?
-    let unit: TemperatureUnit
-
-    var body: some View {
-        GridRow {
-            Text(label)
-                .foregroundStyle(.secondary)
-            if let celsius {
-                Text(unit.format(celsius))
-                    .foregroundStyle(temperatureColor(celsius))
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            } else {
-                Text(PanelDisplayValue.missing)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-        }
-    }
-}
-
-private struct InfoRow: View {
-    let label: LocalizedStringKey
-    let value: String
-
-    init(_ label: LocalizedStringKey, value: String) {
-        self.label = label
-        self.value = value
-    }
-
-    var body: some View {
-        GridRow {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-    }
 }
