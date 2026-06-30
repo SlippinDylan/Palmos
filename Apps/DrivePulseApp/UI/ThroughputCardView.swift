@@ -286,11 +286,11 @@ private struct ThroughputTotalsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             totalRow(
-                title: "本次累计读取",
+                title: "Session Read",
                 value: byteCountString(metrics.cumulativeReadBytes)
             )
             totalRow(
-                title: "本次累计写入",
+                title: "Session Write",
                 value: byteCountString(metrics.cumulativeWriteBytes)
             )
         }

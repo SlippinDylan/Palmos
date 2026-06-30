@@ -18,6 +18,11 @@
 		100000000000000000000009 /* DetailsSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* DetailsSectionView.swift */; };
 		10000000000000000000000A /* ActionBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* ActionBarView.swift */; };
 		100000000000000000000029 /* PanelSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000029 /* PanelSection.swift */; };
+		100000000000000000000030 /* VolumesPartitionsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000030 /* VolumesPartitionsCardView.swift */; };
+		100000000000000000000031 /* ConnectionNVMeCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000031 /* ConnectionNVMeCardView.swift */; };
+		100000000000000000000032 /* DeviceIdentityCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000032 /* DeviceIdentityCardView.swift */; };
+		100000000000000000000033 /* HealthSMARTCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000033 /* HealthSMARTCardView.swift */; };
+		100000000000000000000034 /* TemperatureCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000034 /* TemperatureCardView.swift */; };
 		10000000000000000000000B /* DrivePulseAppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* DrivePulseAppStateTests.swift */; };
 		10000000000000000000000C /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000001 /* DrivePulseCore */; };
 		10000000000000000000000D /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000002 /* DrivePulseCore */; };
@@ -47,6 +52,9 @@
 		100000000000000000000028 /* HelperInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000028 /* HelperInstaller.swift */; };
 		10000000000000000000002A /* IOKitDiskSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002A /* IOKitDiskSampler.swift */; };
 		10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002B /* ThroughputChartModelTests.swift */; };
+		10000000000000000000002C /* SystemProfilerProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002C /* SystemProfilerProvider.swift */; };
+		10000000000000000000002D /* DiskUtilAPFSProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002D /* DiskUtilAPFSProvider.swift */; };
+		10000000000000000000002E /* VolumeCapacityRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002E /* VolumeCapacityRefresher.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -115,6 +123,11 @@
 		200000000000000000000009 /* DetailsSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsSectionView.swift; sourceTree = "<group>"; };
 		20000000000000000000000A /* ActionBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionBarView.swift; sourceTree = "<group>"; };
 		200000000000000000000029 /* PanelSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelSection.swift; sourceTree = "<group>"; };
+		200000000000000000000030 /* VolumesPartitionsCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumesPartitionsCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000031 /* ConnectionNVMeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionNVMeCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000032 /* DeviceIdentityCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentityCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000033 /* HealthSMARTCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSMARTCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000034 /* TemperatureCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemperatureCardView.swift; sourceTree = "<group>"; };
 		20000000000000000000000B /* DrivePulseAppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseAppStateTests.swift; sourceTree = "<group>"; };
 		20000000000000000000000C /* DrivePulseApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DrivePulseApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000D /* DrivePulseAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DrivePulseAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -147,6 +160,9 @@
 		200000000000000000000028 /* HelperInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperInstaller.swift; sourceTree = "<group>"; };
 		20000000000000000000002A /* IOKitDiskSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOKitDiskSampler.swift; sourceTree = "<group>"; };
 		20000000000000000000002B /* ThroughputChartModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputChartModelTests.swift; sourceTree = "<group>"; };
+		20000000000000000000002C /* SystemProfilerProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProfilerProvider.swift; sourceTree = "<group>"; };
+		20000000000000000000002D /* DiskUtilAPFSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskUtilAPFSProvider.swift; sourceTree = "<group>"; };
+		20000000000000000000002E /* VolumeCapacityRefresher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeCapacityRefresher.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -222,6 +238,11 @@
 				200000000000000000000009 /* DetailsSectionView.swift */,
 				20000000000000000000000A /* ActionBarView.swift */,
 				200000000000000000000029 /* PanelSection.swift */,
+				200000000000000000000030 /* VolumesPartitionsCardView.swift */,
+				200000000000000000000031 /* ConnectionNVMeCardView.swift */,
+				200000000000000000000032 /* DeviceIdentityCardView.swift */,
+				200000000000000000000033 /* HealthSMARTCardView.swift */,
+				200000000000000000000034 /* TemperatureCardView.swift */,
 				200000000000000000000014 /* SettingsView.swift */,
 			);
 			path = UI;
@@ -235,6 +256,9 @@
 				200000000000000000000028 /* HelperInstaller.swift */,
 				200000000000000000000012 /* SystemActions.swift */,
 				200000000000000000000013 /* LaunchAtLoginController.swift */,
+				20000000000000000000002C /* SystemProfilerProvider.swift */,
+				20000000000000000000002D /* DiskUtilAPFSProvider.swift */,
+				20000000000000000000002E /* VolumeCapacityRefresher.swift */,
 			);
 			path = Integration;
 			sourceTree = "<group>";
@@ -490,12 +514,20 @@
 				100000000000000000000009 /* DetailsSectionView.swift in Sources */,
 				10000000000000000000000A /* ActionBarView.swift in Sources */,
 				100000000000000000000029 /* PanelSection.swift in Sources */,
+				100000000000000000000030 /* VolumesPartitionsCardView.swift in Sources */,
+				100000000000000000000031 /* ConnectionNVMeCardView.swift in Sources */,
+				100000000000000000000032 /* DeviceIdentityCardView.swift in Sources */,
+				100000000000000000000033 /* HealthSMARTCardView.swift in Sources */,
+				100000000000000000000034 /* TemperatureCardView.swift in Sources */,
 				100000000000000000000015 /* ExternalDeviceDiscovery.swift in Sources */,
 				100000000000000000000016 /* SMARTServiceClient.swift in Sources */,
 				100000000000000000000028 /* HelperInstaller.swift in Sources */,
 				10000000000000000000002A /* IOKitDiskSampler.swift in Sources */,
 				10000000000000000000000F /* SystemActions.swift in Sources */,
 				100000000000000000000010 /* LaunchAtLoginController.swift in Sources */,
+				10000000000000000000002C /* SystemProfilerProvider.swift in Sources */,
+				10000000000000000000002D /* DiskUtilAPFSProvider.swift in Sources */,
+				10000000000000000000002E /* VolumeCapacityRefresher.swift in Sources */,
 				100000000000000000000011 /* SettingsView.swift in Sources */,
 				100000000000000000000017 /* DrivePulseXPCContracts.swift in Sources */,
 				100000000000000000000018 /* DrivePulseXPCMessages.swift in Sources */,

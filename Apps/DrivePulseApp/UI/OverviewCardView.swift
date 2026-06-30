@@ -4,16 +4,30 @@ import DrivePulseCore
 
 struct OverviewCardView: View {
     let device: ExternalDevice?
+    let smartDetails: SMARTPresentationDetails?
     @ObservedObject var settings: AppSettings
+    let onInstallHelper: () -> Void
 
     var body: some View {
         PanelSection("Overview") {
             if let device {
-                VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("Connection", value: device.transportName)
-                    LabeledContent("Capacity", value: capacityString(for: device.capacityBytes))
-                    LabeledContent("Health", value: healthString(for: device.smartSnapshot))
-                    LabeledContent("Temperature", value: temperatureString(for: device.smartSnapshot))
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                    InfoRow("Model", value: modelString(device))
+                    InfoRow("Connection", value: connectionString(device))
+                    InfoRow("Total Capacity", value: totalCapacityString(device))
+                    InfoRow("Used", value: usedSpaceString(device))
+                    InfoRow("Available", value: availableSpaceString(device))
+                    InfoRow("File System", value: device.apfsContainerDetails != nil ? "APFS" : "—")
+                    InfoRow("SMART Status", value: smartStatusString)
+                    InfoRow("Wear Level", value: wearLevelString)
+                    InfoRow("Temperature", value: overviewTemperatureString)
+                    InfoRow("Mounted", value: device.volumes.isEmpty ? "Not Mounted" : "Mounted")
+                }
+                if isHelperNotInstalled {
+                    Button("Install SMART Helper for Complete Health Data") { onInstallHelper() }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                        .padding(.top, 4)
                 }
             } else {
                 Text("No device selected")
@@ -22,61 +36,89 @@ struct OverviewCardView: View {
         }
     }
 
-    private func capacityString(for capacityBytes: Int64?) -> String {
-        guard let capacityBytes else {
-            return "Unavailable"
-        }
-
-        return ByteCountFormatter.string(fromByteCount: capacityBytes, countStyle: .file)
+    private var smartData: SmartData? {
+        guard case .available(let data) = smartDetails?.snapshot else { return nil }
+        return data
     }
 
-    func healthString(for snapshot: SmartSnapshot) -> String {
-        switch snapshot {
-        case .notRequested:
-            return String(localized: "Not requested")
-        case .loading:
-            return String(localized: "Loading")
-        case .available(let smartData):
-            guard let overallHealth = smartData.overallHealth else {
-                return String(localized: "Unavailable")
-            }
-
-            return localizedHealthString(overallHealth)
-        case .unsupported:
-            return String(localized: "Unsupported")
-        case .transportUnsupported:
-            return String(localized: "Transport support required")
-        case .helperNotInstalled:
-            return String(localized: "Helper required")
-        case .permissionRequired:
-            return String(localized: "Permission required")
-        case .deviceUnavailable:
-            return String(localized: "Unavailable")
-        case .updateRequired:
-            return String(localized: "Update required")
-        case .failed:
-            return String(localized: "Unavailable")
-        }
+    private var isHelperNotInstalled: Bool {
+        guard let snapshot = smartDetails?.snapshot else { return false }
+        if case .helperNotInstalled = snapshot { return true }
+        return false
     }
 
-    private func temperatureString(for snapshot: SmartSnapshot) -> String {
-        guard case let .available(smartData) = snapshot else {
-            return String(localized: "Unavailable")
-        }
-
-        guard let temperature = TemperatureSelection.overviewTemperature(for: smartData) else {
-            return String(localized: "Unavailable")
-        }
-
-        return settings.temperatureUnit.format(temperature)
+    private var smartStatusString: String {
+        guard let snapshot = smartDetails?.snapshot else { return "—" }
+        if case .available(let data) = snapshot { return data.overallHealth ?? "—" }
+        return "—"
     }
 
-    private func localizedHealthString(_ overallHealth: String) -> String {
-        switch overallHealth {
-        case "Verified":
-            return String(localized: "Verified")
-        default:
-            return overallHealth
+    private var wearLevelString: String {
+        guard let pct = smartData?.percentageUsed else { return "—" }
+        return "\(pct)%"
+    }
+
+    private var overviewTemperatureString: String {
+        guard let temp = smartData?.primaryTemperature else { return "—" }
+        return settings.temperatureUnit.format(temp)
+    }
+
+    private func modelString(_ device: ExternalDevice) -> String {
+        device.nvmeInfo?.model ?? device.displayName
+    }
+
+    private func connectionString(_ device: ExternalDevice) -> String {
+        var parts = [device.transportName]
+        if let linkWidth = device.nvmeInfo?.linkWidth {
+            parts.append("PCIe \(linkWidth)")
+        }
+        return parts.joined(separator: " / ")
+    }
+
+    private func totalCapacityString(_ device: ExternalDevice) -> String {
+        let bytes = device.apfsContainerDetails?.totalCapacityBytes ?? device.capacityBytes
+        guard let bytes else { return "—" }
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private func usedSpaceString(_ device: ExternalDevice) -> String {
+        guard
+            let total = device.apfsContainerDetails?.totalCapacityBytes,
+            let used = device.apfsContainerDetails?.capacityInUseBytes,
+            total > 0
+        else { return "—" }
+        let pct = Double(used) / Double(total) * 100
+        let formatted = ByteCountFormatter.string(fromByteCount: used, countStyle: .file)
+        return "\(formatted) (\(String(format: "%.1f", pct))%)"
+    }
+
+    private func availableSpaceString(_ device: ExternalDevice) -> String {
+        guard
+            let total = device.apfsContainerDetails?.totalCapacityBytes,
+            let free = device.apfsContainerDetails?.capacityNotAllocatedBytes,
+            total > 0
+        else { return "—" }
+        let pct = Double(free) / Double(total) * 100
+        let formatted = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+        return "\(formatted) (\(String(format: "%.1f", pct))%)"
+    }
+}
+
+private struct InfoRow: View {
+    let label: String
+    let value: String
+
+    init(_ label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+
+    var body: some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 }
