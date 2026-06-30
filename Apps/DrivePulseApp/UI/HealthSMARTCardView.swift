@@ -43,6 +43,7 @@ struct HealthSMARTCardView: View {
                     Button("Install SMART Helper for Complete Health Data") { onInstallHelper() }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .frame(maxWidth: .infinity)
                         .padding(.top, 8)
                 } else if !isLoading {
                     Button("Refresh SMART Data") { onRefresh() }

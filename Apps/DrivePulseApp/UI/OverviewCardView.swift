@@ -6,7 +6,6 @@ struct OverviewCardView: View {
     let device: ExternalDevice?
     let smartDetails: SMARTPresentationDetails?
     @ObservedObject var settings: AppSettings
-    let onInstallHelper: () -> Void
 
     var body: some View {
         PanelSection("Overview") {
@@ -23,12 +22,6 @@ struct OverviewCardView: View {
                     InfoRow("Temperature", value: overviewTemperatureString)
                     InfoRow("Mounted", value: device.volumes.isEmpty ? "Not Mounted" : "Mounted")
                 }
-                if isHelperNotInstalled {
-                    Button("Install SMART Helper for Complete Health Data") { onInstallHelper() }
-                        .buttonStyle(.link)
-                        .font(.caption)
-                        .padding(.top, 4)
-                }
             } else {
                 Text("No device selected")
                     .foregroundStyle(.secondary)
@@ -39,12 +32,6 @@ struct OverviewCardView: View {
     private var smartData: SmartData? {
         guard case .available(let data) = smartDetails?.snapshot else { return nil }
         return data
-    }
-
-    private var isHelperNotInstalled: Bool {
-        guard let snapshot = smartDetails?.snapshot else { return false }
-        if case .helperNotInstalled = snapshot { return true }
-        return false
     }
 
     private var smartStatusString: String {

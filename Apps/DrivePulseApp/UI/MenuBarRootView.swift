@@ -19,8 +19,7 @@ struct MenuBarRootView: View {
                     OverviewCardView(
                         device: controller.state.selectedDevice,
                         smartDetails: controller.state.selectedSMARTDetails,
-                        settings: controller.settings,
-                        onInstallHelper: { controller.performSMARTPrimaryAction() }
+                        settings: controller.settings
                     )
                     ThroughputCardView(device: controller.state.selectedDevice)
                     HealthSMARTCardView(
