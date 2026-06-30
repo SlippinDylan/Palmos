@@ -38,7 +38,7 @@ struct MenuBarRootView: View {
                 }
                 .padding(14)
             }
-            .frame(maxHeight: 520)
+            .frame(height: 500)
 
             Divider()
 
