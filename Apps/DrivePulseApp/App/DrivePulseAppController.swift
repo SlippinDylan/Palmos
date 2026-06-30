@@ -235,6 +235,8 @@ final class DrivePulseAppController: ObservableObject {
         discoveryLoadTask = Task { [weak self] in
             let devices = await deviceDiscovery.discoverDevices()
             guard !Task.isCancelled else { return }
+            // Show basic device list immediately; NVMe/TB/APFS enrichment follows
+            self?.applyDiscoveredDevices(devices, generation: generation)
             await systemProfilerProvider.fetchIfNeeded()
             guard !Task.isCancelled, let self else { return }
             let enriched = await self.enrichDevices(devices, diskUtilAPFSProvider: diskUtilAPFSProvider)
@@ -248,6 +250,11 @@ final class DrivePulseAppController: ObservableObject {
         let generation = discoveryWriteGeneration
         let systemProfilerProvider = systemProfilerProvider
         let diskUtilAPFSProvider = diskUtilAPFSProvider
+        // Apply unenriched devices immediately so UI is responsive before system_profiler finishes
+        state.replaceDevices(devices)
+        pruneSamplingState()
+        updateCapacityRefresher(from: devices)
+        triggerInitialSMARTForNewDevices(devices)
         Task { [weak self] in
             guard let self else { return }
             await systemProfilerProvider.refresh()
@@ -257,7 +264,6 @@ final class DrivePulseAppController: ObservableObject {
             self.state.replaceDevices(enriched)
             self.pruneSamplingState()
             self.updateCapacityRefresher(from: enriched)
-            self.triggerInitialSMARTForNewDevices(enriched)
         }
     }
 
