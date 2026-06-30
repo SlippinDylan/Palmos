@@ -61,17 +61,71 @@ public struct SmartData: Equatable, Sendable {
     public var primaryTemperature: Int?
     public var highestTemperature: Int?
     public var sensorTemperatures: [String: Int]
+    public var criticalWarning: Int?
+    public var availableSpare: Int?
+    public var availableSpareThreshold: Int?
+    public var percentageUsed: Int?
+    public var dataUnitsRead: Int?
+    public var dataUnitsWritten: Int?
+    public var hostReadCommands: Int?
+    public var hostWriteCommands: Int?
+    public var controllerBusyTime: Int?
+    public var powerCycles: Int?
+    public var powerOnHours: Int?
+    public var unsafeShutdowns: Int?
+    public var mediaIntegrityErrors: Int?
+    public var errorLogEntries: Int?
+    public var warningTempTime: Int?
+    public var criticalTempTime: Int?
+    public var warningTempThreshold: Int?
+    public var criticalTempThreshold: Int?
 
     public init(
         overallHealth: String? = nil,
         primaryTemperature: Int? = nil,
         highestTemperature: Int? = nil,
-        sensorTemperatures: [String: Int] = [:]
+        sensorTemperatures: [String: Int] = [:],
+        criticalWarning: Int? = nil,
+        availableSpare: Int? = nil,
+        availableSpareThreshold: Int? = nil,
+        percentageUsed: Int? = nil,
+        dataUnitsRead: Int? = nil,
+        dataUnitsWritten: Int? = nil,
+        hostReadCommands: Int? = nil,
+        hostWriteCommands: Int? = nil,
+        controllerBusyTime: Int? = nil,
+        powerCycles: Int? = nil,
+        powerOnHours: Int? = nil,
+        unsafeShutdowns: Int? = nil,
+        mediaIntegrityErrors: Int? = nil,
+        errorLogEntries: Int? = nil,
+        warningTempTime: Int? = nil,
+        criticalTempTime: Int? = nil,
+        warningTempThreshold: Int? = nil,
+        criticalTempThreshold: Int? = nil
     ) {
         self.overallHealth = overallHealth
         self.primaryTemperature = primaryTemperature
         self.highestTemperature = highestTemperature
         self.sensorTemperatures = sensorTemperatures
+        self.criticalWarning = criticalWarning
+        self.availableSpare = availableSpare
+        self.availableSpareThreshold = availableSpareThreshold
+        self.percentageUsed = percentageUsed
+        self.dataUnitsRead = dataUnitsRead
+        self.dataUnitsWritten = dataUnitsWritten
+        self.hostReadCommands = hostReadCommands
+        self.hostWriteCommands = hostWriteCommands
+        self.controllerBusyTime = controllerBusyTime
+        self.powerCycles = powerCycles
+        self.powerOnHours = powerOnHours
+        self.unsafeShutdowns = unsafeShutdowns
+        self.mediaIntegrityErrors = mediaIntegrityErrors
+        self.errorLogEntries = errorLogEntries
+        self.warningTempTime = warningTempTime
+        self.criticalTempTime = criticalTempTime
+        self.warningTempThreshold = warningTempThreshold
+        self.criticalTempThreshold = criticalTempThreshold
     }
 }
 
@@ -122,6 +176,11 @@ public struct ExternalDevice: Equatable, Sendable, Identifiable {
     public var physicalStoreBSDName: String
     public var apfsContainerBSDName: String?
     public var volumes: [MountedVolume]
+    public var nvmeInfo: NVMeInfo?
+    public var thunderboltInfo: ThunderboltInfo?
+    public var pciInfo: PCIInfo?
+    public var apfsContainerDetails: APFSContainerInfo?
+    public var physicalPartitions: [PhysicalPartitionInfo]
 
     public init(
         id: DeviceID,
@@ -132,7 +191,12 @@ public struct ExternalDevice: Equatable, Sendable, Identifiable {
         sessionMetrics: DeviceSessionMetrics = .empty(historyLimit: DeviceSessionMetrics.defaultHistoryLimit),
         physicalStoreBSDName: String,
         apfsContainerBSDName: String?,
-        volumes: [MountedVolume]
+        volumes: [MountedVolume],
+        nvmeInfo: NVMeInfo? = nil,
+        thunderboltInfo: ThunderboltInfo? = nil,
+        pciInfo: PCIInfo? = nil,
+        apfsContainerDetails: APFSContainerInfo? = nil,
+        physicalPartitions: [PhysicalPartitionInfo] = []
     ) {
         self.id = id
         self.displayName = displayName
@@ -143,6 +207,11 @@ public struct ExternalDevice: Equatable, Sendable, Identifiable {
         self.physicalStoreBSDName = physicalStoreBSDName
         self.apfsContainerBSDName = apfsContainerBSDName
         self.volumes = volumes
+        self.nvmeInfo = nvmeInfo
+        self.thunderboltInfo = thunderboltInfo
+        self.pciInfo = pciInfo
+        self.apfsContainerDetails = apfsContainerDetails
+        self.physicalPartitions = physicalPartitions
     }
 
     public init(
@@ -199,7 +268,21 @@ public struct ExternalDevice: Equatable, Sendable, Identifiable {
             volumes: [
                 MountedVolume(bsdName: "\(rawID)s2"),
                 MountedVolume(bsdName: "\(rawID)s3")
-            ]
+            ],
+            nvmeInfo: rawID == "disk8" ? nil : NVMeInfo(
+                controller: "Apple SSD Controller",
+                firmwareVersion: "1221.60.1",
+                nvmeVersion: "1.4",
+                trimSupport: true,
+                linkWidth: "x4",
+                linkSpeed: "8.0 GT/s"
+            ),
+            thunderboltInfo: rawID == "disk8" ? ThunderboltInfo(
+                vendorName: "Samsung",
+                deviceName: "T9 Portable SSD",
+                mode: "Thunderbolt 4",
+                linkSpeed: "40 Gbit/s"
+            ) : nil
         )
     }
 }

@@ -73,7 +73,25 @@ public enum SmartDataParser {
             overallHealth: payload.smartStatus.map { $0.passed ? "PASSED" : "FAILED" },
             primaryTemperature: primaryTemperature,
             highestTemperature: ([primaryTemperature].compactMap { $0 } + sensorTemperatures.values).max(),
-            sensorTemperatures: sensorTemperatures
+            sensorTemperatures: sensorTemperatures,
+            criticalWarning: payload.nvmeSMARTHealthInformationLog?.criticalWarning,
+            availableSpare: payload.nvmeSMARTHealthInformationLog?.availableSpare,
+            availableSpareThreshold: payload.nvmeSMARTHealthInformationLog?.availableSpareThreshold,
+            percentageUsed: payload.nvmeSMARTHealthInformationLog?.percentageUsed,
+            dataUnitsRead: payload.nvmeSMARTHealthInformationLog?.dataUnitsRead,
+            dataUnitsWritten: payload.nvmeSMARTHealthInformationLog?.dataUnitsWritten,
+            hostReadCommands: payload.nvmeSMARTHealthInformationLog?.hostReads,
+            hostWriteCommands: payload.nvmeSMARTHealthInformationLog?.hostWrites,
+            controllerBusyTime: payload.nvmeSMARTHealthInformationLog?.controllerBusyTime,
+            powerCycles: payload.nvmeSMARTHealthInformationLog?.powerCycles,
+            powerOnHours: payload.nvmeSMARTHealthInformationLog?.powerOnHours,
+            unsafeShutdowns: payload.nvmeSMARTHealthInformationLog?.unsafeShutdowns,
+            mediaIntegrityErrors: payload.nvmeSMARTHealthInformationLog?.mediaErrors,
+            errorLogEntries: payload.nvmeSMARTHealthInformationLog?.numErrLogEntries,
+            warningTempTime: payload.nvmeSMARTHealthInformationLog?.warningTempTime,
+            criticalTempTime: payload.nvmeSMARTHealthInformationLog?.criticalCompTime,
+            warningTempThreshold: payload.wctemp,
+            criticalTempThreshold: payload.cctemp
         )
     }
 }
@@ -82,11 +100,15 @@ private struct SmartctlPayload: Decodable {
     let smartStatus: SmartStatus?
     let temperature: TemperatureReading?
     let nvmeSMARTHealthInformationLog: NVMESMARTHealthInformationLog?
+    let wctemp: Int?
+    let cctemp: Int?
 
     enum CodingKeys: String, CodingKey {
         case smartStatus = "smart_status"
         case temperature
         case nvmeSMARTHealthInformationLog = "nvme_smart_health_information_log"
+        case wctemp
+        case cctemp
     }
 }
 
@@ -101,15 +123,63 @@ private struct TemperatureReading: Decodable {
 private struct NVMESMARTHealthInformationLog: Decodable {
     let temperature: Int?
     let temperatureSensors: [Int]
+    let criticalWarning: Int?
+    let availableSpare: Int?
+    let availableSpareThreshold: Int?
+    let percentageUsed: Int?
+    let dataUnitsRead: Int?
+    let dataUnitsWritten: Int?
+    let hostReads: Int?
+    let hostWrites: Int?
+    let controllerBusyTime: Int?
+    let powerCycles: Int?
+    let powerOnHours: Int?
+    let unsafeShutdowns: Int?
+    let mediaErrors: Int?
+    let numErrLogEntries: Int?
+    let warningTempTime: Int?
+    let criticalCompTime: Int?
 
     enum CodingKeys: String, CodingKey {
         case temperature
         case temperatureSensors = "temperature_sensors"
+        case criticalWarning = "critical_warning"
+        case availableSpare = "available_spare"
+        case availableSpareThreshold = "available_spare_threshold"
+        case percentageUsed = "percentage_used"
+        case dataUnitsRead = "data_units_read"
+        case dataUnitsWritten = "data_units_written"
+        case hostReads = "host_reads"
+        case hostWrites = "host_writes"
+        case controllerBusyTime = "controller_busy_time"
+        case powerCycles = "power_cycles"
+        case powerOnHours = "power_on_hours"
+        case unsafeShutdowns = "unsafe_shutdowns"
+        case mediaErrors = "media_errors"
+        case numErrLogEntries = "num_err_log_entries"
+        case warningTempTime = "warning_temp_time"
+        case criticalCompTime = "critical_comp_time"
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         temperature = try container.decodeIfPresent(Int.self, forKey: .temperature)
         temperatureSensors = try container.decodeIfPresent([Int].self, forKey: .temperatureSensors) ?? []
+        criticalWarning = try container.decodeIfPresent(Int.self, forKey: .criticalWarning)
+        availableSpare = try container.decodeIfPresent(Int.self, forKey: .availableSpare)
+        availableSpareThreshold = try container.decodeIfPresent(Int.self, forKey: .availableSpareThreshold)
+        percentageUsed = try container.decodeIfPresent(Int.self, forKey: .percentageUsed)
+        dataUnitsRead = try container.decodeIfPresent(Int.self, forKey: .dataUnitsRead)
+        dataUnitsWritten = try container.decodeIfPresent(Int.self, forKey: .dataUnitsWritten)
+        hostReads = try container.decodeIfPresent(Int.self, forKey: .hostReads)
+        hostWrites = try container.decodeIfPresent(Int.self, forKey: .hostWrites)
+        controllerBusyTime = try container.decodeIfPresent(Int.self, forKey: .controllerBusyTime)
+        powerCycles = try container.decodeIfPresent(Int.self, forKey: .powerCycles)
+        powerOnHours = try container.decodeIfPresent(Int.self, forKey: .powerOnHours)
+        unsafeShutdowns = try container.decodeIfPresent(Int.self, forKey: .unsafeShutdowns)
+        mediaErrors = try container.decodeIfPresent(Int.self, forKey: .mediaErrors)
+        numErrLogEntries = try container.decodeIfPresent(Int.self, forKey: .numErrLogEntries)
+        warningTempTime = try container.decodeIfPresent(Int.self, forKey: .warningTempTime)
+        criticalCompTime = try container.decodeIfPresent(Int.self, forKey: .criticalCompTime)
     }
 }

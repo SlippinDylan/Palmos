@@ -69,7 +69,11 @@ final class DrivePulseAppControllerTests: XCTestCase {
             makeDevice(id: "disk21", volumes: ["disk21s1"])
         ]
         let discovery = StubExternalDeviceDiscovery(results: [initialDevices])
-        let controller = DrivePulseAppController(deviceDiscovery: discovery)
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: StubSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider()
+        )
         let updatedDevices = [
             makeDevice(id: "disk84", volumes: []),
             makeDevice(id: "disk126", volumes: ["disk126s1"])
@@ -78,7 +82,13 @@ final class DrivePulseAppControllerTests: XCTestCase {
         discovery.emit(updatedDevices)
 
         XCTAssertEqual(discovery.subscriptionCount, 1)
-        XCTAssertEqual(controller.state.devices, updatedDevices)
+        let expectation = expectation(description: "observed devices applied")
+        Task { @MainActor in
+            await self.waitUntilStateDevices(controller, equals: updatedDevices)
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 1.0)
         XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
     }
 
@@ -91,18 +101,196 @@ final class DrivePulseAppControllerTests: XCTestCase {
             makeDevice(id: "disk126", volumes: ["disk126s1"])
         ]
         let discovery = StubExternalDeviceDiscovery(results: [bootstrapDevices])
-        let controller = DrivePulseAppController(deviceDiscovery: discovery)
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: StubSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider()
+        )
 
         await discovery.waitUntilNextDiscoveryIsPending()
 
         discovery.emit(observedDevices)
-        XCTAssertEqual(controller.state.devices, observedDevices)
+        await waitUntilStateDevices(controller, equals: observedDevices)
 
         await discovery.resolveNextDiscovery()
         await Task.yield()
 
         XCTAssertEqual(controller.state.devices, observedDevices)
         XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
+    }
+
+    func testControllerFetchesSystemProfilerOnceDuringBootstrapAndRefreshesProvidersOnObservedUpdate() async throws {
+        let bootstrapDevice = makeDevice(id: "disk21", volumes: [])
+        let observedDevice = makeDevice(
+            id: "disk84",
+            volumes: ["disk84s2s1"],
+            transportName: "Thunderbolt",
+            physicalStoreBSDName: "disk84",
+            apfsContainerBSDName: "disk84s2"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
+        let systemProfilerProvider = StubSystemProfilerProvider(
+            refreshedNVMeInfoByBSDName: [
+                "disk84": NVMeInfo(
+                    controller: "Controller B",
+                    model: "Model B",
+                    serialNumber: "SERIAL-B",
+                    firmwareVersion: "FW-B"
+                )
+            ],
+            refreshedPCIInfoBySerialNumber: [
+                "SERIAL-B": PCIInfo(
+                    slot: "Slot-B",
+                    vendorID: "0x1234",
+                    deviceID: "0x5678"
+                )
+            ],
+            refreshedThunderboltInfo: ThunderboltInfo(
+                vendorName: "Acme",
+                deviceName: "TB Enclosure"
+            )
+        )
+        let diskUtilProvider = StubDiskUtilAPFSProvider(
+            refreshedContainerInfoByBSDName: [
+                "disk84s2": APFSContainerInfo(
+                    bsdName: "disk84s2",
+                    totalCapacityBytes: 2_000,
+                    capacityInUseBytes: 1_500,
+                    capacityNotAllocatedBytes: 500,
+                    volumes: [
+                        APFSVolumeDetails(
+                            volumeName: "Observed",
+                            bsdName: "disk84s2s1",
+                            mountPoint: "/Volumes/Observed",
+                            capacityConsumedBytes: 1_500
+                        )
+                    ]
+                )
+            ],
+            physicalPartitionsByDiskBSDName: [
+                "disk84": [
+                    PhysicalPartitionInfo(
+                        bsdName: "disk84s2",
+                        partitionType: "Apple_APFS"
+                    )
+                ]
+            ]
+        )
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: systemProfilerProvider,
+            diskUtilAPFSProvider: diskUtilProvider
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+
+        XCTAssertEqual(systemProfilerProvider.fetchIfNeededCallCount, 1)
+        XCTAssertEqual(systemProfilerProvider.refreshCallCount, 0)
+        XCTAssertEqual(diskUtilProvider.refreshCallCount, 0)
+
+        discovery.emit([observedDevice])
+
+        await waitUntilStateDevices(controller) { devices in
+            guard let device = devices.first else { return false }
+            return device.id == observedDevice.id
+                && device.nvmeInfo?.serialNumber == "SERIAL-B"
+                && device.pciInfo?.slot == "Slot-B"
+                && device.thunderboltInfo?.deviceName == "TB Enclosure"
+                && device.apfsContainerDetails?.capacityInUseBytes == 1_500
+                && device.physicalPartitions == [
+                    PhysicalPartitionInfo(
+                        bsdName: "disk84s2",
+                        partitionType: "Apple_APFS"
+                    )
+                ]
+        }
+
+        let appliedDevice = try XCTUnwrap(controller.state.selectedDevice)
+        XCTAssertEqual(appliedDevice.id, observedDevice.id)
+        XCTAssertEqual(systemProfilerProvider.fetchIfNeededCallCount, 1)
+        XCTAssertEqual(systemProfilerProvider.refreshCallCount, 1)
+        XCTAssertEqual(diskUtilProvider.refreshCallCount, 1)
+    }
+
+    func testControllerDoesNotAssignSharedThunderboltInfoToMultipleThunderboltDevices() async {
+        let firstDevice = makeDevice(
+            id: "disk21",
+            volumes: [],
+            transportName: "Thunderbolt"
+        )
+        let secondDevice = makeDevice(
+            id: "disk42",
+            volumes: [],
+            transportName: "Thunderbolt"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[firstDevice, secondDevice]])
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: StubSystemProfilerProvider(
+                refreshedThunderboltInfo: ThunderboltInfo(
+                    vendorName: "Acme",
+                    deviceName: "Shared Enclosure"
+                )
+            ),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider()
+        )
+
+        discovery.emit([firstDevice, secondDevice])
+
+        await waitUntilStateDevices(controller, where: { $0.count == 2 })
+        XCTAssertEqual(controller.state.devices.map(\.thunderboltInfo), [nil, nil])
+    }
+
+    func testCapacityUpdatesRefreshContainerCapacityWithoutOverwritingVolumeConsumed() async throws {
+        let refresher = VolumeCapacityRefresher()
+        let device = makeDevice(
+            id: "disk21",
+            volumes: ["disk21s2s1"],
+            apfsContainerBSDName: "disk21s2",
+            apfsContainerDetails: APFSContainerInfo(
+                bsdName: "disk21s2",
+                totalCapacityBytes: 100,
+                capacityInUseBytes: 60,
+                capacityNotAllocatedBytes: 40,
+                volumes: [
+                    APFSVolumeDetails(
+                        volumeName: "Macintosh HD",
+                        bsdName: "disk21s2s1",
+                        mountPoint: "/Volumes/Macintosh HD",
+                        capacityConsumedBytes: 60
+                    )
+                ]
+            )
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(
+                devices: [device],
+                selectedDeviceID: device.id
+            ),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            volumeCapacityRefresher: refresher
+        )
+
+        refresher.onUpdate?([
+            VolumeCapacityRefresher.CapacityUpdate(
+                bsdName: "disk21s2s1",
+                totalBytes: 200,
+                availableBytes: 50,
+                consumedBytes: 150
+            )
+        ])
+
+        await waitUntilStateDevices(controller) { devices in
+            devices.first?.apfsContainerDetails?.capacityInUseBytes == 150
+        }
+
+        let updatedDevice: ExternalDevice = try XCTUnwrap(controller.state.selectedDevice)
+        let container: APFSContainerInfo = try XCTUnwrap(updatedDevice.apfsContainerDetails)
+        XCTAssertEqual(container.totalCapacityBytes, 200)
+        XCTAssertEqual(container.capacityInUseBytes, 150)
+        XCTAssertEqual(container.capacityNotAllocatedBytes, 50)
+        XCTAssertEqual(container.volumes.first?.capacityConsumedBytes, 60)
     }
 
     func testControllerWritesNonZeroSessionMetricsAfterSamplingDelta() throws {
@@ -288,20 +476,301 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(monitoringSession.deactivateCallCount, 1)
     }
 
+    func testLiveSystemProfilerProviderCachesBootstrapFetchAndRefreshesCacheOnDemand() async {
+        let runner = StubSystemProfilerDataTypeRunner(
+            snapshots: [
+                [
+                    "SPNVMeDataType": [
+                        [
+                            "_name": "Controller A",
+                            "items": [
+                                [
+                                    "bsd_name": "disk21",
+                                    "serial_no": "SERIAL-A"
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    "SPPCIDataType": [
+                        [
+                            "sppci_type": "NVM Controller",
+                            "serial_no": "SERIAL-A",
+                            "sppci_slot": "Slot-A"
+                        ]
+                    ]
+                ],
+                [
+                    "SPThunderboltDataType": [
+                        [
+                            "items": [
+                                [
+                                    "vendor_name": "Acme",
+                                    "device_name": "Enclosure A"
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    "SPNVMeDataType": [
+                        [
+                            "_name": "Controller B",
+                            "items": [
+                                [
+                                    "bsd_name": "disk21",
+                                    "serial_no": "SERIAL-B"
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    "SPPCIDataType": [
+                        [
+                            "sppci_type": "NVM Controller",
+                            "serial_no": "SERIAL-B",
+                            "sppci_slot": "Slot-B"
+                        ]
+                    ]
+                ],
+                [
+                    "SPThunderboltDataType": [
+                        [
+                            "items": [
+                                [
+                                    "vendor_name": "Acme",
+                                    "device_name": "Enclosure B"
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        )
+        let provider = LiveSystemProfilerProvider(dataTypeRunner: runner.run)
+
+        await provider.fetchIfNeeded()
+        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21")?.serialNumber, "SERIAL-A")
+        XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-A")?.slot, "Slot-A")
+        XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "Enclosure A")
+
+        await provider.fetchIfNeeded()
+        let firstInvocationCount = await runner.invocationCount()
+        XCTAssertEqual(firstInvocationCount, 3)
+
+        await provider.refresh()
+        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21")?.serialNumber, "SERIAL-B")
+        XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-B")?.slot, "Slot-B")
+        XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "Enclosure B")
+        let secondInvocationCount = await runner.invocationCount()
+        XCTAssertEqual(secondInvocationCount, 6)
+    }
+
+    func testLiveSystemProfilerProviderFetchesDataTypesConcurrently() async {
+        let runner = ConcurrentSystemProfilerRunner()
+        let provider = LiveSystemProfilerProvider(dataTypeRunner: runner.run)
+
+        await provider.refresh()
+
+        let invocationCount = await runner.invocationCount()
+        let maxConcurrentInvocations = await runner.maxConcurrentInvocations()
+        XCTAssertEqual(invocationCount, 3)
+        XCTAssertGreaterThanOrEqual(maxConcurrentInvocations, 2)
+    }
+
+    func testLiveSystemProfilerProviderKeepsNewestCacheWhenRefreshesOverlap() async {
+        let runner = OverlappingSystemProfilerRunner()
+        let provider = LiveSystemProfilerProvider(dataTypeRunner: runner.run)
+        let firstRefresh = Task {
+            await provider.refresh()
+        }
+
+        await runner.waitUntilInvocationCount(is: 3)
+
+        let secondRefresh = Task {
+            await provider.refresh()
+        }
+
+        await runner.waitUntilInvocationCount(is: 6)
+        await runner.resumeBatch(
+            invocationIndices: [3, 4, 5],
+            serialNumber: "SERIAL-NEW",
+            slot: "Slot-New",
+            thunderboltDeviceName: "Enclosure New"
+        )
+        await secondRefresh.value
+
+        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21")?.serialNumber, "SERIAL-NEW")
+        XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-NEW")?.slot, "Slot-New")
+        XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "Enclosure New")
+
+        await runner.resumeBatch(
+            invocationIndices: [0, 1, 2],
+            serialNumber: "SERIAL-OLD",
+            slot: "Slot-Old",
+            thunderboltDeviceName: "Enclosure Old"
+        )
+        await firstRefresh.value
+
+        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21")?.serialNumber, "SERIAL-NEW")
+        XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-NEW")?.slot, "Slot-New")
+        XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "Enclosure New")
+    }
+
+    func testLiveSystemProfilerProviderReturnsNilWhenThunderboltCandidatesAreAmbiguous() async {
+        let runner = StubSystemProfilerDataTypeRunner(
+            snapshots: [
+                [
+                    "SPThunderboltDataType": [
+                        [
+                            "items": [
+                                [
+                                    "vendor_name": "Acme",
+                                    "device_name": "Enclosure A"
+                                ],
+                                [
+                                    "vendor_name": "Acme",
+                                    "device_name": "Enclosure B"
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    "SPNVMeDataType": []
+                ],
+                [
+                    "SPPCIDataType": []
+                ]
+            ]
+        )
+        let provider = LiveSystemProfilerProvider(dataTypeRunner: runner.run)
+
+        await provider.refresh()
+
+        XCTAssertNil(provider.thunderboltInfo())
+    }
+
+    func testLiveDiskUtilAPFSProviderCachesAPFSListUntilRefresh() async throws {
+        let runner = StubDiskUtilCommandRunner(
+            outputs: [
+                try Self.makeAPFSListPlist(
+                    containerBSDName: "disk21s2",
+                    totalBytes: 100,
+                    freeBytes: 40,
+                    volumeConsumedBytes: 60
+                ),
+                try Self.makeAPFSListPlist(
+                    containerBSDName: "disk21s2",
+                    totalBytes: 300,
+                    freeBytes: 50,
+                    volumeConsumedBytes: 250
+                )
+            ]
+        )
+        let provider = LiveDiskUtilAPFSProvider(commandRunner: runner.run)
+
+        let first = await provider.containerInfo(forContainerBSDName: "disk21s2")
+        let second = await provider.containerInfo(forContainerBSDName: "disk21s2")
+
+        XCTAssertEqual(first?.capacityInUseBytes, 60)
+        XCTAssertEqual(second?.capacityInUseBytes, 60)
+        let initialAPFSListInvocationCount = await runner.apfsListInvocationCount()
+        XCTAssertEqual(initialAPFSListInvocationCount, 1)
+
+        await provider.refresh()
+        let refreshed = await provider.containerInfo(forContainerBSDName: "disk21s2")
+
+        XCTAssertEqual(refreshed?.capacityInUseBytes, 250)
+        XCTAssertEqual(refreshed?.capacityNotAllocatedBytes, 50)
+        let refreshedAPFSListInvocationCount = await runner.apfsListInvocationCount()
+        XCTAssertEqual(refreshedAPFSListInvocationCount, 2)
+    }
+
+    func testLiveDiskUtilAPFSProviderKeepsNewestCacheWhenRefreshesOverlap() async throws {
+        let runner = OverlappingDiskUtilCommandRunner()
+        let provider = LiveDiskUtilAPFSProvider(commandRunner: runner.run)
+        let firstRefresh = Task {
+            await provider.refresh()
+        }
+
+        await runner.waitUntilAPFSListInvocationCount(is: 1)
+
+        let secondRefresh = Task {
+            await provider.refresh()
+        }
+
+        await runner.waitUntilAPFSListInvocationCount(is: 2)
+        await runner.resumeAPFSListInvocation(
+            index: 1,
+            data: try Self.makeAPFSListPlist(
+                containerBSDName: "disk21s2",
+                totalBytes: 300,
+                freeBytes: 50,
+                volumeConsumedBytes: 250
+            )
+        )
+        await secondRefresh.value
+
+        let refreshedCapacityInUse = await provider.containerInfo(
+            forContainerBSDName: "disk21s2"
+        )?.capacityInUseBytes
+        XCTAssertEqual(refreshedCapacityInUse, 250)
+
+        await runner.resumeAPFSListInvocation(
+            index: 0,
+            data: try Self.makeAPFSListPlist(
+                containerBSDName: "disk21s2",
+                totalBytes: 100,
+                freeBytes: 40,
+                volumeConsumedBytes: 60
+            )
+        )
+        await firstRefresh.value
+
+        let finalCapacityInUse = await provider.containerInfo(
+            forContainerBSDName: "disk21s2"
+        )?.capacityInUseBytes
+        XCTAssertEqual(finalCapacityInUse, 250)
+    }
+
+    func testSubprocessRunnerDrainsLargeStdoutAndStderrWithoutWaitingForExitFirst() async throws {
+        let processOutput = await SubprocessRunner.run(
+            executable: "/bin/sh",
+            arguments: [
+                "-c",
+                "(/usr/bin/yes x | /usr/bin/head -c 262144) & " +
+                    "(/usr/bin/yes e | /usr/bin/head -c 262144) 1>&2 & wait"
+            ]
+        )
+        let data: Data = try XCTUnwrap(processOutput)
+
+        XCTAssertEqual(data.count, 262_144)
+    }
+
     private func makeDevice(
         id rawID: String,
         volumes: [String],
-        sessionMetrics: DeviceSessionMetrics = .empty(historyLimit: 0)
+        transportName: String = "USB",
+        physicalStoreBSDName: String? = nil,
+        apfsContainerBSDName: String? = nil,
+        sessionMetrics: DeviceSessionMetrics = .empty(historyLimit: 0),
+        apfsContainerDetails: APFSContainerInfo? = nil,
+        physicalPartitions: [PhysicalPartitionInfo] = []
     ) -> ExternalDevice {
         ExternalDevice(
             id: DeviceID(rawValue: rawID),
             displayName: "Device \(rawID)",
-            transportName: "USB",
+            transportName: transportName,
             smartSnapshot: .notRequested,
             sessionMetrics: sessionMetrics,
-            physicalStoreBSDName: rawID,
-            apfsContainerBSDName: nil,
-            volumes: volumes.map(MountedVolume.init(bsdName:))
+            physicalStoreBSDName: physicalStoreBSDName ?? rawID,
+            apfsContainerBSDName: apfsContainerBSDName,
+            volumes: volumes.map(MountedVolume.init(bsdName:)),
+            apfsContainerDetails: apfsContainerDetails,
+            physicalPartitions: physicalPartitions
         )
     }
 
@@ -309,7 +778,28 @@ final class DrivePulseAppControllerTests: XCTestCase {
         _ controller: DrivePulseAppController,
         equals devices: [ExternalDevice]
     ) async {
+        var iterations = 0
         while controller.state.devices != devices {
+            iterations += 1
+            if iterations > 10_000 {
+                XCTFail("waitUntilStateDevices timed out after \(iterations) yields")
+                return
+            }
+            await Task.yield()
+        }
+    }
+
+    private func waitUntilStateDevices(
+        _ controller: DrivePulseAppController,
+        where predicate: @escaping ([ExternalDevice]) -> Bool
+    ) async {
+        var iterations = 0
+        while predicate(controller.state.devices) == false {
+            iterations += 1
+            if iterations > 10_000 {
+                XCTFail("waitUntilStateDevices timed out after \(iterations) yields")
+                return
+            }
             await Task.yield()
         }
     }
@@ -327,6 +817,36 @@ final class DrivePulseAppControllerTests: XCTestCase {
         while controller.state.selectedDevice?.displayName != displayName {
             await Task.yield()
         }
+    }
+
+    private static func makeAPFSListPlist(
+        containerBSDName: String,
+        totalBytes: Int64,
+        freeBytes: Int64,
+        volumeConsumedBytes: Int64
+    ) throws -> Data {
+        let plist: [String: Any] = [
+            "Containers": [
+                [
+                    "ContainerReference": containerBSDName,
+                    "CapacityCeiling": NSNumber(value: totalBytes),
+                    "CapacityFree": NSNumber(value: freeBytes),
+                    "Volumes": [
+                        [
+                            "Name": "Macintosh HD",
+                            "DeviceIdentifier": "\(containerBSDName)s1",
+                            "CapacityConsumed": NSNumber(value: volumeConsumedBytes)
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        return try PropertyListSerialization.data(
+            fromPropertyList: plist,
+            format: .xml,
+            options: 0
+        )
     }
 }
 
@@ -499,6 +1019,346 @@ private actor StubSystemActionPerformer: SystemActionPerforming {
 
     func performedActionsSnapshot() -> [SystemAction] {
         performedActions
+    }
+}
+
+private final class StubSystemProfilerProvider: SystemProfilerProviding, @unchecked Sendable {
+    private let queue = DispatchQueue(label: "StubSystemProfilerProvider")
+    private let bootstrapNVMeInfoByBSDName: [String: NVMeInfo]
+    private let refreshedNVMeInfoByBSDName: [String: NVMeInfo]
+    private let bootstrapPCIInfoBySerialNumber: [String: PCIInfo]
+    private let refreshedPCIInfoBySerialNumber: [String: PCIInfo]
+    private let bootstrapThunderboltInfo: ThunderboltInfo?
+    private let refreshedThunderboltInfo: ThunderboltInfo?
+    private var fetchIfNeededCallCountValue = 0
+    private var refreshCallCountValue = 0
+    private var hasRefreshedValue = false
+
+    var fetchIfNeededCallCount: Int {
+        queue.sync { fetchIfNeededCallCountValue }
+    }
+
+    var refreshCallCount: Int {
+        queue.sync { refreshCallCountValue }
+    }
+
+    init(
+        bootstrapNVMeInfoByBSDName: [String: NVMeInfo] = [:],
+        refreshedNVMeInfoByBSDName: [String: NVMeInfo] = [:],
+        bootstrapPCIInfoBySerialNumber: [String: PCIInfo] = [:],
+        refreshedPCIInfoBySerialNumber: [String: PCIInfo] = [:],
+        bootstrapThunderboltInfo: ThunderboltInfo? = nil,
+        refreshedThunderboltInfo: ThunderboltInfo? = nil
+    ) {
+        self.bootstrapNVMeInfoByBSDName = bootstrapNVMeInfoByBSDName
+        self.refreshedNVMeInfoByBSDName = refreshedNVMeInfoByBSDName
+        self.bootstrapPCIInfoBySerialNumber = bootstrapPCIInfoBySerialNumber
+        self.refreshedPCIInfoBySerialNumber = refreshedPCIInfoBySerialNumber
+        self.bootstrapThunderboltInfo = bootstrapThunderboltInfo
+        self.refreshedThunderboltInfo = refreshedThunderboltInfo
+    }
+
+    func fetchIfNeeded() async {
+        queue.sync {
+            fetchIfNeededCallCountValue += 1
+        }
+    }
+
+    func refresh() async {
+        queue.sync {
+            refreshCallCountValue += 1
+            hasRefreshedValue = true
+        }
+    }
+
+    func nvmeInfo(forBSDName bsdName: String) -> NVMeInfo? {
+        queue.sync {
+            currentNVMeInfoByBSDName()[bsdName]
+        }
+    }
+
+    func pciInfo(forNVMeSerialNumber serial: String?) -> PCIInfo? {
+        queue.sync {
+            guard let serial else { return nil }
+            return currentPCIInfoBySerialNumber()[serial]
+        }
+    }
+
+    func thunderboltInfo() -> ThunderboltInfo? {
+        queue.sync {
+            hasRefreshedValue ? refreshedThunderboltInfo : bootstrapThunderboltInfo
+        }
+    }
+
+    private func currentNVMeInfoByBSDName() -> [String: NVMeInfo] {
+        hasRefreshedValue ? refreshedNVMeInfoByBSDName : bootstrapNVMeInfoByBSDName
+    }
+
+    private func currentPCIInfoBySerialNumber() -> [String: PCIInfo] {
+        hasRefreshedValue ? refreshedPCIInfoBySerialNumber : bootstrapPCIInfoBySerialNumber
+    }
+}
+
+private final class StubDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable {
+    private let queue = DispatchQueue(label: "StubDiskUtilAPFSProvider")
+    private let bootstrapContainerInfoByBSDName: [String: APFSContainerInfo]
+    private let refreshedContainerInfoByBSDName: [String: APFSContainerInfo]
+    private let physicalPartitionsByDiskBSDName: [String: [PhysicalPartitionInfo]]
+    private var refreshCallCountValue = 0
+    private var hasRefreshedValue = false
+
+    var refreshCallCount: Int {
+        queue.sync { refreshCallCountValue }
+    }
+
+    init(
+        bootstrapContainerInfoByBSDName: [String: APFSContainerInfo] = [:],
+        refreshedContainerInfoByBSDName: [String: APFSContainerInfo] = [:],
+        physicalPartitionsByDiskBSDName: [String: [PhysicalPartitionInfo]] = [:]
+    ) {
+        self.bootstrapContainerInfoByBSDName = bootstrapContainerInfoByBSDName
+        self.refreshedContainerInfoByBSDName = refreshedContainerInfoByBSDName
+        self.physicalPartitionsByDiskBSDName = physicalPartitionsByDiskBSDName
+    }
+
+    func refresh() async {
+        queue.sync {
+            refreshCallCountValue += 1
+            hasRefreshedValue = true
+        }
+    }
+
+    func containerInfo(forContainerBSDName bsdName: String) async -> APFSContainerInfo? {
+        queue.sync {
+            let source = hasRefreshedValue ? refreshedContainerInfoByBSDName : bootstrapContainerInfoByBSDName
+            return source[bsdName]
+        }
+    }
+
+    func physicalPartitions(forDiskBSDName bsdName: String) async -> [PhysicalPartitionInfo] {
+        queue.sync {
+            physicalPartitionsByDiskBSDName[bsdName] ?? []
+        }
+    }
+}
+
+private actor StubSystemProfilerDataTypeRunner {
+    private var snapshots: [[String: Any]]
+    private var invocationCountValue = 0
+
+    init(snapshots: [[String: Any]]) {
+        self.snapshots = snapshots
+    }
+
+    func run(_ dataType: String) async -> Data? {
+        invocationCountValue += 1
+        let snapshot = snapshots.removeFirst()
+        return try? JSONSerialization.data(withJSONObject: snapshot)
+    }
+
+    func invocationCount() -> Int {
+        invocationCountValue
+    }
+}
+
+private actor ConcurrentSystemProfilerRunner {
+    private var currentConcurrentInvocations = 0
+    private var maxConcurrentValue = 0
+    private var invocationCountValue = 0
+
+    func run(_ dataType: String) async -> Data? {
+        invocationCountValue += 1
+        currentConcurrentInvocations += 1
+        maxConcurrentValue = max(maxConcurrentValue, currentConcurrentInvocations)
+        defer { currentConcurrentInvocations -= 1 }
+
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        let payload: [String: Any]
+        switch dataType {
+        case "SPNVMeDataType":
+            payload = [
+                "SPNVMeDataType": [
+                    [
+                        "_name": "Controller",
+                        "items": [
+                            [
+                                "bsd_name": "disk21",
+                                "serial_no": "SERIAL"
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        case "SPPCIDataType":
+            payload = [
+                "SPPCIDataType": [
+                    [
+                        "sppci_type": "NVM Controller",
+                        "serial_no": "SERIAL",
+                        "sppci_slot": "Slot"
+                    ]
+                ]
+            ]
+        default:
+            payload = [
+                "SPThunderboltDataType": [
+                    [
+                        "items": [
+                            [
+                                "vendor_name": "Acme",
+                                "device_name": "Enclosure"
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        }
+
+        return try? JSONSerialization.data(withJSONObject: payload)
+    }
+
+    func invocationCount() -> Int {
+        invocationCountValue
+    }
+
+    func maxConcurrentInvocations() -> Int {
+        maxConcurrentValue
+    }
+}
+
+private actor StubDiskUtilCommandRunner {
+    private var outputs: [Data]
+    private var apfsListInvocationCountValue = 0
+
+    init(outputs: [Data]) {
+        self.outputs = outputs
+    }
+
+    func run(_ executable: String, _ arguments: [String]) async -> Data? {
+        if arguments == ["apfs", "list", "-plist"] {
+            apfsListInvocationCountValue += 1
+        }
+
+        guard outputs.isEmpty == false else {
+            return nil
+        }
+
+        return outputs.removeFirst()
+    }
+
+    func apfsListInvocationCount() -> Int {
+        apfsListInvocationCountValue
+    }
+}
+
+private actor OverlappingSystemProfilerRunner {
+    private var invocationCountValue = 0
+    private var continuations: [Int: CheckedContinuation<Data?, Never>] = [:]
+
+    func run(_ dataType: String) async -> Data? {
+        let invocationIndex = invocationCountValue
+        invocationCountValue += 1
+        return await withCheckedContinuation { continuation in
+            continuations[invocationIndex] = continuation
+        }
+    }
+
+    func waitUntilInvocationCount(is expectedCount: Int) async {
+        while invocationCountValue < expectedCount {
+            await Task.yield()
+        }
+    }
+
+    func resumeBatch(
+        invocationIndices: [Int],
+        serialNumber: String,
+        slot: String,
+        thunderboltDeviceName: String
+    ) {
+        for invocationIndex in invocationIndices {
+            let continuation = continuations.removeValue(forKey: invocationIndex)
+            continuation?.resume(returning: payload(for: invocationIndex, serialNumber: serialNumber, slot: slot, thunderboltDeviceName: thunderboltDeviceName))
+        }
+    }
+
+    private func payload(
+        for invocationIndex: Int,
+        serialNumber: String,
+        slot: String,
+        thunderboltDeviceName: String
+    ) -> Data? {
+        let dataTypeIndex = invocationIndex % 3
+        let payload: [String: Any]
+        switch dataTypeIndex {
+        case 0:
+            payload = [
+                "SPThunderboltDataType": [
+                    [
+                        "items": [
+                            [
+                                "vendor_name": "Acme",
+                                "device_name": thunderboltDeviceName
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        case 1:
+            payload = [
+                "SPNVMeDataType": [
+                    [
+                        "_name": "Controller",
+                        "items": [
+                            [
+                                "bsd_name": "disk21",
+                                "serial_no": serialNumber
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        default:
+            payload = [
+                "SPPCIDataType": [
+                    [
+                        "sppci_type": "NVM Controller",
+                        "serial_no": serialNumber,
+                        "sppci_slot": slot
+                    ]
+                ]
+            ]
+        }
+
+        return try? JSONSerialization.data(withJSONObject: payload)
+    }
+}
+
+private actor OverlappingDiskUtilCommandRunner {
+    private var apfsListInvocationCountValue = 0
+    private var continuations: [Int: CheckedContinuation<Data?, Never>] = [:]
+
+    func run(_ executable: String, _ arguments: [String]) async -> Data? {
+        guard arguments == ["apfs", "list", "-plist"] else {
+            return nil
+        }
+
+        let invocationIndex = apfsListInvocationCountValue
+        apfsListInvocationCountValue += 1
+        return await withCheckedContinuation { continuation in
+            continuations[invocationIndex] = continuation
+        }
+    }
+
+    func waitUntilAPFSListInvocationCount(is expectedCount: Int) async {
+        while apfsListInvocationCountValue < expectedCount {
+            await Task.yield()
+        }
+    }
+
+    func resumeAPFSListInvocation(index: Int, data: Data) {
+        let continuation = continuations.removeValue(forKey: index)
+        continuation?.resume(returning: data)
     }
 }
 

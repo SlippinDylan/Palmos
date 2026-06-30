@@ -72,4 +72,87 @@ final class SmartDataParserTests: XCTestCase {
 
         XCTAssertEqual(TemperatureSelection.overviewTemperature(for: smartData), 47)
     }
+
+    func testParserExtractsAllHealthLogFields() throws {
+        let json = """
+        {
+          "smart_status": { "passed": true },
+          "temperature": { "current": 48 },
+          "wctemp": 84,
+          "cctemp": 85,
+          "nvme_smart_health_information_log": {
+            "critical_warning": 0,
+            "temperature": 48,
+            "available_spare": 100,
+            "available_spare_threshold": 10,
+            "percentage_used": 3,
+            "data_units_read": 86014906,
+            "data_units_written": 89929541,
+            "host_reads": 1319573770,
+            "host_writes": 1326508306,
+            "controller_busy_time": 2859,
+            "power_cycles": 1837,
+            "power_on_hours": 3833,
+            "unsafe_shutdowns": 388,
+            "media_errors": 0,
+            "num_err_log_entries": 70088,
+            "warning_temp_time": 0,
+            "critical_comp_time": 0,
+            "temperature_sensors": [48, 50]
+          }
+        }
+        """
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertEqual(result.criticalWarning, 0)
+        XCTAssertEqual(result.availableSpare, 100)
+        XCTAssertEqual(result.availableSpareThreshold, 10)
+        XCTAssertEqual(result.percentageUsed, 3)
+        XCTAssertEqual(result.dataUnitsRead, 86014906)
+        XCTAssertEqual(result.dataUnitsWritten, 89929541)
+        XCTAssertEqual(result.hostReadCommands, 1319573770)
+        XCTAssertEqual(result.hostWriteCommands, 1326508306)
+        XCTAssertEqual(result.controllerBusyTime, 2859)
+        XCTAssertEqual(result.powerCycles, 1837)
+        XCTAssertEqual(result.powerOnHours, 3833)
+        XCTAssertEqual(result.unsafeShutdowns, 388)
+        XCTAssertEqual(result.mediaIntegrityErrors, 0)
+        XCTAssertEqual(result.errorLogEntries, 70088)
+        XCTAssertEqual(result.warningTempTime, 0)
+        XCTAssertEqual(result.criticalTempTime, 0)
+        XCTAssertEqual(result.warningTempThreshold, 84)
+        XCTAssertEqual(result.criticalTempThreshold, 85)
+    }
+
+    func testParserReturnNilForMissingHealthLogFields() throws {
+        let json = """
+        {
+          "smart_status": { "passed": true },
+          "temperature": { "current": 35 }
+        }
+        """
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertNil(result.criticalWarning)
+        XCTAssertNil(result.availableSpare)
+        XCTAssertNil(result.availableSpareThreshold)
+        XCTAssertNil(result.percentageUsed)
+        XCTAssertNil(result.dataUnitsRead)
+        XCTAssertNil(result.dataUnitsWritten)
+        XCTAssertNil(result.hostReadCommands)
+        XCTAssertNil(result.hostWriteCommands)
+        XCTAssertNil(result.controllerBusyTime)
+        XCTAssertNil(result.powerCycles)
+        XCTAssertNil(result.powerOnHours)
+        XCTAssertNil(result.unsafeShutdowns)
+        XCTAssertNil(result.mediaIntegrityErrors)
+        XCTAssertNil(result.errorLogEntries)
+        XCTAssertNil(result.warningTempTime)
+        XCTAssertNil(result.criticalTempTime)
+        XCTAssertNil(result.warningTempThreshold)
+        XCTAssertNil(result.criticalTempThreshold)
+        XCTAssertEqual(result.primaryTemperature, 35)
+    }
 }

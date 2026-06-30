@@ -329,27 +329,12 @@ struct ExternalDeviceDiscoveryMapper {
         return rootRecords.map { rootRecord in
             let descendants = descendantRecords(for: rootRecord.bsdName, recordsByBSD: recordsByBSD)
 
-            let mountedVolumeBSDNames = records
-                .filter {
-                    $0.volumePath != nil &&
-                    $0.isNetworkVolume == false
-                }
-                .filter { volumeRecord in
-                    let resolvedRoot = rootBSDName(
-                        forMountedVolume: volumeRecord,
-                        recordsByBSD: recordsByBSD
-                    )
-                    let match = resolvedRoot == rootRecord.bsdName
-                    discoveryLog.debug(
-                        "  volumeMap: \(volumeRecord.bsdName) whole=\(volumeRecord.wholeDiskBSDName ?? "nil") → root=\(resolvedRoot ?? "nil") match=\(match) (expect \(rootRecord.bsdName))"
-                    )
-                    return match
-                }
-                .map(\.bsdName)
-                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-
             let apfsContainerBSDName = descendants
-                .filter { $0.bsdName != rootRecord.bsdName && $0.isWholeMedia && isAPFSContent($0.mediaContent) }
+                .filter {
+                    $0.bsdName != rootRecord.bsdName &&
+                    $0.isWholeMedia &&
+                    (isAPFSContent($0.mediaContent) || isApfsContainerMedia($0.ioClassPath))
+                }
                 .sorted { lhs, rhs in
                     let leftDepth = ancestorDepth(of: lhs.bsdName, recordsByBSD: recordsByBSD)
                     let rightDepth = ancestorDepth(of: rhs.bsdName, recordsByBSD: recordsByBSD)
@@ -363,6 +348,26 @@ struct ExternalDeviceDiscoveryMapper {
                 .first?
                 .bsdName
 
+            let mountedVolumeBSDNames = records
+                .filter {
+                    $0.volumePath != nil &&
+                    $0.isNetworkVolume == false
+                }
+                .filter { volumeRecord in
+                    let resolvedRoot = rootBSDName(
+                        forMountedVolume: volumeRecord,
+                        recordsByBSD: recordsByBSD
+                    )
+                    let match = resolvedRoot == rootRecord.bsdName ||
+                        (apfsContainerBSDName != nil && volumeRecord.wholeDiskBSDName == apfsContainerBSDName)
+                    discoveryLog.debug(
+                        "  volumeMap: \(volumeRecord.bsdName) whole=\(volumeRecord.wholeDiskBSDName ?? "nil") → root=\(resolvedRoot ?? "nil") match=\(match) (expect \(rootRecord.bsdName))"
+                    )
+                    return match
+                }
+                .map(\.bsdName)
+                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+
             var device = reducer.reduce(
                 physicalBSDName: rootRecord.bsdName,
                 containerBSDName: apfsContainerBSDName,
@@ -371,6 +376,21 @@ struct ExternalDeviceDiscoveryMapper {
             device.displayName = displayName(for: rootRecord)
             device.transportName = transportName(for: rootRecord)
             device.capacityBytes = rootRecord.capacityBytes
+            device.physicalPartitions = records
+                .filter {
+                    $0.wholeDiskBSDName == rootRecord.bsdName &&
+                    !$0.isWholeMedia &&
+                    $0.bsdName != rootRecord.bsdName
+                }
+                .map {
+                    PhysicalPartitionInfo(
+                        bsdName: $0.bsdName,
+                        partitionType: $0.mediaContent,
+                        name: $0.mediaName,
+                        sizeBytes: $0.capacityBytes
+                    )
+                }
+                .sorted { $0.bsdName.localizedStandardCompare($1.bsdName) == .orderedAscending }
             return device
         }
     }
@@ -476,7 +496,8 @@ struct ExternalDeviceDiscoveryMapper {
             .map { $0.lowercased() }
             .joined(separator: " ")
 
-        if normalizedPath.contains("thunderbolt") {
+        if normalizedPath.contains("thunderbolt") ||
+            record.ioClassPath.contains(where: { $0.lowercased().hasPrefix("iothunderbolt") }) {
             return "Thunderbolt"
         }
 
@@ -507,6 +528,10 @@ struct ExternalDeviceDiscoveryMapper {
         normalizedString(mediaContent)?
             .lowercased()
             .contains("apfs") == true
+    }
+
+    private func isApfsContainerMedia(_ ioClassPath: [String]) -> Bool {
+        ioClassPath.contains("AppleAPFSMedia")
     }
 
     private func matchesSDTransport(in normalizedPath: String) -> Bool {
