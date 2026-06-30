@@ -4,11 +4,10 @@ import DrivePulseCore
 
 struct DeviceIdentityCardView: View {
     let device: ExternalDevice?
-    @State private var isExpanded = true
 
     var body: some View {
-        DisclosureGroup("Device Identity", isExpanded: $isExpanded) {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+        PanelSection("Device Identity") {
+            VStack(alignment: .leading, spacing: 6) {
                 row("Physical Disk", device?.physicalStoreBSDName ?? "—")
                 row("APFS Container", device?.apfsContainerBSDName ?? "—")
                 row("APFS Volume", device?.volumes.first?.bsdName ?? "—")
@@ -21,17 +20,14 @@ struct DeviceIdentityCardView: View {
                 row("PCI Vendor ID", device?.pciInfo?.vendorID ?? "—")
                 row("PCI Device ID", device?.pciInfo?.deviceID ?? "—")
             }
-            .padding(.top, 6)
         }
-        .padding(10)
-        .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
     private func row(_ label: LocalizedStringKey, _ value: String) -> some View {
-        GridRow {
+        VStack(alignment: .leading, spacing: 1) {
             Text(label)
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.system(size: 12))
