@@ -163,8 +163,8 @@ final class DrivePulseAppController: ObservableObject {
         }
     }
 
-    var selectedDeviceActions: [SystemAction] {
-        SystemAction.actions(for: state.selectedDevice)
+    var selectedFooterActions: [SystemAction] {
+        SystemAction.footerActions(for: state.selectedDevice)
     }
 
     func perform(_ action: SystemAction) {

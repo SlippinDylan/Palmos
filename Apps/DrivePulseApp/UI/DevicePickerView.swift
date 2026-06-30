@@ -10,7 +10,8 @@ struct DevicePickerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Device")
-                .font(.headline)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
 
             StretchingPopUpButton(
                 items: devices.map { .init(id: $0.id, title: $0.displayName) },
@@ -71,6 +72,7 @@ private struct StretchingPopUpButton: NSViewRepresentable {
             self.binding = binding
         }
 
+        @MainActor
         @objc func selectionChanged(_ button: NSPopUpButton) {
             let index = button.indexOfSelectedItem
             guard index >= 0, index < items.count else { return }

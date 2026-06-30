@@ -7,47 +7,61 @@ struct MenuBarRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 12) {
-                    DevicePickerView(
-                        devices: controller.state.devices,
-                        selectedDeviceID: Binding(
-                            get: { controller.state.selectedDeviceID },
-                            set: { controller.selectDevice($0) }
+            MenuBarHeaderView()
+
+            Divider()
+
+            DevicePickerView(
+                devices: controller.state.devices,
+                selectedDeviceID: Binding(
+                    get: { controller.state.selectedDeviceID },
+                    set: { controller.selectDevice($0) }
+                )
+            )
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.regularMaterial)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 12) {
+                OverviewCardView(
+                    device: controller.state.selectedDevice,
+                    smartDetails: controller.state.selectedSMARTDetails,
+                    settings: controller.settings
+                )
+                ThroughputCardView(device: controller.state.selectedDevice)
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HealthSMARTCardView(
+                            smartDetails: controller.state.selectedSMARTDetails,
+                            onInstallHelper: { controller.performSMARTPrimaryAction() },
+                            onRefresh: { controller.refreshSelectedDeviceSMART() }
                         )
-                    )
-                    OverviewCardView(
-                        device: controller.state.selectedDevice,
-                        smartDetails: controller.state.selectedSMARTDetails,
-                        settings: controller.settings
-                    )
-                    ThroughputCardView(device: controller.state.selectedDevice)
-                    HealthSMARTCardView(
-                        smartDetails: controller.state.selectedSMARTDetails,
-                        onInstallHelper: { controller.performSMARTPrimaryAction() },
-                        onRefresh: { controller.refreshSelectedDeviceSMART() }
-                    )
-                    TemperatureCardView(
-                        smartDetails: controller.state.selectedSMARTDetails,
-                        settings: controller.settings
-                    )
-                    VolumesPartitionsCardView(device: controller.state.selectedDevice)
-                    ConnectionNVMeCardView(device: controller.state.selectedDevice)
-                    DeviceIdentityCardView(device: controller.state.selectedDevice)
+                        TemperatureCardView(
+                            smartDetails: controller.state.selectedSMARTDetails,
+                            settings: controller.settings
+                        )
+                        VolumesPartitionsCardView(device: controller.state.selectedDevice)
+                        ConnectionNVMeCardView(device: controller.state.selectedDevice)
+                        DeviceIdentityCardView(device: controller.state.selectedDevice)
+                    }
                 }
-                .padding(14)
             }
-            .frame(height: (NSScreen.main?.frame.height ?? 900) * 3 / 5)
+            .padding(14)
+            .frame(height: contentAreaHeight)
 
             Divider()
 
             ActionBarView(
-                actions: controller.selectedDeviceActions,
+                actions: controller.selectedFooterActions,
                 isPerformingAction: controller.isPerformingSystemAction,
                 message: controller.actionFeedback,
                 onAction: controller.perform
             )
             .padding(14)
+            .background(.regularMaterial)
         }
         .frame(width: 360)
         .containerBackground(.regularMaterial, for: .window)
@@ -79,6 +93,10 @@ struct MenuBarRootView: View {
         }
     }
 
+    private var contentAreaHeight: CGFloat {
+        (NSScreen.main?.frame.height ?? 900) * 3 / 5
+    }
+
     private var installPromptBinding: Binding<Bool> {
         Binding(
             get: { controller.state.presentation.showHelperInstallPrompt },
@@ -99,5 +117,41 @@ struct MenuBarRootView: View {
                 }
             }
         )
+    }
+}
+
+private struct MenuBarHeaderView: View {
+    private var visualStyle: MenuBarVisualStyle {
+        .current()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("DrivePulse")
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            PanelControlCluster(usesLiquidGlass: visualStyle.usesLiquidGlass) {
+                SettingsLink {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 28, height: 28)
+                        .modifier(
+                            PanelIconControlModifier(
+                                usesLiquidGlass: visualStyle.usesLiquidGlass,
+                                isEnabled: true,
+                                shape: Circle()
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Settings")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.regularMaterial)
     }
 }

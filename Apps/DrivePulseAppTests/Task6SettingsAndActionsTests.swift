@@ -56,6 +56,76 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertEqual(ejectAction.intent, .ejectPhysicalDevice(bsdName: "disk42"))
     }
 
+    func testFooterActionsExcludeSettingsAndKeepQuit() {
+        let device = ExternalDevice(
+            id: DeviceID(rawValue: "selected-device"),
+            displayName: "Sample Drive",
+            transportName: "USB-C",
+            smartSnapshot: .notRequested,
+            sessionMetrics: .empty(historyLimit: 0),
+            physicalStoreBSDName: "disk42",
+            apfsContainerBSDName: "disk42s2",
+            volumes: [MountedVolume(bsdName: "disk42s2")]
+        )
+
+        let actions = SystemAction.footerActions(for: device)
+
+        XCTAssertFalse(actions.contains(where: { $0.kind == .settings }))
+        XCTAssertEqual(actions.last?.kind, .quit)
+    }
+
+    func testFooterActionsUseCompactTitles() {
+        let device = ExternalDevice(
+            id: DeviceID(rawValue: "selected-device"),
+            displayName: "Sample Drive",
+            transportName: "USB-C",
+            smartSnapshot: .notRequested,
+            sessionMetrics: .empty(historyLimit: 0),
+            physicalStoreBSDName: "disk42",
+            apfsContainerBSDName: "disk42s2",
+            volumes: [MountedVolume(bsdName: "disk42s2")]
+        )
+
+        let actions = SystemAction.footerActions(for: device)
+        let titles = actions.map(\.footerTitle)
+
+        XCTAssertEqual(
+            titles,
+            [
+                String(localized: "Finder"),
+                String(localized: "Eject"),
+                String(localized: "Disk Utility"),
+                String(localized: "Quit")
+            ]
+        )
+        XCTAssertNotEqual(actions[0].footerTitle, actions[0].title)
+        XCTAssertNotEqual(actions[1].footerTitle, actions[1].title)
+    }
+
+    func testMenuBarVisualStyleUsesLiquidGlassOnlyOnMacOS26AndNewer() {
+        XCTAssertFalse(
+            MenuBarVisualStyle.supportsLiquidGlass(
+                OperatingSystemVersion(majorVersion: 25, minorVersion: 6, patchVersion: 0)
+            )
+        )
+        XCTAssertTrue(
+            MenuBarVisualStyle.supportsLiquidGlass(
+                OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
+            )
+        )
+    }
+
+    func testFooterActionLayoutUsesCompactStackedMetricsForFourActions() {
+        let metrics = FooterActionLayoutMetrics.forActionCount(4)
+
+        XCTAssertEqual(metrics.labelLayout, .stacked)
+        XCTAssertEqual(metrics.controlSpacing, 6)
+        XCTAssertEqual(metrics.horizontalPadding, 8)
+        XCTAssertEqual(metrics.verticalPadding, 8)
+        XCTAssertEqual(metrics.titleFontSize, 10)
+        XCTAssertEqual(metrics.minHeight, 46)
+    }
+
     func testRevealActionUsesNativeVolumeLookup() async throws {
         let diskArbitration = StubDiskArbitrationClient(volumeURLs: [
             "disk42s1": URL(fileURLWithPath: "/Volumes/Field")

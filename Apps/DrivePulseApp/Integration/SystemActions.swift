@@ -41,6 +41,21 @@ struct SystemAction: Identifiable, Equatable {
         }
     }
 
+    var footerTitle: String {
+        switch kind {
+        case .openInFinder:
+            return String(localized: "Finder")
+        case .eject:
+            return String(localized: "Eject")
+        case .openDiskUtility:
+            return String(localized: "Disk Utility")
+        case .settings:
+            return String(localized: "Settings")
+        case .quit:
+            return String(localized: "Quit")
+        }
+    }
+
     var systemImageName: String {
         switch kind {
         case .openInFinder:
@@ -87,6 +102,14 @@ struct SystemAction: Identifiable, Equatable {
         actions.append(Self(kind: .settings, intent: .openSettings))
         actions.append(Self(kind: .quit, intent: .quit))
         return actions
+    }
+
+    static func footerActions(for device: ExternalDevice?) -> [Self] {
+        guard let device else {
+            return [Self(kind: .quit, intent: .quit)]
+        }
+
+        return actions(for: device).filter { $0.kind != .settings }
     }
 }
 

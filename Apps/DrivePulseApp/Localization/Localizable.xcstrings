@@ -657,7 +657,6 @@
       }
     },
     "Eject" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -807,6 +806,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "FileVault"
+          }
+        }
+      }
+    },
+    "Finder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finder"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finder"
           }
         }
       }
