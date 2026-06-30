@@ -62,7 +62,10 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
         XCTAssertEqual(devices[0].id, DeviceID(rawValue: "disk21"))
         XCTAssertEqual(devices[0].displayName, "Acme Portable SSD")
         XCTAssertEqual(devices[0].transportName, "USB")
-        XCTAssertEqual(devices[0].volumes, [MountedVolume(bsdName: "disk21s1")])
+        XCTAssertEqual(
+            devices[0].volumes,
+            [MountedVolume(bsdName: "disk21s1", mountPoint: "/Volumes/Field SSD")]
+        )
     }
 
     func testMapKeepsExternalDeviceVisibleWithoutMountedVolumes() {
@@ -149,7 +152,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
         let devices = ExternalDeviceDiscoveryMapper().map(records)
 
         XCTAssertEqual(devices.first(where: { $0.id == DeviceID(rawValue: "disk21") })?.volumes, [
-            MountedVolume(bsdName: "disk999s1")
+            MountedVolume(bsdName: "disk999s1", mountPoint: "/Volumes/Capture")
         ])
         XCTAssertEqual(
             devices.first(where: { $0.id == DeviceID(rawValue: "disk50") })?.volumes,
@@ -183,7 +186,10 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
         XCTAssertEqual(devices.count, 1)
         XCTAssertEqual(devices[0].id, DeviceID(rawValue: "disk3"))
         XCTAssertEqual(devices[0].transportName, "SD")
-        XCTAssertEqual(devices[0].volumes, [MountedVolume(bsdName: "disk3")])
+        XCTAssertEqual(
+            devices[0].volumes,
+            [MountedVolume(bsdName: "disk3", mountPoint: "/Volumes/CAMERA_CARD")]
+        )
     }
 
     func testMapCapturesAPFSContainerBSDName() {
@@ -242,6 +248,9 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
 
         XCTAssertEqual(devices.count, 1)
         XCTAssertEqual(devices[0].apfsContainerBSDName, "disk8")
-        XCTAssertEqual(devices[0].volumes, [MountedVolume(bsdName: "disk8s1")])
+        XCTAssertEqual(
+            devices[0].volumes,
+            [MountedVolume(bsdName: "disk8s1", mountPoint: "/Volumes/Backup")]
+        )
     }
 }

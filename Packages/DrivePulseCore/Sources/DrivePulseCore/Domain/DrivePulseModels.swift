@@ -156,9 +156,11 @@ public enum XPCCompatibilityPolicy {
 
 public struct MountedVolume: Equatable, Sendable {
     public var bsdName: String
+    public var mountPoint: String?
 
-    public init(bsdName: String) {
+    public init(bsdName: String, mountPoint: String? = nil) {
         self.bsdName = bsdName
+        self.mountPoint = mountPoint
     }
 }
 

@@ -181,7 +181,8 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
             role = nil
         }
 
-        let capacityConsumed = (volume["CapacityConsumed"] as? NSNumber)?.int64Value
+        let capacityConsumed = ((volume["CapacityConsumed"] as? NSNumber)?.int64Value)
+            ?? ((volume["CapacityInUse"] as? NSNumber)?.int64Value)
         let fileVaultEnabled = volume["FileVault"] as? Bool
 
         let sealed: Bool?
@@ -195,7 +196,7 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
 
         let writable = volume["Writable"] as? Bool
         let ignoreOwnership = volume["IgnoreOwnership"] as? Bool
-        let volumeUUID = volume["VolumeUUID"] as? String
+        let volumeUUID = (volume["VolumeUUID"] as? String) ?? (volume["APFSVolumeUUID"] as? String)
 
         return APFSVolumeDetails(
             volumeName: volumeName,

@@ -11,16 +11,19 @@ struct OverviewCardView: View {
         PanelSection("Overview") {
             if let device {
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                    InfoRow("Model", value: modelString(device))
-                    InfoRow("Connection", value: connectionString(device))
-                    InfoRow("Total Capacity", value: totalCapacityString(device))
-                    InfoRow("Used", value: usedSpaceString(device))
-                    InfoRow("Available", value: availableSpaceString(device))
-                    InfoRow("File System", value: device.apfsContainerDetails != nil ? "APFS" : "—")
-                    InfoRow("SMART Status", value: smartStatusString)
-                    InfoRow("Wear Level", value: wearLevelString)
-                    InfoRow("Temperature", value: overviewTemperatureString)
-                    InfoRow("Mounted", value: device.volumes.isEmpty ? "Not Mounted" : "Mounted")
+                    PanelKeyValueRow("Model", value: modelString(device))
+                    PanelKeyValueRow("Connection", value: connectionString(device))
+                    PanelKeyValueRow("Total Capacity", value: totalCapacityString(device))
+                    PanelKeyValueRow("Used", value: usedSpaceString(device))
+                    PanelKeyValueRow("Available", value: availableSpaceString(device))
+                    PanelKeyValueRow(
+                        "File System",
+                        value: device.apfsContainerBSDName != nil ? "APFS" : PanelDisplayValue.missing
+                    )
+                    PanelKeyValueRow("SMART Status", value: smartStatusString)
+                    PanelKeyValueRow("Wear Level", value: wearLevelString)
+                    PanelKeyValueRow("Temperature", value: overviewTemperatureString)
+                    PanelKeyValueRow("Mounted", value: device.volumes.isEmpty ? "Not Mounted" : "Mounted")
                 }
             } else {
                 Text("No device selected")
@@ -35,18 +38,18 @@ struct OverviewCardView: View {
     }
 
     private var smartStatusString: String {
-        guard let snapshot = smartDetails?.snapshot else { return "—" }
-        if case .available(let data) = snapshot { return data.overallHealth ?? "—" }
-        return "—"
+        guard let snapshot = smartDetails?.snapshot else { return PanelDisplayValue.missing }
+        if case .available(let data) = snapshot { return PanelDisplayValue.string(data.overallHealth) }
+        return PanelDisplayValue.missing
     }
 
     private var wearLevelString: String {
-        guard let pct = smartData?.percentageUsed else { return "—" }
+        guard let pct = smartData?.percentageUsed else { return PanelDisplayValue.missing }
         return "\(pct)%"
     }
 
     private var overviewTemperatureString: String {
-        guard let temp = smartData?.primaryTemperature else { return "—" }
+        guard let temp = smartData?.primaryTemperature else { return PanelDisplayValue.missing }
         return settings.temperatureUnit.format(temp)
     }
 
@@ -64,7 +67,7 @@ struct OverviewCardView: View {
 
     private func totalCapacityString(_ device: ExternalDevice) -> String {
         let bytes = device.apfsContainerDetails?.totalCapacityBytes ?? device.capacityBytes
-        guard let bytes else { return "—" }
+        guard let bytes else { return PanelDisplayValue.missing }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
@@ -73,7 +76,7 @@ struct OverviewCardView: View {
             let total = device.apfsContainerDetails?.totalCapacityBytes,
             let used = device.apfsContainerDetails?.capacityInUseBytes,
             total > 0
-        else { return "—" }
+        else { return PanelDisplayValue.missing }
         let pct = Double(used) / Double(total) * 100
         let formatted = ByteCountFormatter.string(fromByteCount: used, countStyle: .file)
         return "\(formatted) (\(String(format: "%.1f", pct))%)"
@@ -84,28 +87,9 @@ struct OverviewCardView: View {
             let total = device.apfsContainerDetails?.totalCapacityBytes,
             let free = device.apfsContainerDetails?.capacityNotAllocatedBytes,
             total > 0
-        else { return "—" }
+        else { return PanelDisplayValue.missing }
         let pct = Double(free) / Double(total) * 100
         let formatted = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
         return "\(formatted) (\(String(format: "%.1f", pct))%)"
-    }
-}
-
-private struct InfoRow: View {
-    let label: LocalizedStringKey
-    let value: String
-
-    init(_ label: LocalizedStringKey, value: String) {
-        self.label = label
-        self.value = value
-    }
-
-    var body: some View {
-        GridRow {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
     }
 }

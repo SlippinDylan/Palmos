@@ -34,22 +34,22 @@ struct TemperatureCardView: View {
     }
 
     private var warningThresholdString: String {
-        guard let value = smartData?.warningTempThreshold else { return "—" }
+        guard let value = smartData?.warningTempThreshold else { return PanelDisplayValue.missing }
         return settings.temperatureUnit.format(value)
     }
 
     private var criticalThresholdString: String {
-        guard let value = smartData?.criticalTempThreshold else { return "—" }
+        guard let value = smartData?.criticalTempThreshold else { return PanelDisplayValue.missing }
         return settings.temperatureUnit.format(value)
     }
 
     private var warningTempTimeString: String {
-        guard let value = smartData?.warningTempTime else { return "—" }
+        guard let value = smartData?.warningTempTime else { return PanelDisplayValue.missing }
         return "\(value) min"
     }
 
     private var criticalTempTimeString: String {
-        guard let value = smartData?.criticalTempTime else { return "—" }
+        guard let value = smartData?.criticalTempTime else { return PanelDisplayValue.missing }
         return "\(value) min"
     }
 }
@@ -74,7 +74,7 @@ private struct TemperatureRow: View {
                     .foregroundStyle(temperatureColor(celsius))
                     .frame(maxWidth: .infinity, alignment: .trailing)
             } else {
-                Text("—")
+                Text(PanelDisplayValue.missing)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }

@@ -184,10 +184,14 @@ final class DrivePulseAppControllerTests: XCTestCase {
 
         await discovery.resolveNextDiscovery()
         await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+        await waitUntil {
+            systemProfilerProvider.fetchIfNeededCallCount == 1 &&
+            diskUtilProvider.refreshCallCount == 1
+        }
 
         XCTAssertEqual(systemProfilerProvider.fetchIfNeededCallCount, 1)
         XCTAssertEqual(systemProfilerProvider.refreshCallCount, 0)
-        XCTAssertEqual(diskUtilProvider.refreshCallCount, 0)
+        XCTAssertEqual(diskUtilProvider.refreshCallCount, 1)
 
         discovery.emit([observedDevice])
 
@@ -210,7 +214,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(appliedDevice.id, observedDevice.id)
         XCTAssertEqual(systemProfilerProvider.fetchIfNeededCallCount, 1)
         XCTAssertEqual(systemProfilerProvider.refreshCallCount, 1)
-        XCTAssertEqual(diskUtilProvider.refreshCallCount, 1)
+        XCTAssertEqual(diskUtilProvider.refreshCallCount, 2)
     }
 
     func testControllerDoesNotAssignSharedThunderboltInfoToMultipleThunderboltDevices() async {
@@ -552,7 +556,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let provider = LiveSystemProfilerProvider(dataTypeRunner: runner.run)
 
         await provider.fetchIfNeeded()
-        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21")?.serialNumber, "SERIAL-A")
+        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21", modelName: nil)?.serialNumber, "SERIAL-A")
         XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-A")?.slot, "Slot-A")
         XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "Enclosure A")
 
@@ -561,7 +565,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(firstInvocationCount, 3)
 
         await provider.refresh()
-        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21")?.serialNumber, "SERIAL-B")
+        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21", modelName: nil)?.serialNumber, "SERIAL-B")
         XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-B")?.slot, "Slot-B")
         XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "Enclosure B")
         let secondInvocationCount = await runner.invocationCount()
@@ -602,7 +606,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         )
         await secondRefresh.value
 
-        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21")?.serialNumber, "SERIAL-NEW")
+        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21", modelName: nil)?.serialNumber, "SERIAL-NEW")
         XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-NEW")?.slot, "Slot-New")
         XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "Enclosure New")
 
@@ -614,7 +618,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         )
         await firstRefresh.value
 
-        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21")?.serialNumber, "SERIAL-NEW")
+        XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21", modelName: nil)?.serialNumber, "SERIAL-NEW")
         XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-NEW")?.slot, "Slot-New")
         XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "Enclosure New")
     }
@@ -651,6 +655,85 @@ final class DrivePulseAppControllerTests: XCTestCase {
         await provider.refresh()
 
         XCTAssertNil(provider.thunderboltInfo())
+    }
+
+    func testLiveSystemProfilerProviderParsesCurrentSystemProfilerKeys() async {
+        let runner = StubSystemProfilerDataTypeRunner(
+            snapshots: [
+                [
+                    "SPThunderboltDataType": [
+                        [
+                            "_name": "thunderboltusb4_bus_0",
+                            "_items": [
+                                [
+                                    "_name": "TB406Pro",
+                                    "device_name_key": "TB406Pro",
+                                    "vendor_name_key": "ACASIS",
+                                    "mode_key": "thunderbolt_three",
+                                    "switch_uid_key": "0x8086DA2A0D19ED00",
+                                    "switch_version_key": "67.1",
+                                    "receptacle_upstream_ambiguous_tag": [
+                                        "current_speed_key": "40 Gb/s",
+                                        "lc_version_key": "1.45.0",
+                                        "receptacle_status_key": "receptacle_connected"
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    "SPNVMeDataType": [
+                        [
+                            "_name": "Generic SSD Controller",
+                            "_items": [
+                                [
+                                    "device_model": "SAMSUNG MZVLB1T0HBLR-000L2",
+                                    "device_serial": "SERIAL-B",
+                                    "device_revision": "FW-B",
+                                    "spnvme_linkspeed": "8.0 GT/s",
+                                    "spnvme_linkwidth": "x4",
+                                    "spnvme_trim_support": "Yes"
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    "SPPCIDataType": [
+                        [
+                            "_name": "pci144d,a808",
+                            "sppci_device_type": "sppci_nvme",
+                            "sppci_serialnumber": "SERIAL-B",
+                            "sppci_slot_name": "Thunderbolt@67,0,0",
+                            "sppci_vendor-id": "0x144d",
+                            "sppci_device-id": "0xa808",
+                            "sppci_link-status": "Link up",
+                            "sppci_link-width": "x4",
+                            "sppci_link-speed": "8.0 GT/s",
+                            "sppci_tunnel-compatible": "Yes"
+                        ]
+                    ]
+                ]
+            ]
+        )
+        let provider = LiveSystemProfilerProvider(dataTypeRunner: runner.run)
+
+        await provider.refresh()
+
+        let nvme = provider.nvmeInfo(
+            forBSDName: "disk21",
+            modelName: "SAMSUNG MZVLB1T0HBLR-000L2"
+        )
+        XCTAssertEqual(nvme?.serialNumber, "SERIAL-B")
+        XCTAssertEqual(nvme?.firmwareVersion, "FW-B")
+        XCTAssertEqual(nvme?.linkWidth, "x4")
+        XCTAssertEqual(nvme?.linkSpeed, "8.0 GT/s")
+        XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-B")?.slot, "Thunderbolt@67,0,0")
+        XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-B")?.vendorID, "0x144d")
+        XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "TB406Pro")
+        XCTAssertEqual(provider.thunderboltInfo()?.vendorName, "ACASIS")
+        XCTAssertEqual(provider.thunderboltInfo()?.linkSpeed, "40 Gb/s")
     }
 
     func testLiveDiskUtilAPFSProviderCachesAPFSListUntilRefresh() async throws {
@@ -736,6 +819,68 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(finalCapacityInUse, 250)
     }
 
+    func testLiveDiskUtilAPFSProviderParsesCurrentAPFSVolumeKeys() async throws {
+        let runner = StubDiskUtilCommandRunner(
+            outputs: [
+                try Self.makeCurrentAPFSListPlist(
+                    containerBSDName: "disk21s2",
+                    totalBytes: 100,
+                    freeBytes: 40,
+                    volumeCapacityInUseBytes: 60,
+                    volumeUUID: "volume-uuid"
+                )
+            ]
+        )
+        let provider = LiveDiskUtilAPFSProvider(commandRunner: runner.run)
+
+        let container = await provider.containerInfo(forContainerBSDName: "disk21s2")
+
+        XCTAssertEqual(container?.capacityInUseBytes, 60)
+        XCTAssertEqual(container?.capacityNotAllocatedBytes, 40)
+        XCTAssertEqual(container?.volumes.first?.capacityConsumedBytes, 60)
+        XCTAssertEqual(container?.volumes.first?.volumeUUID, "volume-uuid")
+    }
+
+    func testControllerBootstrapsAPFSDetailsWithoutWaitingForSystemProfiler() async throws {
+        let bootstrapDevice = makeDevice(
+            id: "disk21",
+            volumes: ["disk21s2s1"],
+            physicalStoreBSDName: "disk21",
+            apfsContainerBSDName: "disk21s2"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
+        let systemProfilerProvider = DelayedSystemProfilerProvider(fetchDelayNanoseconds: 1_000_000_000)
+        let diskUtilProvider = StubDiskUtilAPFSProvider(
+            bootstrapContainerInfoByBSDName: [
+                "disk21s2": APFSContainerInfo(
+                    bsdName: "disk21s2",
+                    totalCapacityBytes: 2_000,
+                    capacityInUseBytes: 1_500,
+                    capacityNotAllocatedBytes: 500,
+                    volumes: [
+                        APFSVolumeDetails(
+                            volumeName: "Observed",
+                            bsdName: "disk21s2s1",
+                            capacityConsumedBytes: 1_500,
+                            volumeUUID: "volume-uuid"
+                        )
+                    ]
+                )
+            ]
+        )
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: systemProfilerProvider,
+            diskUtilAPFSProvider: diskUtilProvider
+        )
+
+        await discovery.resolveNextDiscovery()
+        try? await Task.sleep(nanoseconds: 150_000_000)
+
+        let selectedDevice = try XCTUnwrap(controller.state.selectedDevice)
+        XCTAssertEqual(selectedDevice.apfsContainerDetails?.capacityInUseBytes, 1_500)
+    }
+
     func testSubprocessRunnerDrainsLargeStdoutAndStderrWithoutWaitingForExitFirst() async throws {
         let processOutput = await SubprocessRunner.run(
             executable: "/bin/sh",
@@ -756,6 +901,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         transportName: String = "USB",
         physicalStoreBSDName: String? = nil,
         apfsContainerBSDName: String? = nil,
+        smartSnapshot: SmartSnapshot = .helperNotInstalled,
         sessionMetrics: DeviceSessionMetrics = .empty(historyLimit: 0),
         apfsContainerDetails: APFSContainerInfo? = nil,
         physicalPartitions: [PhysicalPartitionInfo] = []
@@ -764,11 +910,11 @@ final class DrivePulseAppControllerTests: XCTestCase {
             id: DeviceID(rawValue: rawID),
             displayName: "Device \(rawID)",
             transportName: transportName,
-            smartSnapshot: .notRequested,
+            smartSnapshot: smartSnapshot,
             sessionMetrics: sessionMetrics,
             physicalStoreBSDName: physicalStoreBSDName ?? rawID,
             apfsContainerBSDName: apfsContainerBSDName,
-            volumes: volumes.map(MountedVolume.init(bsdName:)),
+            volumes: volumes.map { MountedVolume(bsdName: $0) },
             apfsContainerDetails: apfsContainerDetails,
             physicalPartitions: physicalPartitions
         )
@@ -819,6 +965,18 @@ final class DrivePulseAppControllerTests: XCTestCase {
         }
     }
 
+    private func waitUntil(_ predicate: @escaping () -> Bool) async {
+        var iterations = 0
+        while predicate() == false {
+            iterations += 1
+            if iterations > 10_000 {
+                XCTFail("waitUntil timed out after \(iterations) yields")
+                return
+            }
+            await Task.yield()
+        }
+    }
+
     private static func makeAPFSListPlist(
         containerBSDName: String,
         totalBytes: Int64,
@@ -836,6 +994,45 @@ final class DrivePulseAppControllerTests: XCTestCase {
                             "Name": "Macintosh HD",
                             "DeviceIdentifier": "\(containerBSDName)s1",
                             "CapacityConsumed": NSNumber(value: volumeConsumedBytes)
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        return try PropertyListSerialization.data(
+            fromPropertyList: plist,
+            format: .xml,
+            options: 0
+        )
+    }
+
+    private static func makeCurrentAPFSListPlist(
+        containerBSDName: String,
+        totalBytes: Int64,
+        freeBytes: Int64,
+        volumeCapacityInUseBytes: Int64,
+        volumeUUID: String
+    ) throws -> Data {
+        let plist: [String: Any] = [
+            "Containers": [
+                [
+                    "ContainerReference": containerBSDName,
+                    "APFSContainerUUID": "container-uuid",
+                    "CapacityCeiling": NSNumber(value: totalBytes),
+                    "CapacityFree": NSNumber(value: freeBytes),
+                    "DesignatedPhysicalStore": "disk21s1",
+                    "PhysicalStores": [
+                        [
+                            "DiskUUID": "physical-store-uuid"
+                        ]
+                    ],
+                    "Volumes": [
+                        [
+                            "Name": "Macintosh HD",
+                            "DeviceIdentifier": "\(containerBSDName)s1",
+                            "CapacityInUse": NSNumber(value: volumeCapacityInUseBytes),
+                            "APFSVolumeUUID": volumeUUID
                         ]
                     ]
                 ]
@@ -1071,7 +1268,7 @@ private final class StubSystemProfilerProvider: SystemProfilerProviding, @unchec
         }
     }
 
-    func nvmeInfo(forBSDName bsdName: String) -> NVMeInfo? {
+    func nvmeInfo(forBSDName bsdName: String, modelName: String?) -> NVMeInfo? {
         queue.sync {
             currentNVMeInfoByBSDName()[bsdName]
         }
@@ -1096,6 +1293,40 @@ private final class StubSystemProfilerProvider: SystemProfilerProviding, @unchec
 
     private func currentPCIInfoBySerialNumber() -> [String: PCIInfo] {
         hasRefreshedValue ? refreshedPCIInfoBySerialNumber : bootstrapPCIInfoBySerialNumber
+    }
+}
+
+private final class DelayedSystemProfilerProvider: SystemProfilerProviding, @unchecked Sendable {
+    private let fetchDelayNanoseconds: UInt64
+    private let refreshDelayNanoseconds: UInt64
+
+    init(fetchDelayNanoseconds: UInt64 = 0, refreshDelayNanoseconds: UInt64 = 0) {
+        self.fetchDelayNanoseconds = fetchDelayNanoseconds
+        self.refreshDelayNanoseconds = refreshDelayNanoseconds
+    }
+
+    func fetchIfNeeded() async {
+        if fetchDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: fetchDelayNanoseconds)
+        }
+    }
+
+    func refresh() async {
+        if refreshDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: refreshDelayNanoseconds)
+        }
+    }
+
+    func nvmeInfo(forBSDName bsdName: String, modelName: String?) -> NVMeInfo? {
+        nil
+    }
+
+    func pciInfo(forNVMeSerialNumber serial: String?) -> PCIInfo? {
+        nil
+    }
+
+    func thunderboltInfo() -> ThunderboltInfo? {
+        nil
     }
 }
 
@@ -1130,7 +1361,12 @@ private final class StubDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked 
 
     func containerInfo(forContainerBSDName bsdName: String) async -> APFSContainerInfo? {
         queue.sync {
-            let source = hasRefreshedValue ? refreshedContainerInfoByBSDName : bootstrapContainerInfoByBSDName
+            let source: [String: APFSContainerInfo]
+            if hasRefreshedValue, refreshedContainerInfoByBSDName.isEmpty == false {
+                source = refreshedContainerInfoByBSDName
+            } else {
+                source = bootstrapContainerInfoByBSDName
+            }
             return source[bsdName]
         }
     }

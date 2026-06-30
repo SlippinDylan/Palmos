@@ -348,7 +348,7 @@ struct ExternalDeviceDiscoveryMapper {
                 .first?
                 .bsdName
 
-            let mountedVolumeBSDNames = records
+            let mountedVolumes = records
                 .filter {
                     $0.volumePath != nil &&
                     $0.isNetworkVolume == false
@@ -365,13 +365,18 @@ struct ExternalDeviceDiscoveryMapper {
                     )
                     return match
                 }
-                .map(\.bsdName)
-                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+                .map {
+                    MountedVolume(
+                        bsdName: $0.bsdName,
+                        mountPoint: $0.volumePath?.path
+                    )
+                }
+                .sorted { $0.bsdName.localizedStandardCompare($1.bsdName) == .orderedAscending }
 
             var device = reducer.reduce(
                 physicalBSDName: rootRecord.bsdName,
                 containerBSDName: apfsContainerBSDName,
-                volumeBSDNames: mountedVolumeBSDNames
+                volumes: mountedVolumes
             )
             device.displayName = displayName(for: rootRecord)
             device.transportName = transportName(for: rootRecord)

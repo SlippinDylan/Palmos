@@ -17,6 +17,7 @@ final class DrivePulseAppController: ObservableObject {
 
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
     private var discoveryLoadTask: Task<Void, Never>?
+    private var observationEnrichmentTask: Task<Void, Never>?
     private var discoveryWriteGeneration = 0
     private var throughputSamplingTimer: Timer?
     private var lastDiskCountersByDeviceID: [DeviceID: DiskIOCounters] = [:]
@@ -73,6 +74,7 @@ final class DrivePulseAppController: ObservableObject {
     deinit {
         MainActor.assumeIsolated {
             discoveryLoadTask?.cancel()
+            observationEnrichmentTask?.cancel()
             discoveryObservation?.cancel()
             throughputSamplingTimer?.invalidate()
             volumeCapacityRefresher.stop()
@@ -227,6 +229,7 @@ final class DrivePulseAppController: ObservableObject {
 
     private func loadDiscoveredDevices() {
         discoveryLoadTask?.cancel()
+        observationEnrichmentTask?.cancel()
         discoveryWriteGeneration += 1
         let generation = discoveryWriteGeneration
         let deviceDiscovery = deviceDiscovery
@@ -237,15 +240,25 @@ final class DrivePulseAppController: ObservableObject {
             guard !Task.isCancelled else { return }
             // Show basic device list immediately; NVMe/TB/APFS enrichment follows
             self?.applyDiscoveredDevices(devices, generation: generation)
-            await systemProfilerProvider.fetchIfNeeded()
             guard !Task.isCancelled, let self else { return }
-            let enriched = await self.enrichDevices(devices, diskUtilAPFSProvider: diskUtilAPFSProvider)
+            await diskUtilAPFSProvider.refresh()
+            guard !Task.isCancelled else { return }
+            let apfsEnriched = await self.enrichDevicesWithAPFS(
+                devices,
+                diskUtilAPFSProvider: diskUtilAPFSProvider
+            )
+            guard !Task.isCancelled else { return }
+            self.applyDiscoveredDevices(apfsEnriched, generation: generation)
+            await systemProfilerProvider.fetchIfNeeded()
+            guard !Task.isCancelled else { return }
+            let enriched = self.enrichDevicesWithSystemProfiler(apfsEnriched)
             guard !Task.isCancelled else { return }
             self.applyDiscoveredDevices(enriched, generation: generation)
         }
     }
 
     private func applyObservedDevices(_ devices: [ExternalDevice]) {
+        observationEnrichmentTask?.cancel()
         discoveryWriteGeneration += 1
         let generation = discoveryWriteGeneration
         let systemProfilerProvider = systemProfilerProvider
@@ -255,11 +268,22 @@ final class DrivePulseAppController: ObservableObject {
         pruneSamplingState()
         updateCapacityRefresher(from: devices)
         triggerInitialSMARTForNewDevices(devices)
-        Task { [weak self] in
+        observationEnrichmentTask = Task { [weak self] in
             guard let self else { return }
-            await systemProfilerProvider.refresh()
             await diskUtilAPFSProvider.refresh()
-            let enriched = await self.enrichDevices(devices, diskUtilAPFSProvider: diskUtilAPFSProvider)
+            guard !Task.isCancelled else { return }
+            let apfsEnriched = await self.enrichDevicesWithAPFS(
+                devices,
+                diskUtilAPFSProvider: diskUtilAPFSProvider
+            )
+            guard generation == self.discoveryWriteGeneration, !Task.isCancelled else { return }
+            self.state.replaceDevices(apfsEnriched)
+            self.pruneSamplingState()
+            self.updateCapacityRefresher(from: apfsEnriched)
+
+            await systemProfilerProvider.refresh()
+            guard !Task.isCancelled else { return }
+            let enriched = self.enrichDevicesWithSystemProfiler(apfsEnriched)
             guard generation == self.discoveryWriteGeneration else { return }
             self.state.replaceDevices(enriched)
             self.pruneSamplingState()
@@ -278,27 +302,21 @@ final class DrivePulseAppController: ObservableObject {
         triggerInitialSMARTForNewDevices(devices)
     }
 
-    private func enrichDevices(
+    private func enrichDevicesWithAPFS(
         _ devices: [ExternalDevice],
         diskUtilAPFSProvider: any DiskUtilAPFSProviding
     ) async -> [ExternalDevice] {
         var result = devices
-        let thunderboltDeviceCount = result.filter { $0.transportName == "Thunderbolt" }.count
         for i in result.indices {
             var device = result[i]
-            // NVMe + PCI
-            if let nvmeInfo = systemProfilerProvider.nvmeInfo(forBSDName: device.physicalStoreBSDName) {
-                device.nvmeInfo = nvmeInfo
-                device.pciInfo = systemProfilerProvider.pciInfo(forNVMeSerialNumber: nvmeInfo.serialNumber)
-            }
-            // Thunderbolt
-            if device.transportName == "Thunderbolt", thunderboltDeviceCount == 1 {
-                device.thunderboltInfo = systemProfilerProvider.thunderboltInfo()
-            }
             // APFS container
             if let containerBSDName = device.apfsContainerBSDName {
-                device.apfsContainerDetails = await diskUtilAPFSProvider.containerInfo(
+                let containerDetails = await diskUtilAPFSProvider.containerInfo(
                     forContainerBSDName: containerBSDName
+                )
+                device.apfsContainerDetails = mergeMountedVolumeMetadata(
+                    into: containerDetails,
+                    mountedVolumes: device.volumes
                 )
             }
             // Physical partitions (skip if already populated by discovery)
@@ -306,6 +324,26 @@ final class DrivePulseAppController: ObservableObject {
                 device.physicalPartitions = await diskUtilAPFSProvider.physicalPartitions(
                     forDiskBSDName: device.physicalStoreBSDName
                 )
+            }
+            result[i] = device
+        }
+        return result
+    }
+
+    private func enrichDevicesWithSystemProfiler(_ devices: [ExternalDevice]) -> [ExternalDevice] {
+        var result = devices
+        let thunderboltDeviceCount = result.filter { $0.transportName == "Thunderbolt" }.count
+        for i in result.indices {
+            var device = result[i]
+            if let nvmeInfo = systemProfilerProvider.nvmeInfo(
+                forBSDName: device.physicalStoreBSDName,
+                modelName: device.displayName
+            ) {
+                device.nvmeInfo = nvmeInfo
+                device.pciInfo = systemProfilerProvider.pciInfo(forNVMeSerialNumber: nvmeInfo.serialNumber)
+            }
+            if device.transportName == "Thunderbolt", thunderboltDeviceCount == 1 {
+                device.thunderboltInfo = systemProfilerProvider.thunderboltInfo()
             }
             result[i] = device
         }
@@ -342,6 +380,36 @@ final class DrivePulseAppController: ObservableObject {
         } else {
             volumeCapacityRefresher.start(mountPoints: mountPoints)
         }
+    }
+
+    private func mergeMountedVolumeMetadata(
+        into containerDetails: APFSContainerInfo?,
+        mountedVolumes: [MountedVolume]
+    ) -> APFSContainerInfo? {
+        guard var containerDetails else {
+            return nil
+        }
+
+        let mountPointPairs: [(String, String)] = mountedVolumes.compactMap { volume in
+                guard let mountPoint = volume.mountPoint, mountPoint.isEmpty == false else {
+                    return nil
+                }
+                return (volume.bsdName, mountPoint)
+            }
+        let mountPointsByBSDName = Dictionary(uniqueKeysWithValues: mountPointPairs)
+
+        guard mountPointsByBSDName.isEmpty == false else {
+            return containerDetails
+        }
+
+        for index in containerDetails.volumes.indices {
+            let bsdName = containerDetails.volumes[index].bsdName
+            if containerDetails.volumes[index].mountPoint == nil {
+                containerDetails.volumes[index].mountPoint = mountPointsByBSDName[bsdName]
+            }
+        }
+
+        return containerDetails
     }
 
     private func refreshSelectedDeviceSMARTAfterInstall(for deviceID: DeviceID) async {

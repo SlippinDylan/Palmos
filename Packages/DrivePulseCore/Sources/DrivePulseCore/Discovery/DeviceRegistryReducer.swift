@@ -4,12 +4,12 @@ public struct DeviceRegistryReducer {
     public func reduce(
         physicalBSDName: String,
         containerBSDName: String?,
-        volumeBSDNames: [String]
+        volumes: [MountedVolume]
     ) -> ExternalDevice {
         ExternalDevice(
             physicalStoreBSDName: physicalBSDName,
             apfsContainerBSDName: containerBSDName,
-            volumes: volumeBSDNames.map { MountedVolume(bsdName: $0) }
+            volumes: volumes
         )
     }
 }

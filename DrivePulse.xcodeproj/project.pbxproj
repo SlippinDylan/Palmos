@@ -55,6 +55,11 @@
 		10000000000000000000002C /* SystemProfilerProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002C /* SystemProfilerProvider.swift */; };
 		10000000000000000000002D /* DiskUtilAPFSProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002D /* DiskUtilAPFSProvider.swift */; };
 		10000000000000000000002E /* VolumeCapacityRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002E /* VolumeCapacityRefresher.swift */; };
+		100000000000000000000035 /* DeviceIdentityCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000035 /* DeviceIdentityCardViewTests.swift */; };
+		100000000000000000000036 /* PanelPlaceholderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000036 /* PanelPlaceholderTests.swift */; };
+		100000000000000000000037 /* StorageLocationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000037 /* StorageLocationsTests.swift */; };
+		100000000000000000000038 /* StorageLocations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000038 /* StorageLocations.swift */; };
+		100000000000000000000039 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000039 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -163,6 +168,11 @@
 		20000000000000000000002C /* SystemProfilerProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProfilerProvider.swift; sourceTree = "<group>"; };
 		20000000000000000000002D /* DiskUtilAPFSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskUtilAPFSProvider.swift; sourceTree = "<group>"; };
 		20000000000000000000002E /* VolumeCapacityRefresher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeCapacityRefresher.swift; sourceTree = "<group>"; };
+		200000000000000000000035 /* DeviceIdentityCardViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentityCardViewTests.swift; sourceTree = "<group>"; };
+		200000000000000000000036 /* PanelPlaceholderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelPlaceholderTests.swift; sourceTree = "<group>"; };
+		200000000000000000000037 /* StorageLocationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageLocationsTests.swift; sourceTree = "<group>"; };
+		200000000000000000000038 /* StorageLocations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageLocations.swift; sourceTree = "<group>"; };
+		200000000000000000000039 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -213,6 +223,7 @@
 				300000000000000000000006 /* Integration */,
 				300000000000000000000005 /* UI */,
 				300000000000000000000007 /* Localization */,
+				200000000000000000000039 /* PrivacyInfo.xcprivacy */,
 			);
 			path = Apps/DrivePulseApp;
 			sourceTree = "<group>";
@@ -259,6 +270,7 @@
 				20000000000000000000002C /* SystemProfilerProvider.swift */,
 				20000000000000000000002D /* DiskUtilAPFSProvider.swift */,
 				20000000000000000000002E /* VolumeCapacityRefresher.swift */,
+				200000000000000000000038 /* StorageLocations.swift */,
 			);
 			path = Integration;
 			sourceTree = "<group>";
@@ -277,7 +289,10 @@
 				200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */,
 				200000000000000000000016 /* DrivePulseAppControllerTests.swift */,
 				20000000000000000000000B /* DrivePulseAppStateTests.swift */,
+				200000000000000000000035 /* DeviceIdentityCardViewTests.swift */,
+				200000000000000000000036 /* PanelPlaceholderTests.swift */,
 				20000000000000000000001F /* SMARTServiceClientTests.swift */,
+				200000000000000000000037 /* StorageLocationsTests.swift */,
 				200000000000000000000022 /* Task7HelperPackagingTests.swift */,
 				200000000000000000000011 /* Task6SettingsAndActionsTests.swift */,
 				20000000000000000000002B /* ThroughputChartModelTests.swift */,
@@ -479,6 +494,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000012 /* Localizable.xcstrings in Resources */,
+				100000000000000000000039 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -528,6 +544,7 @@
 				10000000000000000000002C /* SystemProfilerProvider.swift in Sources */,
 				10000000000000000000002D /* DiskUtilAPFSProvider.swift in Sources */,
 				10000000000000000000002E /* VolumeCapacityRefresher.swift in Sources */,
+				100000000000000000000038 /* StorageLocations.swift in Sources */,
 				100000000000000000000011 /* SettingsView.swift in Sources */,
 				100000000000000000000017 /* DrivePulseXPCContracts.swift in Sources */,
 				100000000000000000000018 /* DrivePulseXPCMessages.swift in Sources */,
@@ -541,7 +558,10 @@
 				100000000000000000000014 /* ExternalDeviceDiscoveryMapperTests.swift in Sources */,
 				100000000000000000000013 /* DrivePulseAppControllerTests.swift in Sources */,
 				10000000000000000000000B /* DrivePulseAppStateTests.swift in Sources */,
+				100000000000000000000035 /* DeviceIdentityCardViewTests.swift in Sources */,
+				100000000000000000000036 /* PanelPlaceholderTests.swift in Sources */,
 				10000000000000000000001D /* SMARTServiceClientTests.swift in Sources */,
+				100000000000000000000037 /* StorageLocationsTests.swift in Sources */,
 				100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */,
 				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
 				10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */,

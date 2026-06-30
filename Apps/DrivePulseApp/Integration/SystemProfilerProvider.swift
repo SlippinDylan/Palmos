@@ -83,7 +83,7 @@ actor LatestRequestCoordinator {
 protocol SystemProfilerProviding: AnyObject, Sendable {
     func fetchIfNeeded() async
     func refresh() async
-    func nvmeInfo(forBSDName bsdName: String) -> NVMeInfo?
+    func nvmeInfo(forBSDName bsdName: String, modelName: String?) -> NVMeInfo?
     func pciInfo(forNVMeSerialNumber serial: String?) -> PCIInfo?
     /// Heuristic: returns the first non-Apple Thunderbolt leaf device found.
     func thunderboltInfo() -> ThunderboltInfo?
@@ -120,8 +120,8 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
         cacheBox.set(cache)
     }
 
-    func nvmeInfo(forBSDName bsdName: String) -> NVMeInfo? {
-        cacheBox.get()?.nvmeInfo(forBSDName: bsdName)
+    func nvmeInfo(forBSDName bsdName: String, modelName: String?) -> NVMeInfo? {
+        cacheBox.get()?.nvmeInfo(forBSDName: bsdName, modelName: modelName)
     }
 
     func pciInfo(forNVMeSerialNumber serial: String?) -> PCIInfo? {
@@ -184,7 +184,11 @@ private struct ThunderboltCandidate {
 private extension ThunderboltCandidate {
     var isDockLike: Bool {
         let name = ((item["_name"] as? String) ?? "").lowercased()
-        let deviceName = ((item["device_name"] as? String) ?? "").lowercased()
+        let deviceName = (
+            (item["device_name"] as? String)
+            ?? (item["device_name_key"] as? String)
+            ?? ""
+        ).lowercased()
         let combined = name + " " + deviceName
         return combined.contains("dock") || combined.contains("hub") || combined.contains("station")
     }
@@ -211,9 +215,12 @@ private extension SystemProfilerCache {
         for (busIndex, bus) in thunderboltBuses.enumerated() {
             let children = (bus["items"] as? [[String: Any]])
                 ?? (bus["Items"] as? [[String: Any]])
+                ?? (bus["_items"] as? [[String: Any]])
                 ?? []
             for item in children {
-                let vendorName = item["vendor_name"] as? String ?? ""
+                let vendorName = (item["vendor_name"] as? String)
+                    ?? (item["vendor_name_key"] as? String)
+                    ?? ""
                 guard vendorName != "Apple Inc." else { continue }
                 let receptacleStr = (item["spthunderbolt_receptacle"] as? String)
                     ?? (item["receptacle"] as? String) ?? "0"
@@ -265,6 +272,7 @@ private struct SystemProfilerCache {
                 let controllerName = bus["_name"] as? String ?? ""
                 let children = (bus["items"] as? [[String: Any]])
                     ?? (bus["Items"] as? [[String: Any]])
+                    ?? (bus["_items"] as? [[String: Any]])
                     ?? []
                 for child in children {
                     var entry = child
@@ -284,22 +292,33 @@ private struct SystemProfilerCache {
         self.thunderboltBuses = (json["SPThunderboltDataType"] as? [[String: Any]]) ?? []
     }
 
-    func nvmeInfo(forBSDName bsdName: String) -> NVMeInfo? {
-        guard let item = nvmeEntries.first(where: { ($0["bsd_name"] as? String) == bsdName }) else {
+    func nvmeInfo(forBSDName bsdName: String, modelName: String?) -> NVMeInfo? {
+        let item = matchedNVMeEntry(forBSDName: bsdName, modelName: modelName)
+        guard let item else {
             return nil
         }
 
         let controller = item["__controller__"] as? String
-        let model = (item["_name"] as? String) ?? (item["model"] as? String)
-        let serialNumber = (item["spsata_serial_no"] as? String) ?? (item["serial_no"] as? String)
-        let firmwareVersion = (item["spsata_revision"] as? String) ?? (item["revision"] as? String)
+        let model = (item["device_model"] as? String)
+            ?? (item["_name"] as? String)
+            ?? (item["model"] as? String)
+        let serialNumber = (item["device_serial"] as? String)
+            ?? (item["spsata_serial_no"] as? String)
+            ?? (item["serial_no"] as? String)
+        let firmwareVersion = (item["device_revision"] as? String)
+            ?? (item["spsata_revision"] as? String)
+            ?? (item["revision"] as? String)
         let nvmeVersion = item["spnvme_spec_version"] as? String
 
         let trimRaw = item["spnvme_trim_support"] as? String
         let trimSupport: Bool? = trimRaw.map { $0 == "spnvme_yes" || $0 == "Yes" }
 
-        let linkWidth = (item["spnvme_link_width"] as? String) ?? (item["link_width"] as? String)
-        let linkSpeed = (item["spnvme_link_speed"] as? String) ?? (item["link_speed"] as? String)
+        let linkWidth = (item["spnvme_linkwidth"] as? String)
+            ?? (item["spnvme_link_width"] as? String)
+            ?? (item["link_width"] as? String)
+        let linkSpeed = (item["spnvme_linkspeed"] as? String)
+            ?? (item["spnvme_link_speed"] as? String)
+            ?? (item["link_speed"] as? String)
         let ieeeOui = item["spnvme_ieee_oui"] as? String
 
         let firmwareSlots: Int?
@@ -331,19 +350,29 @@ private struct SystemProfilerCache {
         guard let serial else { return nil }
 
         guard let item = pciItems.first(where: { item in
-            let type = (item["sppci_type"] as? String) ?? ""
-            let serialNo = (item["serial_no"] as? String) ?? ""
+            let type = (item["sppci_type"] as? String) ?? (item["sppci_device_type"] as? String) ?? ""
+            let serialNo = (item["serial_no"] as? String)
+                ?? (item["sppci_serialnumber"] as? String)
+                ?? ""
             return type.uppercased().contains("NVM") && serialNo == serial
         }) else { return nil }
 
-        let slot = item["sppci_slot"] as? String
-        let vendorID = item["sppci_vendor_id"] as? String
-        let deviceID = item["sppci_device_id"] as? String
-        let linkStatus = (item["sppci_link_status"] as? String) ?? (item["link_status"] as? String)
-        let tunnelRaw = (item["sppci_tunnel_compatible"] as? String) ?? (item["tunnel_compatible"] as? String)
-        let tunnelCompatible: Bool? = tunnelRaw.map { $0 == "Yes" }
-        let linkWidth = (item["sppci_link_width"] as? String) ?? (item["link_width"] as? String)
-        let linkSpeed = (item["sppci_link_speed"] as? String) ?? (item["link_speed"] as? String)
+        let slot = (item["sppci_slot_name"] as? String) ?? (item["sppci_slot"] as? String)
+        let vendorID = (item["sppci_vendor-id"] as? String) ?? (item["sppci_vendor_id"] as? String)
+        let deviceID = (item["sppci_device-id"] as? String) ?? (item["sppci_device_id"] as? String)
+        let linkStatus = (item["sppci_link-status"] as? String)
+            ?? (item["sppci_link_status"] as? String)
+            ?? (item["link_status"] as? String)
+        let tunnelRaw = (item["sppci_tunnel-compatible"] as? String)
+            ?? (item["sppci_tunnel_compatible"] as? String)
+            ?? (item["tunnel_compatible"] as? String)
+        let tunnelCompatible: Bool? = tunnelRaw.map { $0 == "Yes" || $0 == "affirmative_string" }
+        let linkWidth = (item["sppci_link-width"] as? String)
+            ?? (item["sppci_link_width"] as? String)
+            ?? (item["link_width"] as? String)
+        let linkSpeed = (item["sppci_link-speed"] as? String)
+            ?? (item["sppci_link_speed"] as? String)
+            ?? (item["link_speed"] as? String)
 
         return PCIInfo(
             slot: slot,
@@ -360,42 +389,56 @@ private struct SystemProfilerCache {
         guard let candidate = thunderboltCandidates().uniqueResolvedCandidate() else { return nil }
         let item = candidate.item
 
-        let vendorName = item["vendor_name"] as? String
-        let deviceName = (item["device_name"] as? String) ?? (item["_name"] as? String)
-        let mode = (item["spthunderbolt_mode"] as? String)
+        let vendorName = (item["vendor_name_key"] as? String) ?? (item["vendor_name"] as? String)
+        let deviceName = (item["device_name_key"] as? String)
+            ?? (item["device_name"] as? String)
+            ?? (item["_name"] as? String)
+        let mode = (item["mode_key"] as? String)
+            ?? (item["spthunderbolt_mode"] as? String)
             ?? (item["thunderbolt_mode"] as? String)
             ?? (item["mode"] as? String)
 
         let busStr = (item["spthunderbolt_bus"] as? String) ?? (item["bus"] as? String)
-        let bus = busStr.flatMap { Int($0) }
+        let bus = busStr.flatMap { Int($0) } ?? candidate.busIndex
 
         let receptacleStr = (item["spthunderbolt_receptacle"] as? String) ?? (item["receptacle"] as? String)
         let receptacle = receptacleStr.flatMap { Int($0) }
 
-        let uid = (item["spthunderbolt_uid"] as? String) ?? (item["uid"] as? String)
-        let firmwareVersion = (item["spthunderbolt_fw_ver"] as? String) ?? (item["firmware_version"] as? String)
+        let uid = (item["switch_uid_key"] as? String)
+            ?? (item["spthunderbolt_uid"] as? String)
+            ?? (item["uid"] as? String)
+        let firmwareVersion = (item["switch_version_key"] as? String)
+            ?? (item["spthunderbolt_fw_ver"] as? String)
+            ?? (item["firmware_version"] as? String)
 
         let upstreamPort: [String: Any]? =
-            (item["port_upstream"] as? [String: Any])
+            (item["receptacle_upstream_ambiguous_tag"] as? [String: Any])
+            ?? (item["receptacle_upstream_tag"] as? [String: Any])
+            ?? (item["port_upstream"] as? [String: Any])
             ?? (item["Port (Upstream)"] as? [String: Any])
 
         let linkSpeed: String?
         if let port = upstreamPort {
-            linkSpeed = (port["speed"] as? String) ?? (port["link_speed"] as? String)
+            linkSpeed = (port["current_speed_key"] as? String)
+                ?? (port["speed"] as? String)
+                ?? (port["link_speed"] as? String)
         } else {
             linkSpeed = item["link_speed"] as? String
         }
 
         let linkControllerFirmwareVersion: String?
         if let port = upstreamPort {
-            linkControllerFirmwareVersion = port["link_controller_firmware_version"] as? String
+            linkControllerFirmwareVersion = (port["lc_version_key"] as? String)
+                ?? (port["link_controller_firmware_version"] as? String)
         } else {
             linkControllerFirmwareVersion = item["link_controller_firmware_version"] as? String
         }
 
         let upstreamPortStatus: String?
         if let port = upstreamPort {
-            upstreamPortStatus = (port["status"] as? String) ?? (port["upstreamPortStatus"] as? String)
+            upstreamPortStatus = (port["receptacle_status_key"] as? String)
+                ?? (port["status"] as? String)
+                ?? (port["upstreamPortStatus"] as? String)
         } else {
             upstreamPortStatus = item["upstreamPortStatus"] as? String
         }
@@ -412,5 +455,44 @@ private struct SystemProfilerCache {
             linkControllerFirmwareVersion: linkControllerFirmwareVersion,
             upstreamPortStatus: upstreamPortStatus
         )
+    }
+
+    private func matchedNVMeEntry(forBSDName bsdName: String, modelName: String?) -> [String: Any]? {
+        if let exact = nvmeEntries.first(where: { ($0["bsd_name"] as? String) == bsdName }) {
+            return exact
+        }
+
+        guard let modelName = normalized(modelName) else {
+            return nil
+        }
+
+        let candidates = nvmeEntries.filter { item in
+            guard let candidateModel = normalized(
+                (item["device_model"] as? String)
+                ?? (item["_name"] as? String)
+                ?? (item["model"] as? String)
+            ) else {
+                return false
+            }
+
+            return candidateModel == modelName
+                || candidateModel.contains(modelName)
+                || modelName.contains(candidateModel)
+        }
+
+        guard candidates.count == 1 else {
+            return nil
+        }
+
+        return candidates[0]
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              value.isEmpty == false else {
+            return nil
+        }
+
+        return value.lowercased()
     }
 }

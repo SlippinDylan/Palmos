@@ -17,7 +17,7 @@ struct HealthSMARTCardView: View {
                 }
 
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                    InfoRow("Overall Health", value: smartData?.overallHealth ?? "—")
+                    InfoRow("Overall Health", value: PanelDisplayValue.string(smartData?.overallHealth))
                     InfoRow("Critical Warning", value: criticalWarningString)
                     InfoRow("Wear Level", value: wearLevelString)
                     InfoRow("Available Spare", value: availableSpareString)
@@ -73,44 +73,44 @@ struct HealthSMARTCardView: View {
     }
 
     private var criticalWarningString: String {
-        guard let cw = smartData?.criticalWarning else { return "—" }
+        guard let cw = smartData?.criticalWarning else { return PanelDisplayValue.missing }
         let hex = String(format: "0x%02X", cw)
         return cw == 0 ? "\(hex) (No warnings)" : hex
     }
 
     private var wearLevelString: String {
-        guard let pct = smartData?.percentageUsed else { return "—" }
+        guard let pct = smartData?.percentageUsed else { return PanelDisplayValue.missing }
         return "\(pct)%"
     }
 
     private var availableSpareString: String {
-        guard let spare = smartData?.availableSpare else { return "—" }
+        guard let spare = smartData?.availableSpare else { return PanelDisplayValue.missing }
         guard let threshold = smartData?.availableSpareThreshold else { return "\(spare)%" }
         return "\(spare)% (threshold \(threshold)%)"
     }
 
     private var mediaIntegrityErrorsString: String {
-        guard let value = smartData?.mediaIntegrityErrors else { return "—" }
+        guard let value = smartData?.mediaIntegrityErrors else { return PanelDisplayValue.missing }
         return "\(value)"
     }
 
     private var errorLogEntriesString: String {
-        guard let value = smartData?.errorLogEntries else { return "—" }
+        guard let value = smartData?.errorLogEntries else { return PanelDisplayValue.missing }
         return "\(value)"
     }
 
     private var powerOnHoursString: String {
-        guard let value = smartData?.powerOnHours else { return "—" }
+        guard let value = smartData?.powerOnHours else { return PanelDisplayValue.missing }
         return "\(value) hr"
     }
 
     private var powerCyclesString: String {
-        guard let value = smartData?.powerCycles else { return "—" }
+        guard let value = smartData?.powerCycles else { return PanelDisplayValue.missing }
         return "\(value)"
     }
 
     private var unsafeShutdownsString: String {
-        guard let us = smartData?.unsafeShutdowns else { return "—" }
+        guard let us = smartData?.unsafeShutdowns else { return PanelDisplayValue.missing }
         var text = "\(us)"
         if let pc = smartData?.powerCycles, pc > 0, Double(us) / Double(pc) > 0.15 {
             text += " ⚠️"
@@ -119,29 +119,29 @@ struct HealthSMARTCardView: View {
     }
 
     private var totalWrittenString: String {
-        guard let units = smartData?.dataUnitsWritten else { return "—" }
+        guard let units = smartData?.dataUnitsWritten else { return PanelDisplayValue.missing }
         let bytes = Int64(units) * 512_000
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     private var totalReadString: String {
-        guard let units = smartData?.dataUnitsRead else { return "—" }
+        guard let units = smartData?.dataUnitsRead else { return PanelDisplayValue.missing }
         let bytes = Int64(units) * 512_000
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     private var controllerBusyTimeString: String {
-        guard let value = smartData?.controllerBusyTime else { return "—" }
+        guard let value = smartData?.controllerBusyTime else { return PanelDisplayValue.missing }
         return "\(value) min"
     }
 
     private var warningTempTimeString: String {
-        guard let value = smartData?.warningTempTime else { return "—" }
+        guard let value = smartData?.warningTempTime else { return PanelDisplayValue.missing }
         return "\(value) min"
     }
 
     private var criticalTempTimeString: String {
-        guard let value = smartData?.criticalTempTime else { return "—" }
+        guard let value = smartData?.criticalTempTime else { return PanelDisplayValue.missing }
         return "\(value) min"
     }
 }

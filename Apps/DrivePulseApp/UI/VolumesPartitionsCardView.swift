@@ -42,13 +42,13 @@ struct VolumesPartitionsCardView: View {
                 .font(.system(size: 12, weight: .semibold))
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                 row("BSD Name", volume.bsdName)
-                row("Mount Point", volume.mountPoint ?? "—")
+                row("Mount Point", PanelDisplayValue.string(volume.mountPoint))
                 row("File System", volume.fileSystem ?? "APFS")
-                row("Role", volume.role ?? "—")
+                row("Role", PanelDisplayValue.string(volume.role))
                 row("Used", capacityStr(volume.capacityConsumedBytes))
                 row("FileVault", boolStr(volume.fileVaultEnabled))
                 row("Sealed", boolStr(volume.sealed))
-                row("Volume UUID", volume.volumeUUID ?? "—")
+                row("Volume UUID", PanelDisplayValue.string(volume.volumeUUID))
             }
         }
     }
@@ -60,12 +60,12 @@ struct VolumesPartitionsCardView: View {
                 .font(.system(size: 12, weight: .semibold))
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                 row("Container ID", container.bsdName)
-                row("Physical Store", container.physicalStoreBSDName ?? "—")
+                row("Physical Store", PanelDisplayValue.string(container.physicalStoreBSDName))
                 row("Total", capacityStr(container.totalCapacityBytes))
                 row("Used", capacityWithPct(container.capacityInUseBytes, of: container.totalCapacityBytes))
                 row("Free", capacityWithPct(container.capacityNotAllocatedBytes, of: container.totalCapacityBytes))
-                row("Container UUID", container.containerUUID ?? "—")
-                row("Physical Store UUID", container.physicalStoreUUID ?? "—")
+                row("Container UUID", PanelDisplayValue.string(container.containerUUID))
+                row("Physical Store UUID", PanelDisplayValue.string(container.physicalStoreUUID))
             }
         }
     }
@@ -81,10 +81,10 @@ struct VolumesPartitionsCardView: View {
                         Text(partition.bsdName)
                             .font(.system(size: 12))
                             .monospacedDigit()
-                        Text(partition.partitionType ?? "—")
+                        Text(PanelDisplayValue.string(partition.partitionType))
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
-                        Text(partition.name ?? "—")
+                        Text(PanelDisplayValue.string(partition.name))
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                         Text(capacityStr(partition.sizeBytes))
@@ -109,12 +109,12 @@ struct VolumesPartitionsCardView: View {
     }
 
     private func capacityStr(_ bytes: Int64?) -> String {
-        guard let bytes else { return "—" }
+        guard let bytes else { return PanelDisplayValue.missing }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     private func capacityWithPct(_ bytes: Int64?, of total: Int64?) -> String {
-        guard let bytes else { return "—" }
+        guard let bytes else { return PanelDisplayValue.missing }
         let base = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         guard let total, total > 0 else { return base }
         let pct = Int((Double(bytes) / Double(total) * 100).rounded())
@@ -122,7 +122,7 @@ struct VolumesPartitionsCardView: View {
     }
 
     private func boolStr(_ value: Bool?) -> String {
-        guard let value else { return "—" }
+        guard let value else { return PanelDisplayValue.missing }
         return value ? String(localized: "Yes") : String(localized: "No")
     }
 }

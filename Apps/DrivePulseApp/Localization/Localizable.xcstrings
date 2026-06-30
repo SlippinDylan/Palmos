@@ -1,9 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "—" : {
-
-    },
     "Action couldn't be completed." : {
       "localizations" : {
         "en" : {
@@ -52,6 +49,7 @@
       }
     },
     "APFS Volume" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -161,6 +159,9 @@
         }
       }
     },
+    "Bus" : {
+
+    },
     "Cancel" : {
 
     },
@@ -232,7 +233,6 @@
       }
     },
     "Connection" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -541,6 +541,7 @@
       }
     },
     "Device Node" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -986,6 +987,9 @@
         }
       }
     },
+    "IEEE OUI" : {
+
+    },
     "Install" : {
 
     },
@@ -1409,6 +1413,7 @@
       }
     },
     "Not Mounted" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1476,6 +1481,7 @@
       }
     },
     "NVMe Serial" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1607,6 +1613,9 @@
         }
       }
     },
+    "PCI Device ID" : {
+
+    },
     "PCI Link Speed" : {
       "localizations" : {
         "en" : {
@@ -1694,6 +1703,9 @@
           }
         }
       }
+    },
+    "PCI Vendor ID" : {
+
     },
     "PCIe Speed" : {
       "localizations" : {
@@ -1961,6 +1973,9 @@
         }
       }
     },
+    "Receptacle" : {
+
+    },
     "Refresh SMART Data" : {
       "localizations" : {
         "en" : {
@@ -2094,6 +2109,7 @@
       }
     },
     "Session Read" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2116,6 +2132,7 @@
       }
     },
     "Session Write" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2252,6 +2269,7 @@
       }
     },
     "Thunderbolt UID" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2318,7 +2336,6 @@
       }
     },
     "Total Read" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2428,6 +2445,9 @@
           }
         }
       }
+    },
+    "UID" : {
+
     },
     "Unavailable" : {
       "extractionState" : "stale",

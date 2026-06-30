@@ -210,7 +210,7 @@ final class SMARTPresentationTests: XCTestCase {
         let device = makeDevice(id: "disk6", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
         let smartService = ControlledSMARTService()
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: smartService,
             helperInstaller: StubHelperInstaller(),
             deviceDiscovery: discovery
@@ -244,7 +244,7 @@ final class SMARTPresentationTests: XCTestCase {
         let device = makeDevice(id: "disk42", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
         let helperInstaller = StubHelperInstaller()
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: StubSMARTService(
                 refreshResult: .helperNotInstalled
             ),
@@ -279,7 +279,7 @@ final class SMARTPresentationTests: XCTestCase {
         let discovery = StubSMARTPresentationDeviceDiscovery(
             results: [[makeDevice(id: "disk8", smartSnapshot: .notRequested)]]
         )
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: StubSMARTService(
                 refreshResult: .available(
                     smartData,
@@ -319,7 +319,7 @@ final class SMARTPresentationTests: XCTestCase {
             ]
         )
         let helperInstaller = StubHelperInstaller()
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: smartService,
             helperInstaller: helperInstaller,
             deviceDiscovery: discovery
@@ -327,13 +327,19 @@ final class SMARTPresentationTests: XCTestCase {
 
         await discovery.resolveNextDiscovery()
         await waitUntilSelectedDevice(controller, equals: DeviceID(rawValue: "disk11"))
-
-        controller.refreshSelectedDeviceSMART()
-        await waitUntilSMARTPresentationSettles(controller)
+        await waitUntilSMARTSnapshot(
+            controller,
+            for: DeviceID(rawValue: "disk11"),
+            equals: .helperNotInstalled
+        )
         XCTAssertEqual(controller.state.selectedSMARTDetails?.primaryAction, .installHelper)
 
         controller.installSMARTHelper()
-        await waitUntilSMARTPresentationSettles(controller)
+        await waitUntilSMARTSnapshot(
+            controller,
+            for: DeviceID(rawValue: "disk11"),
+            equals: .available(smartData)
+        )
 
         let details = try XCTUnwrap(controller.state.selectedSMARTDetails)
         XCTAssertEqual(details.snapshot, .available(smartData))
@@ -350,7 +356,7 @@ final class SMARTPresentationTests: XCTestCase {
             results: [[makeDevice(id: "disk13", smartSnapshot: .notRequested)]]
         )
         let helperInstaller = StubHelperInstaller()
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: StubSMARTService(refreshResult: .updateRequired),
             helperInstaller: helperInstaller,
             deviceDiscovery: discovery
@@ -377,7 +383,7 @@ final class SMARTPresentationTests: XCTestCase {
         let firstDevice = makeDevice(id: "disk14", smartSnapshot: .notRequested)
         let secondDevice = makeDevice(id: "disk15", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[firstDevice, secondDevice]])
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: StubSMARTService(refreshResult: .helperNotInstalled),
             helperInstaller: StubHelperInstaller(),
             deviceDiscovery: discovery
@@ -408,7 +414,7 @@ final class SMARTPresentationTests: XCTestCase {
                 [secondDevice]
             ]
         )
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: StubSMARTService(refreshResult: .helperNotInstalled),
             helperInstaller: StubHelperInstaller(),
             deviceDiscovery: discovery
@@ -435,10 +441,10 @@ final class SMARTPresentationTests: XCTestCase {
 
     func testRefreshResultStaysWithInitiatingDeviceAfterSelectionChanges() async throws {
         let firstDevice = makeDevice(id: "disk20", smartSnapshot: .notRequested)
-        let secondDevice = makeDevice(id: "disk21", smartSnapshot: .notRequested)
+        let secondDevice = makeDevice(id: "disk21", smartSnapshot: .unsupported)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[firstDevice, secondDevice]])
         let smartService = ControlledSMARTService()
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: smartService,
             helperInstaller: StubHelperInstaller(),
             deviceDiscovery: discovery
@@ -452,8 +458,6 @@ final class SMARTPresentationTests: XCTestCase {
 
         await discovery.resolveNextDiscovery()
         await waitUntilSelectedDevice(controller, equals: firstDevice.id)
-
-        controller.refreshSelectedDeviceSMART()
         await smartService.waitUntilRefreshStarts(count: 1)
 
         controller.selectDevice(secondDevice.id)
@@ -465,7 +469,7 @@ final class SMARTPresentationTests: XCTestCase {
         await Task.yield()
 
         XCTAssertEqual(controller.state.selectedDeviceID, secondDevice.id)
-        XCTAssertEqual(controller.state.selectedSMARTDetails?.snapshot, .notRequested)
+        XCTAssertEqual(controller.state.selectedSMARTDetails?.snapshot, .unsupported)
 
         controller.selectDevice(firstDevice.id)
         await waitUntilSelectedDevice(controller, equals: firstDevice.id)
@@ -480,7 +484,7 @@ final class SMARTPresentationTests: XCTestCase {
         let observedDevice = makeDevice(id: "disk24", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[initialDevice]])
         let smartService = ControlledSMARTService()
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: smartService,
             helperInstaller: StubHelperInstaller(),
             deviceDiscovery: discovery
@@ -505,7 +509,7 @@ final class SMARTPresentationTests: XCTestCase {
         let device = makeDevice(id: "disk25", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
         let smartService = ControlledSMARTService()
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: smartService,
             helperInstaller: StubHelperInstaller(),
             deviceDiscovery: discovery
@@ -538,7 +542,7 @@ final class SMARTPresentationTests: XCTestCase {
                 .pending
             ]
         )
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: StubSMARTService(refreshResult: .helperNotInstalled),
             helperInstaller: helperInstaller,
             deviceDiscovery: discovery
@@ -575,7 +579,7 @@ final class SMARTPresentationTests: XCTestCase {
             highestTemperature: 45,
             sensorTemperatures: ["Composite": 42]
         )
-        let controller = DrivePulseAppController(
+        let controller = makeController(
             smartService: StubSMARTService(
                 refreshResult: .available(smartData, compatibility: .degraded)
             ),
@@ -599,6 +603,52 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertEqual(details.compatibility, .degraded)
         let selectedDevice = try XCTUnwrap(controller.state.selectedDevice)
         XCTAssertEqual(selectedDevice.smartSnapshot, .available(smartData))
+    }
+
+    func testInitialConcurrentSMARTRefreshesStayBoundToTheirDevices() async throws {
+        let firstDevice = makeDevice(id: "disk40", smartSnapshot: .notRequested)
+        let secondDevice = makeDevice(id: "disk41", smartSnapshot: .notRequested)
+        let discovery = StubSMARTPresentationDeviceDiscovery(results: [[firstDevice, secondDevice]])
+        let smartService = MultiDeviceControlledSMARTService()
+        let controller = makeController(
+            smartService: smartService,
+            helperInstaller: StubHelperInstaller(),
+            deviceDiscovery: discovery
+        )
+        let firstData = SmartData(overallHealth: "PASSED", primaryTemperature: 36)
+        let secondData = SmartData(overallHealth: "PASSED", primaryTemperature: 41)
+
+        await discovery.resolveNextDiscovery()
+        await smartService.waitUntilRefreshStarts(for: "disk40")
+        await smartService.waitUntilRefreshStarts(for: "disk41")
+
+        await smartService.finishRefresh(
+            for: "disk41",
+            with: .available(secondData, compatibility: .compatible)
+        )
+        await Task.yield()
+
+        let deviceAfterSecondFinish = try XCTUnwrap(
+            controller.state.devices.first(where: { $0.id == secondDevice.id })
+        )
+        XCTAssertEqual(deviceAfterSecondFinish.smartSnapshot, .available(secondData))
+        XCTAssertEqual(
+            controller.state.devices.first(where: { $0.id == firstDevice.id })?.smartSnapshot,
+            .loading
+        )
+
+        await smartService.finishRefresh(
+            for: "disk40",
+            with: .available(firstData, compatibility: .degraded)
+        )
+        await Task.yield()
+
+        let firstDetails = controller.state.smartDetails(for: firstDevice.id)
+        let secondDetails = controller.state.smartDetails(for: secondDevice.id)
+        XCTAssertEqual(firstDetails?.snapshot, .available(firstData))
+        XCTAssertEqual(firstDetails?.compatibility, .degraded)
+        XCTAssertEqual(secondDetails?.snapshot, .available(secondData))
+        XCTAssertEqual(secondDetails?.compatibility, .compatible)
     }
 
     func testDetailsDescriptionUsesConfiguredTemperatureUnit() throws {
@@ -649,15 +699,6 @@ final class SMARTPresentationTests: XCTestCase {
             view.title(for: smartDetails),
             "Additional transport support required"
         )
-
-        let overview = OverviewCardView(
-            device: nil,
-            settings: makeAppSettings(temperatureUnit: .celsius)
-        )
-        XCTAssertEqual(
-            overview.healthString(for: .transportUnsupported),
-            "Transport support required"
-        )
     }
 
     func testDegradedCompatibilityStillUsesHighestTemperatureDescription() throws {
@@ -697,6 +738,20 @@ final class SMARTPresentationTests: XCTestCase {
         )
     }
 
+    private func makeController(
+        smartService: any SMARTServiceProviding,
+        helperInstaller: any HelperInstalling,
+        deviceDiscovery: any ExternalDeviceDiscovering
+    ) -> DrivePulseAppController {
+        DrivePulseAppController(
+            smartService: smartService,
+            helperInstaller: helperInstaller,
+            deviceDiscovery: deviceDiscovery,
+            systemProfilerProvider: StubSMARTSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubSMARTDiskUtilAPFSProvider()
+        )
+    }
+
     private func waitUntilSelectedDevice(
         _ controller: DrivePulseAppController,
         equals id: DeviceID
@@ -708,6 +763,16 @@ final class SMARTPresentationTests: XCTestCase {
 
     private func waitUntilSMARTPresentationSettles(_ controller: DrivePulseAppController) async {
         while controller.state.selectedSMARTDetails?.isRefreshing == true {
+            await Task.yield()
+        }
+    }
+
+    private func waitUntilSMARTSnapshot(
+        _ controller: DrivePulseAppController,
+        for deviceID: DeviceID,
+        equals expectedSnapshot: SmartSnapshot
+    ) async {
+        while controller.state.smartDetails(for: deviceID)?.snapshot != expectedSnapshot {
             await Task.yield()
         }
     }
@@ -769,6 +834,47 @@ private actor ControlledSMARTService: SMARTServiceProviding {
         pendingContinuation = nil
         continuation?.resume(returning: result)
     }
+}
+
+private actor MultiDeviceControlledSMARTService: SMARTServiceProviding {
+    private var pendingContinuations: [String: CheckedContinuation<SMARTServiceRefreshResult, Never>] = [:]
+    private var refreshStartCounts: [String: Int] = [:]
+
+    func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
+        refreshStartCounts[device.physicalStoreBSDName, default: 0] += 1
+        return await withCheckedContinuation { continuation in
+            pendingContinuations[device.physicalStoreBSDName] = continuation
+        }
+    }
+
+    func waitUntilRefreshStarts(for bsdName: String, count expectedCount: Int = 1) async {
+        while refreshStartCounts[bsdName, default: 0] < expectedCount {
+            await Task.yield()
+        }
+    }
+
+    func finishRefresh(for bsdName: String, with result: SMARTServiceRefreshResult) async {
+        while pendingContinuations[bsdName] == nil {
+            await Task.yield()
+        }
+
+        let continuation = pendingContinuations.removeValue(forKey: bsdName)
+        continuation?.resume(returning: result)
+    }
+}
+
+private final class StubSMARTSystemProfilerProvider: SystemProfilerProviding, @unchecked Sendable {
+    func fetchIfNeeded() async {}
+    func refresh() async {}
+    func nvmeInfo(forBSDName bsdName: String, modelName: String?) -> NVMeInfo? { nil }
+    func pciInfo(forNVMeSerialNumber serial: String?) -> PCIInfo? { nil }
+    func thunderboltInfo() -> ThunderboltInfo? { nil }
+}
+
+private final class StubSMARTDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable {
+    func refresh() async {}
+    func containerInfo(forContainerBSDName bsdName: String) async -> APFSContainerInfo? { nil }
+    func physicalPartitions(forDiskBSDName bsdName: String) async -> [PhysicalPartitionInfo] { [] }
 }
 
 private actor StubHelperInstaller: HelperInstalling {
