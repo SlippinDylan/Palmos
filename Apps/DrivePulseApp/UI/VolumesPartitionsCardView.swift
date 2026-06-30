@@ -97,7 +97,7 @@ struct VolumesPartitionsCardView: View {
     }
 
     @ViewBuilder
-    private func row(_ label: String, _ value: String) -> some View {
+    private func row(_ label: LocalizedStringKey, _ value: String) -> some View {
         GridRow {
             Text(label)
                 .font(.system(size: 12))
@@ -123,6 +123,6 @@ struct VolumesPartitionsCardView: View {
 
     private func boolStr(_ value: Bool?) -> String {
         guard let value else { return "—" }
-        return value ? "Yes" : "No"
+        return value ? String(localized: "Yes") : String(localized: "No")
     }
 }

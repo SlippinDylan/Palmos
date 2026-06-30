@@ -61,7 +61,7 @@ private func temperatureColor(_ celsius: Int) -> Color {
 }
 
 private struct TemperatureRow: View {
-    let label: String
+    let label: LocalizedStringKey
     let celsius: Int?
     let unit: TemperatureUnit
 
@@ -82,10 +82,10 @@ private struct TemperatureRow: View {
 }
 
 private struct InfoRow: View {
-    let label: String
+    let label: LocalizedStringKey
     let value: String
 
-    init(_ label: String, value: String) {
+    init(_ label: LocalizedStringKey, value: String) {
         self.label = label
         self.value = value
     }

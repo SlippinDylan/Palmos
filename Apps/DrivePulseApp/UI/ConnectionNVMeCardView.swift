@@ -74,7 +74,7 @@ struct ConnectionNVMeCardView: View {
     }
 
     @ViewBuilder
-    private func row(_ label: String, _ value: String) -> some View {
+    private func row(_ label: LocalizedStringKey, _ value: String) -> some View {
         GridRow {
             Text(label)
                 .font(.system(size: 12))

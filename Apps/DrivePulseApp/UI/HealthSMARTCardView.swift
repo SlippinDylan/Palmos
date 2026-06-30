@@ -146,10 +146,10 @@ struct HealthSMARTCardView: View {
 }
 
 private struct InfoRow: View {
-    let label: String
+    let label: LocalizedStringKey
     let value: String
 
-    init(_ label: String, value: String) {
+    init(_ label: LocalizedStringKey, value: String) {
         self.label = label
         self.value = value
     }
