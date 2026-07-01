@@ -124,12 +124,12 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
                   bsdName.isEmpty == false else {
                 continue
             }
-            containerInfoByBSDName[bsdName] = buildContainerInfo(from: container, bsdName: bsdName)
+            containerInfoByBSDName[bsdName] = await buildContainerInfo(from: container, bsdName: bsdName)
         }
         return containerInfoByBSDName
     }
 
-    private func buildContainerInfo(from container: [String: Any], bsdName: String) -> APFSContainerInfo {
+    private func buildContainerInfo(from container: [String: Any], bsdName: String) async -> APFSContainerInfo {
         let physicalStoreBSDName = container["DesignatedPhysicalStore"] as? String
         let containerUUID = container["APFSContainerUUID"] as? String
 
@@ -152,7 +152,12 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
 
         let volumes: [APFSVolumeDetails]
         if let rawVolumes = container["Volumes"] as? [[String: Any]] {
-            volumes = rawVolumes.map { buildVolumeDetails(from: $0) }
+            var parsedVolumes: [APFSVolumeDetails] = []
+            parsedVolumes.reserveCapacity(rawVolumes.count)
+            for rawVolume in rawVolumes {
+                parsedVolumes.append(await buildVolumeDetails(from: rawVolume))
+            }
+            volumes = parsedVolumes
         } else {
             volumes = []
         }
@@ -169,30 +174,31 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
         )
     }
 
-    private func buildVolumeDetails(from volume: [String: Any]) -> APFSVolumeDetails {
+    private func buildVolumeDetails(from volume: [String: Any]) async -> APFSVolumeDetails {
+        var details = buildBaseVolumeDetails(from: volume)
+        guard needsDiskInfoFallback(for: details) else {
+            return details
+        }
+
+        guard let supplementalDetails = await fetchSupplementalVolumeDetails(
+            forBSDName: details.bsdName
+        ) else {
+            return details
+        }
+
+        details = mergeVolumeDetails(details, with: supplementalDetails)
+        return details
+    }
+
+    private func buildBaseVolumeDetails(from volume: [String: Any]) -> APFSVolumeDetails {
         let volumeName = (volume["Name"] as? String) ?? (volume["VolumeName"] as? String) ?? ""
         let bsdName = (volume["DeviceIdentifier"] as? String) ?? ""
         let mountPoint = volume["MountPoint"] as? String
-
-        let role: String?
-        if let roles = volume["Roles"] as? [String], !roles.isEmpty {
-            role = roles.first
-        } else {
-            role = nil
-        }
+        let sealed = parseSealed(from: volume["Sealed"])
 
         let capacityConsumed = ((volume["CapacityConsumed"] as? NSNumber)?.int64Value)
             ?? ((volume["CapacityInUse"] as? NSNumber)?.int64Value)
         let fileVaultEnabled = volume["FileVault"] as? Bool
-
-        let sealed: Bool?
-        if let b = volume["Sealed"] as? Bool {
-            sealed = b
-        } else if let s = volume["Sealed"] as? String {
-            sealed = s == "Yes"
-        } else {
-            sealed = nil
-        }
 
         let writable = volume["Writable"] as? Bool
         let ignoreOwnership = volume["IgnoreOwnership"] as? Bool
@@ -204,15 +210,111 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
             mountPoint: mountPoint,
             fileSystem: "APFS",
             caseSensitive: nil,
-            role: role,
+            role: parseRole(from: volume),
             capacityConsumedBytes: capacityConsumed,
             fileVaultEnabled: fileVaultEnabled,
             sealed: sealed,
             writable: writable,
             ignoreOwnership: ignoreOwnership,
             volumeUUID: volumeUUID,
-            logicalBlockSize: nil
+            logicalBlockSize: nil,
+            isVolumeDetailComplete: bsdName.isEmpty || sealed != nil
         )
+    }
+
+    private func needsDiskInfoFallback(for volume: APFSVolumeDetails) -> Bool {
+        volume.bsdName.isEmpty == false && volume.sealed == nil
+    }
+
+    private func fetchSupplementalVolumeDetails(forBSDName bsdName: String) async -> APFSVolumeDetails? {
+        guard let data = await commandRunner(
+            "/usr/sbin/diskutil",
+            ["info", "-plist", "/dev/\(bsdName)"]
+        ) else {
+            NSLog("[DiskUtilAPFSProvider] diskutil info returned no data for %@", bsdName)
+            return nil
+        }
+
+        guard let plist = try? PropertyListSerialization.propertyList(
+            from: data, options: [], format: nil
+        ) as? [String: Any] else {
+            NSLog("[DiskUtilAPFSProvider] Failed to parse diskutil info plist for %@", bsdName)
+            return nil
+        }
+
+        return APFSVolumeDetails(
+            volumeName: (plist["VolumeName"] as? String) ?? (plist["MediaName"] as? String) ?? "",
+            bsdName: (plist["DeviceIdentifier"] as? String) ?? bsdName,
+            mountPoint: plist["MountPoint"] as? String,
+            fileSystem: (plist["FilesystemUserVisibleName"] as? String)
+                ?? (plist["FilesystemName"] as? String),
+            caseSensitive: nil,
+            role: parseRole(from: plist),
+            capacityConsumedBytes: (plist["CapacityInUse"] as? NSNumber)?.int64Value,
+            fileVaultEnabled: plist["FileVault"] as? Bool,
+            sealed: parseSealed(from: plist["Sealed"]),
+            writable: (plist["WritableVolume"] as? Bool) ?? (plist["Writable"] as? Bool),
+            ignoreOwnership: plist["IgnoreOwnership"] as? Bool,
+            volumeUUID: (plist["VolumeUUID"] as? String) ?? (plist["DiskUUID"] as? String),
+            logicalBlockSize: (plist["VolumeAllocationBlockSize"] as? NSNumber)?.intValue,
+            isVolumeDetailComplete: parseSealed(from: plist["Sealed"]) != nil
+        )
+    }
+
+    private func mergeVolumeDetails(
+        _ base: APFSVolumeDetails,
+        with supplemental: APFSVolumeDetails
+    ) -> APFSVolumeDetails {
+        APFSVolumeDetails(
+            volumeName: base.volumeName.isEmpty ? supplemental.volumeName : base.volumeName,
+            bsdName: base.bsdName.isEmpty ? supplemental.bsdName : base.bsdName,
+            mountPoint: base.mountPoint ?? supplemental.mountPoint,
+            fileSystem: base.fileSystem ?? supplemental.fileSystem,
+            caseSensitive: base.caseSensitive ?? supplemental.caseSensitive,
+            role: base.role ?? supplemental.role,
+            capacityConsumedBytes: base.capacityConsumedBytes ?? supplemental.capacityConsumedBytes,
+            fileVaultEnabled: base.fileVaultEnabled ?? supplemental.fileVaultEnabled,
+            sealed: base.sealed ?? supplemental.sealed,
+            writable: base.writable ?? supplemental.writable,
+            ignoreOwnership: base.ignoreOwnership ?? supplemental.ignoreOwnership,
+            volumeUUID: base.volumeUUID ?? supplemental.volumeUUID,
+            logicalBlockSize: base.logicalBlockSize ?? supplemental.logicalBlockSize,
+            isVolumeDetailComplete: (base.sealed ?? supplemental.sealed) != nil
+        )
+    }
+
+    private func parseRole(from volume: [String: Any]) -> String? {
+        if let roles = volume["Roles"] as? [String], let firstRole = roles.first, firstRole.isEmpty == false {
+            return firstRole
+        }
+
+        let directRoleKeys = ["Role", "APFSRole", "APFSVolumeRole"]
+        for key in directRoleKeys {
+            if let role = volume[key] as? String, role.isEmpty == false {
+                return role
+            }
+        }
+
+        return nil
+    }
+
+    private func parseSealed(from value: Any?) -> Bool? {
+        if let value = value as? Bool {
+            return value
+        }
+
+        if let value = value as? String {
+            switch value.lowercased() {
+            case "yes":
+                return true
+            case "no":
+                return false
+            default:
+                return nil
+            }
+        }
+
+        return nil
     }
 
     private static func runSubprocess(executable: String, arguments: [String]) async -> Data? {

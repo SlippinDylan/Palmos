@@ -58,7 +58,20 @@ enum SubprocessRunner {
                 process.waitUntilExit()
                 group.wait()
                 let stdoutData = stdoutBox.get()
-                _ = stderrBox.get()
+                let stderrData = stderrBox.get()
+                if stdoutData.isEmpty, stderrData.isEmpty == false {
+                    let stderrMessage = String(data: stderrData, encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let stderrMessage, stderrMessage.isEmpty == false {
+                        NSLog(
+                            "[SubprocessRunner] %@ %@ failed (exit %d): %@",
+                            executable,
+                            arguments.joined(separator: " "),
+                            process.terminationStatus,
+                            stderrMessage
+                        )
+                    }
+                }
                 continuation.resume(returning: stdoutData.isEmpty ? nil : stdoutData)
             }
         }

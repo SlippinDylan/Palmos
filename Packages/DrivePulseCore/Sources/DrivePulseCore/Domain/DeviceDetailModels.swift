@@ -119,6 +119,7 @@ public struct APFSVolumeDetails: Equatable, Sendable {
     public var ignoreOwnership: Bool?
     public var volumeUUID: String?
     public var logicalBlockSize: Int?
+    public var isVolumeDetailComplete: Bool
 
     public init(
         volumeName: String,
@@ -133,7 +134,8 @@ public struct APFSVolumeDetails: Equatable, Sendable {
         writable: Bool? = nil,
         ignoreOwnership: Bool? = nil,
         volumeUUID: String? = nil,
-        logicalBlockSize: Int? = nil
+        logicalBlockSize: Int? = nil,
+        isVolumeDetailComplete: Bool = true
     ) {
         self.volumeName = volumeName
         self.bsdName = bsdName
@@ -148,6 +150,7 @@ public struct APFSVolumeDetails: Equatable, Sendable {
         self.ignoreOwnership = ignoreOwnership
         self.volumeUUID = volumeUUID
         self.logicalBlockSize = logicalBlockSize
+        self.isVolumeDetailComplete = isVolumeDetailComplete
     }
 }
 

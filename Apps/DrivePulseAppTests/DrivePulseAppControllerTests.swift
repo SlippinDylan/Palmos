@@ -217,6 +217,315 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(diskUtilProvider.refreshCallCount, 2)
     }
 
+    func testObservedSparseSnapshotDoesNotDiscardRicherBootstrapDeviceContext() async throws {
+        let bootstrapDevice = makeDevice(
+            id: "disk84",
+            volumes: ["disk84s2s1"],
+            transportName: "Thunderbolt",
+            physicalStoreBSDName: "disk84",
+            apfsContainerBSDName: "disk84s2"
+        )
+        let sparseObservedDevice = makeDevice(
+            id: "disk84",
+            volumes: [],
+            transportName: "External",
+            physicalStoreBSDName: "disk84",
+            apfsContainerBSDName: nil
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
+        let systemProfilerProvider = StubSystemProfilerProvider(
+            refreshedNVMeInfoByBSDName: [
+                "disk84": NVMeInfo(
+                    controller: "Controller B",
+                    model: "Model B",
+                    serialNumber: "SERIAL-B",
+                    firmwareVersion: "FW-B"
+                )
+            ],
+            refreshedPCIInfoBySerialNumber: [
+                "SERIAL-B": PCIInfo(
+                    slot: "Slot-B",
+                    vendorID: "0x1234",
+                    deviceID: "0x5678"
+                )
+            ],
+            refreshedThunderboltInfo: ThunderboltInfo(
+                vendorName: "Acme",
+                deviceName: "TB Enclosure"
+            )
+        )
+        let diskUtilProvider = DelayedStubDiskUtilAPFSProvider(
+            refreshDelayNanoseconds: 200_000_000,
+            refreshedContainerInfoByBSDName: [
+                "disk84s2": APFSContainerInfo(
+                    bsdName: "disk84s2",
+                    totalCapacityBytes: 2_000,
+                    capacityInUseBytes: 1_500,
+                    capacityNotAllocatedBytes: 500,
+                    volumes: [
+                        APFSVolumeDetails(
+                            volumeName: "Observed",
+                            bsdName: "disk84s2s1",
+                            mountPoint: "/Volumes/Observed",
+                            capacityConsumedBytes: 1_500
+                        )
+                    ]
+                )
+            ],
+            physicalPartitionsByDiskBSDName: [
+                "disk84": [
+                    PhysicalPartitionInfo(
+                        bsdName: "disk84s2",
+                        partitionType: "Apple_APFS"
+                    )
+                ]
+            ]
+        )
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: systemProfilerProvider,
+            diskUtilAPFSProvider: diskUtilProvider
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+
+        discovery.emit([sparseObservedDevice])
+
+        await waitUntilStateDevices(controller) { devices in
+            guard let device = devices.first else { return false }
+            return device.id == bootstrapDevice.id
+                && device.transportName == "Thunderbolt"
+                && device.apfsContainerBSDName == "disk84s2"
+                && device.volumes == [MountedVolume(bsdName: "disk84s2s1")]
+                && device.apfsContainerDetails?.capacityInUseBytes == 1_500
+                && device.thunderboltInfo?.deviceName == "TB Enclosure"
+                && device.pciInfo?.slot == "Slot-B"
+                && device.physicalPartitions == [
+                    PhysicalPartitionInfo(
+                        bsdName: "disk84s2",
+                        partitionType: "Apple_APFS"
+                    )
+                ]
+        }
+    }
+
+    func testControllerRetriesAPFSEnrichmentAfterInitialDiskUtilFailure() async throws {
+        let bootstrapDevice = makeDevice(
+            id: "disk21",
+            volumes: ["disk21s2s1"],
+            physicalStoreBSDName: "disk21",
+            apfsContainerBSDName: "disk21s2"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
+        let diskUtilProvider = RetryingStubDiskUtilAPFSProvider(
+            refreshResults: [
+                [:],
+                [
+                    "disk21s2": APFSContainerInfo(
+                        bsdName: "disk21s2",
+                        totalCapacityBytes: 2_000,
+                        capacityInUseBytes: 1_500,
+                        capacityNotAllocatedBytes: 500,
+                        volumes: [
+                            APFSVolumeDetails(
+                                volumeName: "Macintosh HD",
+                                bsdName: "disk21s2s1",
+                                mountPoint: "/Volumes/Macintosh HD",
+                                capacityConsumedBytes: 1_500,
+                                volumeUUID: "volume-uuid"
+                            )
+                        ]
+                    )
+                ]
+            ],
+            physicalPartitionsByDiskBSDName: [
+                "disk21": [
+                    PhysicalPartitionInfo(
+                        bsdName: "disk21s2",
+                        partitionType: "Apple_APFS"
+                    )
+                ]
+            ]
+        )
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: DelayedSystemProfilerProvider(fetchDelayNanoseconds: 1_000_000_000),
+            diskUtilAPFSProvider: diskUtilProvider
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+
+        await waitUntilStateDevices(controller) { devices in
+            guard let device = devices.first else { return false }
+            return device.id == bootstrapDevice.id
+                && device.apfsContainerDetails?.capacityInUseBytes == 1_500
+                && device.apfsContainerDetails?.capacityNotAllocatedBytes == 500
+                && device.apfsContainerDetails?.volumes.first?.volumeUUID == "volume-uuid"
+        }
+        XCTAssertGreaterThanOrEqual(diskUtilProvider.refreshCallCount, 2)
+    }
+
+    func testControllerRetriesAPFSEnrichmentWhenVolumeDetailsAreIncomplete() async throws {
+        let bootstrapDevice = makeDevice(
+            id: "disk21",
+            volumes: ["disk21s2s1"],
+            physicalStoreBSDName: "disk21",
+            apfsContainerBSDName: "disk21s2"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
+        let diskUtilProvider = RetryingStubDiskUtilAPFSProvider(
+            refreshResults: [
+                [
+                    "disk21s2": APFSContainerInfo(
+                        bsdName: "disk21s2",
+                        totalCapacityBytes: 2_000,
+                        capacityInUseBytes: 1_500,
+                        capacityNotAllocatedBytes: 500,
+                        volumes: [
+                            APFSVolumeDetails(
+                                volumeName: "Macintosh HD",
+                                bsdName: "disk21s2s1",
+                                capacityConsumedBytes: 1_500,
+                                volumeUUID: "volume-uuid",
+                                isVolumeDetailComplete: false
+                            )
+                        ]
+                    )
+                ],
+                [
+                    "disk21s2": APFSContainerInfo(
+                        bsdName: "disk21s2",
+                        totalCapacityBytes: 2_000,
+                        capacityInUseBytes: 1_500,
+                        capacityNotAllocatedBytes: 500,
+                        volumes: [
+                            APFSVolumeDetails(
+                                volumeName: "Macintosh HD",
+                                bsdName: "disk21s2s1",
+                                mountPoint: "/Volumes/Macintosh HD",
+                                sealed: false,
+                                writable: true,
+                                volumeUUID: "volume-uuid",
+                                isVolumeDetailComplete: true
+                            )
+                        ]
+                    )
+                ]
+            ]
+        )
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: DelayedSystemProfilerProvider(fetchDelayNanoseconds: 1_000_000_000),
+            diskUtilAPFSProvider: diskUtilProvider
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+
+        await waitUntilStateDevices(controller) { devices in
+            guard let device = devices.first else { return false }
+            return device.apfsContainerDetails?.volumes.first?.isVolumeDetailComplete == true
+                && device.apfsContainerDetails?.volumes.first?.sealed == false
+                && device.apfsContainerDetails?.volumes.first?.writable == true
+        }
+        XCTAssertGreaterThanOrEqual(diskUtilProvider.refreshCallCount, 2)
+    }
+
+    func testObservedControllerTransportDoesNotOverrideKnownThunderboltTransport() async throws {
+        let bootstrapDevice = makeDevice(
+            id: "disk84",
+            volumes: ["disk84s2s1"],
+            transportName: "Thunderbolt",
+            physicalStoreBSDName: "disk84",
+            apfsContainerBSDName: "disk84s2"
+        )
+        let observedDevice = makeDevice(
+            id: "disk84",
+            volumes: ["disk84s2s1"],
+            transportName: "IONVMeController",
+            physicalStoreBSDName: "disk84",
+            apfsContainerBSDName: "disk84s2"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: StubSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider()
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+
+        discovery.emit([observedDevice])
+
+        await waitUntilStateDevices(controller) { devices in
+            devices.first?.transportName == "Thunderbolt"
+        }
+    }
+
+    func testRepeatedObservedUpdatesDoNotRestartSystemProfilerEnrichmentForSameDevice() async throws {
+        let bootstrapDevice = makeDevice(
+            id: "disk84",
+            volumes: ["disk84s2s1"],
+            transportName: "Thunderbolt",
+            physicalStoreBSDName: "disk84",
+            apfsContainerBSDName: "disk84s2"
+        )
+        let observedDevice = makeDevice(
+            id: "disk84",
+            volumes: ["disk84s2s1"],
+            transportName: "Thunderbolt",
+            physicalStoreBSDName: "disk84",
+            apfsContainerBSDName: "disk84s2"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
+        let systemProfilerProvider = DelayedRefreshingStubSystemProfilerProvider(
+            refreshDelayNanoseconds: 500_000_000,
+            refreshedNVMeInfoByBSDName: [
+                "disk84": NVMeInfo(
+                    controller: "Controller B",
+                    model: "Model B",
+                    serialNumber: "SERIAL-B",
+                    firmwareVersion: "FW-B"
+                )
+            ],
+            refreshedPCIInfoBySerialNumber: [
+                "SERIAL-B": PCIInfo(
+                    slot: "Thunderbolt@67,0,0",
+                    vendorID: "0x144d",
+                    deviceID: "0xa808"
+                )
+            ],
+            refreshedThunderboltInfo: ThunderboltInfo(
+                vendorName: "ACASIS",
+                deviceName: "TB406Pro",
+                uid: "0x8086DA2A0D19ED00"
+            )
+        )
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: systemProfilerProvider,
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider()
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+
+        discovery.emit([observedDevice])
+        await systemProfilerProvider.waitUntilRefreshCallCount(is: 1)
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        discovery.emit([observedDevice])
+        try? await Task.sleep(nanoseconds: 300_000_000)
+
+        let selectedDevice = try XCTUnwrap(controller.state.selectedDevice)
+        XCTAssertEqual(selectedDevice.nvmeInfo?.serialNumber, "SERIAL-B")
+        XCTAssertEqual(selectedDevice.pciInfo?.vendorID, "0x144d")
+        XCTAssertEqual(selectedDevice.thunderboltInfo?.uid, "0x8086DA2A0D19ED00")
+    }
+
     func testControllerDoesNotAssignSharedThunderboltInfoToMultipleThunderboltDevices() async {
         let firstDevice = makeDevice(
             id: "disk21",
@@ -841,6 +1150,69 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(container?.volumes.first?.volumeUUID, "volume-uuid")
     }
 
+    func testLiveDiskUtilAPFSProviderFallsBackToDiskInfoForMissingSealedFlag() async throws {
+        let runner = StubDiskUtilCommandRunner(
+            outputsByArguments: [
+                ["apfs", "list", "-plist"]: [
+                    try Self.makeCurrentAPFSListPlist(
+                        containerBSDName: "disk21s2",
+                        totalBytes: 100,
+                        freeBytes: 40,
+                        volumeCapacityInUseBytes: 60,
+                        volumeUUID: "volume-uuid"
+                    )
+                ],
+                ["info", "-plist", "/dev/disk21s2s1"]: [
+                    try Self.makeDiskUtilVolumeInfoPlist(
+                        bsdName: "disk21s2s1",
+                        mountPoint: "/Volumes/Macintosh HD",
+                        fileVaultEnabled: false,
+                        sealed: "No",
+                        writable: true,
+                        volumeUUID: "volume-uuid"
+                    )
+                ]
+            ]
+        )
+        let provider = LiveDiskUtilAPFSProvider(commandRunner: runner.run)
+
+        let container = await provider.containerInfo(forContainerBSDName: "disk21s2")
+
+        XCTAssertEqual(container?.volumes.first?.sealed, false)
+        XCTAssertEqual(container?.volumes.first?.fileVaultEnabled, false)
+        XCTAssertEqual(container?.volumes.first?.writable, true)
+        XCTAssertEqual(container?.volumes.first?.mountPoint, "/Volumes/Macintosh HD")
+        XCTAssertEqual(container?.volumes.first?.volumeUUID, "volume-uuid")
+        XCTAssertEqual(container?.volumes.first?.isVolumeDetailComplete, true)
+        let infoInvocationCount = await runner.diskInfoInvocationCount()
+        XCTAssertEqual(infoInvocationCount, 1)
+    }
+
+    func testLiveDiskUtilAPFSProviderMarksVolumeDetailsIncompleteWhenDiskInfoFallbackFails() async throws {
+        let runner = StubDiskUtilCommandRunner(
+            outputsByArguments: [
+                ["apfs", "list", "-plist"]: [
+                    try Self.makeCurrentAPFSListPlist(
+                        containerBSDName: "disk21s2",
+                        totalBytes: 100,
+                        freeBytes: 40,
+                        volumeCapacityInUseBytes: 60,
+                        volumeUUID: "volume-uuid"
+                    )
+                ]
+            ]
+        )
+        let provider = LiveDiskUtilAPFSProvider(commandRunner: runner.run)
+
+        let container = await provider.containerInfo(forContainerBSDName: "disk21s2")
+
+        XCTAssertEqual(container?.volumes.first?.sealed, nil)
+        XCTAssertEqual(container?.volumes.first?.writable, nil)
+        XCTAssertEqual(container?.volumes.first?.isVolumeDetailComplete, false)
+        let infoInvocationCount = await runner.diskInfoInvocationCount()
+        XCTAssertEqual(infoInvocationCount, 1)
+    }
+
     func testControllerBootstrapsAPFSDetailsWithoutWaitingForSystemProfiler() async throws {
         let bootstrapDevice = makeDevice(
             id: "disk21",
@@ -1037,6 +1409,30 @@ final class DrivePulseAppControllerTests: XCTestCase {
                     ]
                 ]
             ]
+        ]
+
+        return try PropertyListSerialization.data(
+            fromPropertyList: plist,
+            format: .xml,
+            options: 0
+        )
+    }
+
+    private static func makeDiskUtilVolumeInfoPlist(
+        bsdName: String,
+        mountPoint: String,
+        fileVaultEnabled: Bool,
+        sealed: String,
+        writable: Bool,
+        volumeUUID: String
+    ) throws -> Data {
+        let plist: [String: Any] = [
+            "DeviceIdentifier": bsdName,
+            "MountPoint": mountPoint,
+            "FileVault": fileVaultEnabled,
+            "Sealed": sealed,
+            "Writable": writable,
+            "VolumeUUID": volumeUUID
         ]
 
         return try PropertyListSerialization.data(
@@ -1330,6 +1726,71 @@ private final class DelayedSystemProfilerProvider: SystemProfilerProviding, @unc
     }
 }
 
+private final class DelayedRefreshingStubSystemProfilerProvider: SystemProfilerProviding, @unchecked Sendable {
+    private let queue = DispatchQueue(label: "DelayedRefreshingStubSystemProfilerProvider")
+    private let refreshDelayNanoseconds: UInt64
+    private let refreshedNVMeInfoByBSDName: [String: NVMeInfo]
+    private let refreshedPCIInfoBySerialNumber: [String: PCIInfo]
+    private let refreshedThunderboltInfo: ThunderboltInfo?
+    private var refreshCallCountValue = 0
+    private var hasRefreshedValue = false
+
+    init(
+        refreshDelayNanoseconds: UInt64,
+        refreshedNVMeInfoByBSDName: [String: NVMeInfo] = [:],
+        refreshedPCIInfoBySerialNumber: [String: PCIInfo] = [:],
+        refreshedThunderboltInfo: ThunderboltInfo? = nil
+    ) {
+        self.refreshDelayNanoseconds = refreshDelayNanoseconds
+        self.refreshedNVMeInfoByBSDName = refreshedNVMeInfoByBSDName
+        self.refreshedPCIInfoBySerialNumber = refreshedPCIInfoBySerialNumber
+        self.refreshedThunderboltInfo = refreshedThunderboltInfo
+    }
+
+    func fetchIfNeeded() async {}
+
+    func refresh() async {
+        queue.sync {
+            refreshCallCountValue += 1
+        }
+
+        if refreshDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: refreshDelayNanoseconds)
+        }
+
+        queue.sync {
+            hasRefreshedValue = true
+        }
+    }
+
+    func nvmeInfo(forBSDName bsdName: String, modelName: String?) -> NVMeInfo? {
+        queue.sync {
+            guard hasRefreshedValue else { return nil }
+            return refreshedNVMeInfoByBSDName[bsdName]
+        }
+    }
+
+    func pciInfo(forNVMeSerialNumber serial: String?) -> PCIInfo? {
+        queue.sync {
+            guard hasRefreshedValue, let serial else { return nil }
+            return refreshedPCIInfoBySerialNumber[serial]
+        }
+    }
+
+    func thunderboltInfo() -> ThunderboltInfo? {
+        queue.sync {
+            guard hasRefreshedValue else { return nil }
+            return refreshedThunderboltInfo
+        }
+    }
+
+    func waitUntilRefreshCallCount(is expectedCount: Int) async {
+        while queue.sync(execute: { refreshCallCountValue < expectedCount }) {
+            await Task.yield()
+        }
+    }
+}
+
 private final class StubDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable {
     private let queue = DispatchQueue(label: "StubDiskUtilAPFSProvider")
     private let bootstrapContainerInfoByBSDName: [String: APFSContainerInfo]
@@ -1375,6 +1836,82 @@ private final class StubDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked 
         queue.sync {
             physicalPartitionsByDiskBSDName[bsdName] ?? []
         }
+    }
+}
+
+private final class DelayedStubDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable {
+    private let refreshDelayNanoseconds: UInt64
+    private let queue = DispatchQueue(label: "DelayedStubDiskUtilAPFSProvider")
+    private let refreshedContainerInfoByBSDName: [String: APFSContainerInfo]
+    private let physicalPartitionsByDiskBSDName: [String: [PhysicalPartitionInfo]]
+    private var refreshCallCountValue = 0
+
+    init(
+        refreshDelayNanoseconds: UInt64,
+        refreshedContainerInfoByBSDName: [String: APFSContainerInfo] = [:],
+        physicalPartitionsByDiskBSDName: [String: [PhysicalPartitionInfo]] = [:]
+    ) {
+        self.refreshDelayNanoseconds = refreshDelayNanoseconds
+        self.refreshedContainerInfoByBSDName = refreshedContainerInfoByBSDName
+        self.physicalPartitionsByDiskBSDName = physicalPartitionsByDiskBSDName
+    }
+
+    func refresh() async {
+        if refreshDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: refreshDelayNanoseconds)
+        }
+
+        queue.sync {
+            refreshCallCountValue += 1
+        }
+    }
+
+    func containerInfo(forContainerBSDName bsdName: String) async -> APFSContainerInfo? {
+        refreshedContainerInfoByBSDName[bsdName]
+    }
+
+    func physicalPartitions(forDiskBSDName bsdName: String) async -> [PhysicalPartitionInfo] {
+        physicalPartitionsByDiskBSDName[bsdName] ?? []
+    }
+}
+
+private final class RetryingStubDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable {
+    private let queue = DispatchQueue(label: "RetryingStubDiskUtilAPFSProvider")
+    private let refreshResults: [[String: APFSContainerInfo]]
+    private let physicalPartitionsByDiskBSDName: [String: [PhysicalPartitionInfo]]
+    private var refreshCallCountValue = 0
+
+    var refreshCallCount: Int {
+        queue.sync { refreshCallCountValue }
+    }
+
+    init(
+        refreshResults: [[String: APFSContainerInfo]],
+        physicalPartitionsByDiskBSDName: [String: [PhysicalPartitionInfo]] = [:]
+    ) {
+        self.refreshResults = refreshResults
+        self.physicalPartitionsByDiskBSDName = physicalPartitionsByDiskBSDName
+    }
+
+    func refresh() async {
+        queue.sync {
+            refreshCallCountValue += 1
+        }
+    }
+
+    func containerInfo(forContainerBSDName bsdName: String) async -> APFSContainerInfo? {
+        queue.sync {
+            guard refreshCallCountValue > 0 else {
+                return nil
+            }
+
+            let resultIndex = min(refreshCallCountValue - 1, refreshResults.count - 1)
+            return refreshResults[resultIndex][bsdName]
+        }
+    }
+
+    func physicalPartitions(forDiskBSDName bsdName: String) async -> [PhysicalPartitionInfo] {
+        physicalPartitionsByDiskBSDName[bsdName] ?? []
     }
 }
 
@@ -1465,15 +2002,43 @@ private actor ConcurrentSystemProfilerRunner {
 
 private actor StubDiskUtilCommandRunner {
     private var outputs: [Data]
+    private var outputsByArguments: [[String]: [Data]]
     private var apfsListInvocationCountValue = 0
+    private var diskInfoInvocationCountValue = 0
 
     init(outputs: [Data]) {
         self.outputs = outputs
+        self.outputsByArguments = [:]
+    }
+
+    init(outputsByArguments: [[String]: [Data]]) {
+        self.outputs = []
+        self.outputsByArguments = outputsByArguments
     }
 
     func run(_ executable: String, _ arguments: [String]) async -> Data? {
         if arguments == ["apfs", "list", "-plist"] {
             apfsListInvocationCountValue += 1
+        }
+
+        if arguments.count == 3,
+           arguments[0] == "info",
+           arguments[1] == "-plist",
+           arguments[2].hasPrefix("/dev/") {
+            diskInfoInvocationCountValue += 1
+        }
+
+        if var routedOutputs = outputsByArguments[arguments], routedOutputs.isEmpty == false {
+            let output = routedOutputs.removeFirst()
+            outputsByArguments[arguments] = routedOutputs
+            return output
+        }
+
+        if arguments.count == 3,
+           arguments[0] == "info",
+           arguments[1] == "-plist",
+           arguments[2].hasPrefix("/dev/") {
+            return nil
         }
 
         guard outputs.isEmpty == false else {
@@ -1485,6 +2050,10 @@ private actor StubDiskUtilCommandRunner {
 
     func apfsListInvocationCount() -> Int {
         apfsListInvocationCountValue
+    }
+
+    func diskInfoInvocationCount() -> Int {
+        diskInfoInvocationCountValue
     }
 }
 

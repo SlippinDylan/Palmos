@@ -7,6 +7,19 @@ import DrivePulseCore
 final class DrivePulseAppController: ObservableObject {
     private static let throughputSamplingInterval: TimeInterval = 0.25
     private static let throughputHistoryLimit = 300
+    private static let apfsEnrichmentRetryDelays: [TimeInterval] = [0.25, 0.75, 1.5]
+
+    private enum SystemProfilerRefreshMode {
+        case fetchIfNeeded
+        case refresh
+
+        func merged(with other: SystemProfilerRefreshMode) -> SystemProfilerRefreshMode {
+            if self == .refresh || other == .refresh {
+                return .refresh
+            }
+            return .fetchIfNeeded
+        }
+    }
 
     @Published private(set) var state: DrivePulseAppState
     @Published private(set) var actionFeedback: String?
@@ -18,6 +31,9 @@ final class DrivePulseAppController: ObservableObject {
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
     private var discoveryLoadTask: Task<Void, Never>?
     private var observationEnrichmentTask: Task<Void, Never>?
+    private var apfsRetryTask: Task<Void, Never>?
+    private var systemProfilerEnrichmentTask: Task<Void, Never>?
+    private var pendingSystemProfilerRefreshMode: SystemProfilerRefreshMode?
     private var discoveryWriteGeneration = 0
     private var throughputSamplingTimer: Timer?
     private var lastDiskCountersByDeviceID: [DeviceID: DiskIOCounters] = [:]
@@ -75,6 +91,8 @@ final class DrivePulseAppController: ObservableObject {
         MainActor.assumeIsolated {
             discoveryLoadTask?.cancel()
             observationEnrichmentTask?.cancel()
+            apfsRetryTask?.cancel()
+            systemProfilerEnrichmentTask?.cancel()
             discoveryObservation?.cancel()
             throughputSamplingTimer?.invalidate()
             volumeCapacityRefresher.stop()
@@ -230,64 +248,67 @@ final class DrivePulseAppController: ObservableObject {
     private func loadDiscoveredDevices() {
         discoveryLoadTask?.cancel()
         observationEnrichmentTask?.cancel()
+        apfsRetryTask?.cancel()
+        systemProfilerEnrichmentTask?.cancel()
+        systemProfilerEnrichmentTask = nil
+        pendingSystemProfilerRefreshMode = nil
         discoveryWriteGeneration += 1
         let generation = discoveryWriteGeneration
         let deviceDiscovery = deviceDiscovery
-        let systemProfilerProvider = systemProfilerProvider
         let diskUtilAPFSProvider = diskUtilAPFSProvider
         discoveryLoadTask = Task { [weak self] in
             let devices = await deviceDiscovery.discoverDevices()
-            guard !Task.isCancelled else { return }
-            // Show basic device list immediately; NVMe/TB/APFS enrichment follows
-            self?.applyDiscoveredDevices(devices, generation: generation)
             guard !Task.isCancelled, let self else { return }
+            let mergedDevices = self.mergeDevicesPreservingKnownContext(devices)
+            // Show basic device list immediately; NVMe/TB/APFS enrichment follows
+            self.applyDiscoveredDevices(mergedDevices, generation: generation)
+            self.scheduleSystemProfilerEnrichment(.fetchIfNeeded)
             await diskUtilAPFSProvider.refresh()
             guard !Task.isCancelled else { return }
             let apfsEnriched = await self.enrichDevicesWithAPFS(
-                devices,
+                mergedDevices,
                 diskUtilAPFSProvider: diskUtilAPFSProvider
             )
             guard !Task.isCancelled else { return }
-            self.applyDiscoveredDevices(apfsEnriched, generation: generation)
-            await systemProfilerProvider.fetchIfNeeded()
-            guard !Task.isCancelled else { return }
-            let enriched = self.enrichDevicesWithSystemProfiler(apfsEnriched)
-            guard !Task.isCancelled else { return }
-            self.applyDiscoveredDevices(enriched, generation: generation)
+            let mergedAPFSEnriched = self.mergeDevicesPreservingKnownContext(apfsEnriched)
+            self.applyDiscoveredDevices(mergedAPFSEnriched, generation: generation)
+            self.scheduleAPFSRetryIfNeeded(
+                generation: generation,
+                diskUtilAPFSProvider: diskUtilAPFSProvider
+            )
         }
     }
 
     private func applyObservedDevices(_ devices: [ExternalDevice]) {
         observationEnrichmentTask?.cancel()
+        apfsRetryTask?.cancel()
         discoveryWriteGeneration += 1
         let generation = discoveryWriteGeneration
-        let systemProfilerProvider = systemProfilerProvider
         let diskUtilAPFSProvider = diskUtilAPFSProvider
+        let mergedDevices = mergeDevicesPreservingKnownContext(devices)
         // Apply unenriched devices immediately so UI is responsive before system_profiler finishes
-        state.replaceDevices(devices)
+        state.replaceDevices(mergedDevices)
         pruneSamplingState()
-        updateCapacityRefresher(from: devices)
-        triggerInitialSMARTForNewDevices(devices)
+        updateCapacityRefresher(from: mergedDevices)
+        triggerInitialSMARTForNewDevices(mergedDevices)
+        scheduleSystemProfilerEnrichment(.refresh)
         observationEnrichmentTask = Task { [weak self] in
             guard let self else { return }
             await diskUtilAPFSProvider.refresh()
             guard !Task.isCancelled else { return }
             let apfsEnriched = await self.enrichDevicesWithAPFS(
-                devices,
+                mergedDevices,
                 diskUtilAPFSProvider: diskUtilAPFSProvider
             )
             guard generation == self.discoveryWriteGeneration, !Task.isCancelled else { return }
-            self.state.replaceDevices(apfsEnriched)
+            let mergedAPFSEnriched = self.mergeDevicesPreservingKnownContext(apfsEnriched)
+            self.state.replaceDevices(mergedAPFSEnriched)
             self.pruneSamplingState()
-            self.updateCapacityRefresher(from: apfsEnriched)
-
-            await systemProfilerProvider.refresh()
-            guard !Task.isCancelled else { return }
-            let enriched = self.enrichDevicesWithSystemProfiler(apfsEnriched)
-            guard generation == self.discoveryWriteGeneration else { return }
-            self.state.replaceDevices(enriched)
-            self.pruneSamplingState()
-            self.updateCapacityRefresher(from: enriched)
+            self.updateCapacityRefresher(from: mergedAPFSEnriched)
+            self.scheduleAPFSRetryIfNeeded(
+                generation: generation,
+                diskUtilAPFSProvider: diskUtilAPFSProvider
+            )
         }
     }
 
@@ -300,6 +321,184 @@ final class DrivePulseAppController: ObservableObject {
         pruneSamplingState()
         updateCapacityRefresher(from: devices)
         triggerInitialSMARTForNewDevices(devices)
+    }
+
+    private func scheduleAPFSRetryIfNeeded(
+        generation: Int,
+        diskUtilAPFSProvider: any DiskUtilAPFSProviding
+    ) {
+        guard generation == discoveryWriteGeneration else {
+            return
+        }
+
+        guard needsAPFSEnrichmentRetry(state.devices) else {
+            apfsRetryTask?.cancel()
+            apfsRetryTask = nil
+            return
+        }
+
+        apfsRetryTask?.cancel()
+        apfsRetryTask = Task { [weak self] in
+            guard let self else { return }
+
+            for delay in Self.apfsEnrichmentRetryDelays {
+                if delay > 0 {
+                    let delayNanoseconds = UInt64(delay * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: delayNanoseconds)
+                }
+
+                guard generation == self.discoveryWriteGeneration, !Task.isCancelled else { return }
+                await diskUtilAPFSProvider.refresh()
+                guard generation == self.discoveryWriteGeneration, !Task.isCancelled else { return }
+
+                let enrichedDevices = await self.enrichDevicesWithAPFS(
+                    self.state.devices,
+                    diskUtilAPFSProvider: diskUtilAPFSProvider
+                )
+                guard generation == self.discoveryWriteGeneration, !Task.isCancelled else { return }
+
+                let mergedEnrichedDevices = self.mergeDevicesPreservingKnownContext(enrichedDevices)
+                self.applyDiscoveredDevices(mergedEnrichedDevices, generation: generation)
+                if self.needsAPFSEnrichmentRetry(mergedEnrichedDevices) == false {
+                    self.apfsRetryTask = nil
+                    return
+                }
+            }
+
+            self.apfsRetryTask = nil
+        }
+    }
+
+    private func scheduleSystemProfilerEnrichment(_ mode: SystemProfilerRefreshMode) {
+        if let existingPendingMode = pendingSystemProfilerRefreshMode {
+            pendingSystemProfilerRefreshMode = existingPendingMode.merged(with: mode)
+        } else {
+            pendingSystemProfilerRefreshMode = mode
+        }
+
+        guard systemProfilerEnrichmentTask == nil else {
+            return
+        }
+
+        let systemProfilerProvider = systemProfilerProvider
+        systemProfilerEnrichmentTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            defer {
+                self.systemProfilerEnrichmentTask = nil
+            }
+
+            while !Task.isCancelled {
+                guard let mode = self.pendingSystemProfilerRefreshMode else {
+                    return
+                }
+                self.pendingSystemProfilerRefreshMode = nil
+
+                switch mode {
+                case .fetchIfNeeded:
+                    await systemProfilerProvider.fetchIfNeeded()
+                case .refresh:
+                    await systemProfilerProvider.refresh()
+                }
+
+                guard !Task.isCancelled else { return }
+                let enrichedDevices = self.enrichDevicesWithSystemProfiler(self.state.devices)
+                self.state.replaceDevices(enrichedDevices)
+                self.pruneSamplingState()
+                self.updateCapacityRefresher(from: enrichedDevices)
+            }
+        }
+    }
+
+    private func needsAPFSEnrichmentRetry(_ devices: [ExternalDevice]) -> Bool {
+        devices.contains { device in
+            guard device.apfsContainerBSDName != nil else {
+                return false
+            }
+            guard let containerDetails = device.apfsContainerDetails else {
+                return true
+            }
+            return containerDetails.volumes.contains(where: { $0.isVolumeDetailComplete == false })
+        }
+    }
+
+    private func mergeDevicesPreservingKnownContext(_ devices: [ExternalDevice]) -> [ExternalDevice] {
+        let existingDevicesByID = Dictionary(uniqueKeysWithValues: state.devices.map { ($0.id, $0) })
+        return devices.map { incoming in
+            guard let existing = existingDevicesByID[incoming.id] else {
+                return incoming
+            }
+            return mergeKnownContext(from: existing, into: incoming)
+        }
+    }
+
+    private func mergeKnownContext(from existing: ExternalDevice, into incoming: ExternalDevice) -> ExternalDevice {
+        var merged = incoming
+
+        if isGenericDisplayName(merged.displayName, for: merged.id) {
+            merged.displayName = existing.displayName
+        }
+        if shouldPrefer(existing.transportName, over: merged.transportName) {
+            merged.transportName = existing.transportName
+        }
+        if merged.capacityBytes == nil {
+            merged.capacityBytes = existing.capacityBytes
+        }
+        if merged.apfsContainerBSDName == nil {
+            merged.apfsContainerBSDName = existing.apfsContainerBSDName
+        }
+        if merged.volumes.isEmpty {
+            merged.volumes = existing.volumes
+        }
+        if merged.nvmeInfo == nil {
+            merged.nvmeInfo = existing.nvmeInfo
+        }
+        if merged.thunderboltInfo == nil {
+            merged.thunderboltInfo = existing.thunderboltInfo
+        }
+        if merged.pciInfo == nil {
+            merged.pciInfo = existing.pciInfo
+        }
+        if merged.apfsContainerDetails == nil {
+            merged.apfsContainerDetails = existing.apfsContainerDetails
+        }
+        if merged.physicalPartitions.isEmpty {
+            merged.physicalPartitions = existing.physicalPartitions
+        }
+
+        return merged
+    }
+
+    private func isGenericDisplayName(_ displayName: String, for deviceID: DeviceID) -> Bool {
+        displayName == deviceID.rawValue.uppercased()
+    }
+
+    private func shouldPrefer(_ existingTransportName: String, over incomingTransportName: String) -> Bool {
+        transportQualityScore(existingTransportName) > transportQualityScore(incomingTransportName)
+    }
+
+    private func transportQualityScore(_ transportName: String) -> Int {
+        let normalizedTransport = transportName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        switch normalizedTransport {
+        case "thunderbolt":
+            return 40
+        case "usb4":
+            return 30
+        case "usb", "usb-c", "sd":
+            return 20
+        case "external", "":
+            return 0
+        default:
+            if normalizedTransport.hasPrefix("io")
+                || normalizedTransport.contains("controller")
+                || normalizedTransport.contains("storage") {
+                return 0
+            }
+            return 10
+        }
     }
 
     private func enrichDevicesWithAPFS(
@@ -332,7 +531,6 @@ final class DrivePulseAppController: ObservableObject {
 
     private func enrichDevicesWithSystemProfiler(_ devices: [ExternalDevice]) -> [ExternalDevice] {
         var result = devices
-        let thunderboltDeviceCount = result.filter { $0.transportName == "Thunderbolt" }.count
         for i in result.indices {
             var device = result[i]
             if let nvmeInfo = systemProfilerProvider.nvmeInfo(
@@ -341,13 +539,28 @@ final class DrivePulseAppController: ObservableObject {
             ) {
                 device.nvmeInfo = nvmeInfo
                 device.pciInfo = systemProfilerProvider.pciInfo(forNVMeSerialNumber: nvmeInfo.serialNumber)
-            }
-            if device.transportName == "Thunderbolt", thunderboltDeviceCount == 1 {
-                device.thunderboltInfo = systemProfilerProvider.thunderboltInfo()
+                if isThunderboltPCISlot(device.pciInfo?.slot) {
+                    device.transportName = "Thunderbolt"
+                }
             }
             result[i] = device
         }
+
+        let thunderboltDeviceCount = result.filter { $0.transportName == "Thunderbolt" }.count
+        if thunderboltDeviceCount == 1,
+           let thunderboltInfo = systemProfilerProvider.thunderboltInfo(),
+           let thunderboltDeviceIndex = result.firstIndex(where: { $0.transportName == "Thunderbolt" }) {
+            result[thunderboltDeviceIndex].thunderboltInfo = thunderboltInfo
+        }
+
         return result
+    }
+
+    private func isThunderboltPCISlot(_ slot: String?) -> Bool {
+        guard let slot else {
+            return false
+        }
+        return slot.localizedCaseInsensitiveContains("Thunderbolt@")
     }
 
     private func applyCapacityUpdates(_ updates: [VolumeCapacityRefresher.CapacityUpdate]) {
