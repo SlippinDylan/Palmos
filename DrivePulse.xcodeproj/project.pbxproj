@@ -61,6 +61,7 @@
 		100000000000000000000038 /* StorageLocations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000038 /* StorageLocations.swift */; };
 		100000000000000000000039 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000039 /* PrivacyInfo.xcprivacy */; };
 		10000000000000000000003A /* OverviewCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003A /* OverviewCardViewTests.swift */; };
+		10000000000000000000003B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003B /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -175,6 +176,7 @@
 		200000000000000000000038 /* StorageLocations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageLocations.swift; sourceTree = "<group>"; };
 		200000000000000000000039 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		20000000000000000000003A /* OverviewCardViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewCardViewTests.swift; sourceTree = "<group>"; };
+		20000000000000000000003B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -225,6 +227,7 @@
 				300000000000000000000006 /* Integration */,
 				300000000000000000000005 /* UI */,
 				300000000000000000000007 /* Localization */,
+				30000000000000000000001D /* Resources */,
 				200000000000000000000039 /* PrivacyInfo.xcprivacy */,
 			);
 			path = Apps/DrivePulseApp;
@@ -380,6 +383,14 @@
 			path = Metrics;
 			sourceTree = "<group>";
 		};
+		30000000000000000000001D /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000003B /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -496,6 +507,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				10000000000000000000003B /* Assets.xcassets in Resources */,
 				100000000000000000000012 /* Localizable.xcstrings in Resources */,
 				100000000000000000000039 /* PrivacyInfo.xcprivacy in Resources */,
 			);
@@ -631,6 +643,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 20000000000000000000000E /* xcconfigs/App.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CURRENT_PROJECT_VERSION = 1;
@@ -647,6 +660,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 20000000000000000000000E /* xcconfigs/App.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CURRENT_PROJECT_VERSION = 1;
