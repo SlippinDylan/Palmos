@@ -36,8 +36,11 @@ struct MenuBarRootView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 12) {
                         HealthSMARTCardView(
+                            helperPrompt: helperPrompt,
                             smartDetails: controller.state.selectedSMARTDetails,
                             onInstallHelper: { controller.performSMARTPrimaryAction() },
+                            onConfirmHelperInstall: { controller.installSMARTHelper() },
+                            onDismissHelperPrompt: { controller.dismissSMARTPrompts() },
                             onRefresh: { controller.refreshSelectedDeviceSMART() }
                         )
                         TemperatureCardView(
@@ -66,58 +69,22 @@ struct MenuBarRootView: View {
         }
         .frame(width: 360)
         .containerBackground(.regularMaterial, for: .window)
-        .alert(
-            "Install Advanced Monitoring",
-            isPresented: installPromptBinding
-        ) {
-            Button("Install") {
-                controller.installSMARTHelper()
-            }
-            Button("Cancel", role: .cancel) {
-                controller.dismissSMARTPrompts()
-            }
-        } message: {
-            Text("DrivePulse needs to install the privileged SMART helper to read drive health data.")
-        }
-        .alert(
-            "Update Advanced Monitoring",
-            isPresented: updatePromptBinding
-        ) {
-            Button("Update") {
-                controller.installSMARTHelper()
-            }
-            Button("Cancel", role: .cancel) {
-                controller.dismissSMARTPrompts()
-            }
-        } message: {
-            Text("DrivePulse needs to update the privileged SMART helper before SMART data can be refreshed.")
-        }
     }
 
     private var contentAreaHeight: CGFloat {
         (NSScreen.main?.frame.height ?? 900) * 3 / 5
     }
 
-    private var installPromptBinding: Binding<Bool> {
-        Binding(
-            get: { controller.state.presentation.showHelperInstallPrompt },
-            set: { isPresented in
-                if isPresented == false {
-                    controller.dismissSMARTPrompts()
-                }
-            }
-        )
-    }
+    private var helperPrompt: SMARTHelperPrompt? {
+        if controller.state.presentation.showHelperInstallPrompt {
+            return .install
+        }
 
-    private var updatePromptBinding: Binding<Bool> {
-        Binding(
-            get: { controller.state.presentation.showHelperUpdatePrompt },
-            set: { isPresented in
-                if isPresented == false {
-                    controller.dismissSMARTPrompts()
-                }
-            }
-        )
+        if controller.state.presentation.showHelperUpdatePrompt {
+            return .update
+        }
+
+        return nil
     }
 }
 

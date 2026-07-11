@@ -3,8 +3,11 @@ import SwiftUI
 import DrivePulseCore
 
 struct HealthSMARTCardView: View {
+    let helperPrompt: SMARTHelperPrompt?
     let smartDetails: SMARTPresentationDetails?
     let onInstallHelper: () -> Void
+    let onConfirmHelperInstall: () -> Void
+    let onDismissHelperPrompt: () -> Void
     let onRefresh: () -> Void
 
     var body: some View {
@@ -39,8 +42,8 @@ struct HealthSMARTCardView: View {
                     PanelKeyValueRow("Critical Temp Time", value: criticalTempTimeString, usesMonospacedDigits: true)
                 }
 
-                if isHelperNotInstalled {
-                    Button("Install SMART Helper for Complete Health Data") { onInstallHelper() }
+                if requiresHelperInstallOrUpdate {
+                    Button(helperButtonTitle) { onInstallHelper() }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .frame(maxWidth: .infinity)
@@ -50,6 +53,35 @@ struct HealthSMARTCardView: View {
                         .buttonStyle(.link)
                         .controlSize(.small)
                         .padding(.top, 8)
+                }
+
+                if let helperPrompt {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(helperPrompt.title)
+                            .font(.subheadline.weight(.semibold))
+
+                        Text(helperPrompt.message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 8) {
+                            Button(helperPrompt.confirmTitle) {
+                                onConfirmHelperInstall()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+
+                            Button("Cancel", role: .cancel) {
+                                onDismissHelperPrompt()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.top, 10)
                 }
             }
         }
@@ -66,10 +98,24 @@ struct HealthSMARTCardView: View {
         return false
     }
 
-    private var isHelperNotInstalled: Bool {
+    private var requiresHelperInstallOrUpdate: Bool {
         guard let snapshot = smartDetails?.snapshot else { return false }
         if case .helperNotInstalled = snapshot { return true }
+        if case .updateRequired = snapshot { return true }
         return false
+    }
+
+    private var helperButtonTitle: LocalizedStringKey {
+        guard let snapshot = smartDetails?.snapshot else {
+            return "Install SMART Helper for Complete Health Data"
+        }
+
+        switch snapshot {
+        case .updateRequired:
+            return "Update SMART Helper for Complete Health Data"
+        default:
+            return "Install SMART Helper for Complete Health Data"
+        }
     }
 
     private var criticalWarningString: String {
@@ -143,5 +189,37 @@ struct HealthSMARTCardView: View {
     private var criticalTempTimeString: String {
         guard let value = smartData?.criticalTempTime else { return PanelDisplayValue.missing }
         return "\(value) min"
+    }
+}
+
+enum SMARTHelperPrompt: Equatable {
+    case install
+    case update
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .install:
+            return "Install Advanced Monitoring"
+        case .update:
+            return "Update Advanced Monitoring"
+        }
+    }
+
+    var message: LocalizedStringKey {
+        switch self {
+        case .install:
+            return "DrivePulse needs to install the privileged SMART helper to read drive health data."
+        case .update:
+            return "DrivePulse needs to update the privileged SMART helper before SMART data can be refreshed."
+        }
+    }
+
+    var confirmTitle: LocalizedStringKey {
+        switch self {
+        case .install:
+            return "Install"
+        case .update:
+            return "Update"
+        }
     }
 }
