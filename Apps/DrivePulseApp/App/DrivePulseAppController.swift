@@ -8,6 +8,9 @@ final class DrivePulseAppController: ObservableObject {
     private static let throughputSamplingInterval: TimeInterval = 0.25
     private static let throughputHistoryLimit = 300
     private static let apfsEnrichmentRetryDelays: [TimeInterval] = [0.25, 0.75, 1.5]
+    private static let actionSuccessFeedbackDuration: TimeInterval = 1.2
+    private static let actionFailureFeedbackDuration: TimeInterval = 2.8
+    private static let quitFeedbackDuration: TimeInterval = 0.75
 
     private enum SystemProfilerRefreshMode {
         case fetchIfNeeded
@@ -24,6 +27,11 @@ final class DrivePulseAppController: ObservableObject {
     @Published private(set) var state: DrivePulseAppState
     @Published private(set) var actionFeedback: String?
     @Published private(set) var isPerformingSystemAction = false
+    /// Bound to `menuBarExtraAccess(isPresented:)` so the panel can be
+    /// dismissed programmatically (e.g. after opening Finder or Disk
+    /// Utility) without desyncing the status item's highlight state — the
+    /// way a raw `NSApp.keyWindow?.close()` call does.
+    @Published var isMenuBarPanelPresented = true
 
     let settings: AppSettings
     let launchAtLoginController: LaunchAtLoginController
@@ -36,6 +44,8 @@ final class DrivePulseAppController: ObservableObject {
     private var pendingSystemProfilerRefreshMode: SystemProfilerRefreshMode?
     private var discoveryWriteGeneration = 0
     private var throughputSamplingTimer: Timer?
+    private var actionFeedbackClearTask: Task<Void, Never>?
+    private var quitTask: Task<Void, Never>?
     private var lastDiskCountersByDeviceID: [DeviceID: DiskIOCounters] = [:]
     private var sessionMetricsReducersByDeviceID: [DeviceID: SessionMetricsReducer] = [:]
     private let deviceDiscovery: any ExternalDeviceDiscovering
@@ -46,6 +56,10 @@ final class DrivePulseAppController: ObservableObject {
     private let systemProfilerProvider: any SystemProfilerProviding
     private let diskUtilAPFSProvider: any DiskUtilAPFSProviding
     private let volumeCapacityRefresher: VolumeCapacityRefresher
+    private let actionSuccessFeedbackDuration: TimeInterval
+    private let actionFailureFeedbackDuration: TimeInterval
+    private let quitFeedbackDuration: TimeInterval
+    private let quitHandler: @MainActor @Sendable () -> Void
 
     init(
         state: DrivePulseAppState? = nil,
@@ -58,7 +72,13 @@ final class DrivePulseAppController: ObservableObject {
         deviceDiscovery: any ExternalDeviceDiscovering = LiveExternalDeviceDiscovery(),
         systemProfilerProvider: any SystemProfilerProviding = LiveSystemProfilerProvider(),
         diskUtilAPFSProvider: any DiskUtilAPFSProviding = LiveDiskUtilAPFSProvider(),
-        volumeCapacityRefresher: VolumeCapacityRefresher = VolumeCapacityRefresher()
+        volumeCapacityRefresher: VolumeCapacityRefresher = VolumeCapacityRefresher(),
+        actionSuccessFeedbackDuration: TimeInterval = 1.2,
+        actionFailureFeedbackDuration: TimeInterval = 2.8,
+        quitFeedbackDuration: TimeInterval = 0.75,
+        quitHandler: @escaping @MainActor @Sendable () -> Void = {
+            NSApplication.shared.terminate(nil)
+        }
     ) {
         self.settings = settings
         self.launchAtLoginController = launchAtLoginController
@@ -70,6 +90,10 @@ final class DrivePulseAppController: ObservableObject {
         self.systemProfilerProvider = systemProfilerProvider
         self.diskUtilAPFSProvider = diskUtilAPFSProvider
         self.volumeCapacityRefresher = volumeCapacityRefresher
+        self.actionSuccessFeedbackDuration = actionSuccessFeedbackDuration
+        self.actionFailureFeedbackDuration = actionFailureFeedbackDuration
+        self.quitFeedbackDuration = quitFeedbackDuration
+        self.quitHandler = quitHandler
         self.state = state ?? DrivePulseAppState(
             devices: [],
             selectedDeviceID: nil
@@ -95,6 +119,8 @@ final class DrivePulseAppController: ObservableObject {
             systemProfilerEnrichmentTask?.cancel()
             discoveryObservation?.cancel()
             throughputSamplingTimer?.invalidate()
+            actionFeedbackClearTask?.cancel()
+            quitTask?.cancel()
             volumeCapacityRefresher.stop()
         }
     }
@@ -190,8 +216,35 @@ final class DrivePulseAppController: ObservableObject {
             return
         }
 
+        if action.dismissesMenuBarPanelOnDispatch {
+            isMenuBarPanelPresented = false
+        }
+
         isPerformingSystemAction = true
-        actionFeedback = nil
+        clearActionFeedback()
+
+        if action.intent == .quit {
+            presentActionFeedback(
+                action.successFeedbackMessage,
+                clearsAfter: quitFeedbackDuration
+            )
+            quitTask?.cancel()
+            quitTask = Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+
+                try? await Task.sleep(nanoseconds: Self.nanoseconds(for: quitFeedbackDuration))
+                guard Task.isCancelled == false else {
+                    return
+                }
+
+                isPerformingSystemAction = false
+                quitHandler()
+            }
+            return
+        }
+
         Task { @MainActor [weak self] in
             guard let self else {
                 return
@@ -199,8 +252,15 @@ final class DrivePulseAppController: ObservableObject {
 
             do {
                 try await systemActions.perform(action)
+                presentActionFeedback(
+                    action.successFeedbackMessage,
+                    clearsAfter: actionSuccessFeedbackDuration
+                )
             } catch {
-                actionFeedback = error.localizedDescription
+                presentActionFeedback(
+                    error.localizedDescription,
+                    clearsAfter: actionFailureFeedbackDuration
+                )
             }
 
             isPerformingSystemAction = false
@@ -212,7 +272,35 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     func quit() {
-        NSApplication.shared.terminate(nil)
+        quitHandler()
+    }
+
+    private func clearActionFeedback() {
+        actionFeedbackClearTask?.cancel()
+        actionFeedback = nil
+    }
+
+    private func presentActionFeedback(_ message: String, clearsAfter duration: TimeInterval) {
+        actionFeedbackClearTask?.cancel()
+        actionFeedback = message
+        actionFeedbackClearTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            try? await Task.sleep(nanoseconds: Self.nanoseconds(for: duration))
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            if actionFeedback == message {
+                actionFeedback = nil
+            }
+        }
+    }
+
+    private static func nanoseconds(for duration: TimeInterval) -> UInt64 {
+        UInt64((duration * 1_000_000_000).rounded())
     }
 
     func sampleDeviceThroughput(at timestamp: Date = Date()) {

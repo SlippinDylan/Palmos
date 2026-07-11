@@ -729,6 +729,51 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(controller.actionFeedback, "Action couldn't be completed.")
     }
 
+    func testPerformPublishesSuccessFeedbackAndClearsItAfterCompletion() async {
+        let actionPerformer = StubSystemActionPerformer()
+        let controller = DrivePulseAppController(
+            systemActions: actionPerformer,
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[makeDevice(id: "disk21", volumes: [])]]),
+            actionSuccessFeedbackDuration: 2.5
+        )
+        let action = SystemAction(
+            kind: .openDiskUtility,
+            intent: .openDiskUtility(bsdName: "disk21")
+        )
+
+        controller.perform(action)
+
+        await actionPerformer.waitUntilStarted()
+        await actionPerformer.finish()
+
+        await waitUntilActionCompletes(controller)
+        XCTAssertEqual(controller.actionFeedback, action.successFeedbackMessage)
+        await waitUntilEventually(timeout: 5.0) { controller.actionFeedback == nil }
+    }
+
+    func testQuitActionPublishesFeedbackBeforeInvokingQuitHandler() async {
+        let quitRecorder = MainActorQuitRecorder()
+        let controller = DrivePulseAppController(
+            systemActions: StubSystemActionPerformer(),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[makeDevice(id: "disk21", volumes: [])]]),
+            quitFeedbackDuration: 4.0,
+            quitHandler: {
+                quitRecorder.recordInvocation()
+            }
+        )
+        let action = SystemAction(kind: .quit, intent: .quit)
+
+        controller.perform(action)
+
+        XCTAssertEqual(controller.actionFeedback, action.successFeedbackMessage)
+        XCTAssertEqual(quitRecorder.invocationCount, 0)
+        XCTAssertTrue(controller.isPerformingSystemAction)
+
+        await waitUntilEventually(timeout: 5.0) { quitRecorder.invocationCount == 1 }
+        XCTAssertEqual(quitRecorder.invocationCount, 1)
+        XCTAssertFalse(controller.isPerformingSystemAction)
+    }
+
     func testPerformIgnoresSecondActionWhileAnotherActionIsInFlight() async {
         let actionPerformer = StubSystemActionPerformer()
         let controller = DrivePulseAppController(
@@ -1346,6 +1391,21 @@ final class DrivePulseAppControllerTests: XCTestCase {
                 return
             }
             await Task.yield()
+        }
+    }
+
+    private func waitUntilEventually(
+        timeout: TimeInterval = 3.0,
+        _ predicate: @escaping () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while predicate() == false {
+            if Date() >= deadline {
+                XCTFail("waitUntilEventually timed out after \(timeout) seconds")
+                return
+            }
+
+            try? await Task.sleep(nanoseconds: 10_000_000)
         }
     }
 
@@ -2175,6 +2235,15 @@ private enum TestActionError: LocalizedError {
         case .failed(let message):
             return message
         }
+    }
+}
+
+@MainActor
+private final class MainActorQuitRecorder {
+    private(set) var invocationCount = 0
+
+    func recordInvocation() {
+        invocationCount += 1
     }
 }
 

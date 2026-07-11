@@ -188,7 +188,8 @@ struct ActionBarView: View {
                 Text(message)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
         }
     }

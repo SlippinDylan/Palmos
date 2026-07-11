@@ -50,13 +50,13 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         )
 
         let ejectAction = try XCTUnwrap(
-            SystemAction.actions(for: device).first(where: { $0.kind == .eject })
+            SystemAction.footerActions(for: device).first(where: { $0.kind == .eject })
         )
 
         XCTAssertEqual(ejectAction.intent, .ejectPhysicalDevice(bsdName: "disk42"))
     }
 
-    func testFooterActionsExcludeSettingsAndKeepQuit() {
+    func testFooterActionsKeepQuitLast() {
         let device = ExternalDevice(
             id: DeviceID(rawValue: "selected-device"),
             displayName: "Sample Drive",
@@ -70,8 +70,30 @@ final class Task6SettingsAndActionsTests: XCTestCase {
 
         let actions = SystemAction.footerActions(for: device)
 
-        XCTAssertFalse(actions.contains(where: { $0.kind == .settings }))
         XCTAssertEqual(actions.last?.kind, .quit)
+    }
+
+    func testFinderAndDiskUtilityActionsDismissMenuBarPanelButEjectAndQuitDoNot() {
+        let device = ExternalDevice(
+            id: DeviceID(rawValue: "selected-device"),
+            displayName: "Sample Drive",
+            transportName: "USB-C",
+            smartSnapshot: .notRequested,
+            sessionMetrics: .empty(historyLimit: 0),
+            physicalStoreBSDName: "disk42",
+            apfsContainerBSDName: "disk42s2",
+            volumes: [MountedVolume(bsdName: "disk42s2")]
+        )
+
+        let dismissalByKind = Dictionary(
+            uniqueKeysWithValues: SystemAction.footerActions(for: device)
+                .map { ($0.kind, $0.dismissesMenuBarPanelOnDispatch) }
+        )
+
+        XCTAssertEqual(dismissalByKind[.openInFinder], true)
+        XCTAssertEqual(dismissalByKind[.openDiskUtility], true)
+        XCTAssertEqual(dismissalByKind[.eject], false)
+        XCTAssertEqual(dismissalByKind[.quit], false)
     }
 
     func testFooterActionsUseCompactTitles() {
@@ -133,8 +155,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         let workspace = StubWorkspaceClient()
         let actions = SystemActions(
             diskArbitration: diskArbitration,
-            workspace: workspace,
-            commandRunner: StubCommandRunner()
+            workspace: workspace
         )
 
         try await actions.perform(
@@ -149,8 +170,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         let diskArbitration = StubDiskArbitrationClient()
         let actions = SystemActions(
             diskArbitration: diskArbitration,
-            workspace: StubWorkspaceClient(),
-            commandRunner: StubCommandRunner()
+            workspace: StubWorkspaceClient()
         )
 
         try await actions.perform(
@@ -158,6 +178,20 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         )
 
         XCTAssertEqual(diskArbitration.ejectedWholeDiskBSDNames, ["disk42"])
+    }
+
+    func testOpenDiskUtilityActionLaunchesDiskUtilityByBundleIdentifier() async throws {
+        let workspace = StubWorkspaceClient()
+        let actions = SystemActions(
+            diskArbitration: StubDiskArbitrationClient(),
+            workspace: workspace
+        )
+
+        try await actions.perform(
+            SystemAction(kind: .openDiskUtility, intent: .openDiskUtility(bsdName: "disk42"))
+        )
+
+        XCTAssertEqual(workspace.openedApplicationBundleIdentifiers, ["com.apple.DiskUtility"])
     }
 
     func testDiskArbitrationCompletionTimesOut() {
@@ -197,22 +231,16 @@ private final class StubDiskArbitrationClient: DiskArbitrationClient, @unchecked
 
 private final class StubWorkspaceClient: WorkspaceClient, @unchecked Sendable {
     private(set) var revealedURLs: [URL] = []
+    private(set) var openedApplicationBundleIdentifiers: [String] = []
 
     @MainActor
     func reveal(_ urls: [URL]) async {
         revealedURLs = urls
     }
 
-    func openApplication(at url: URL) {
-        _ = url
-    }
-}
-
-private struct StubCommandRunner: CommandRunner {
-    func run(_ executablePath: String, arguments: [String]) throws -> Data {
-        _ = executablePath
-        _ = arguments
-        return Data()
+    @MainActor
+    func openApplication(bundleIdentifier: String) async throws {
+        openedApplicationBundleIdentifiers.append(bundleIdentifier)
     }
 }
 

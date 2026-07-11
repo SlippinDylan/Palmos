@@ -4,10 +4,11 @@ import DrivePulseCore
 
 struct MenuBarRootView: View {
     @ObservedObject var controller: DrivePulseAppController
+    @ObservedObject var settingsWindowActivator: SettingsWindowActivator
 
     var body: some View {
         VStack(spacing: 0) {
-            MenuBarHeaderView()
+            MenuBarHeaderView(controller: controller, settingsWindowActivator: settingsWindowActivator)
 
             Divider()
 
@@ -121,6 +122,9 @@ struct MenuBarRootView: View {
 }
 
 private struct MenuBarHeaderView: View {
+    @ObservedObject var controller: DrivePulseAppController
+    @ObservedObject var settingsWindowActivator: SettingsWindowActivator
+
     private var visualStyle: MenuBarVisualStyle {
         .current()
     }
@@ -134,7 +138,10 @@ private struct MenuBarHeaderView: View {
             Spacer(minLength: 0)
 
             PanelControlCluster(usesLiquidGlass: visualStyle.usesLiquidGlass) {
-                SettingsLink {
+                Button {
+                    controller.isMenuBarPanelPresented = false
+                    settingsWindowActivator.open()
+                } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 28, height: 28)

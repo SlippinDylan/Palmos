@@ -164,7 +164,26 @@
 
     },
     "Cancel" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        }
+      }
     },
     "Capacity" : {
       "extractionState" : "stale",
@@ -700,6 +719,28 @@
         }
       }
     },
+    "Ejected disk." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ejected disk."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已推出磁盘。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已退出磁碟。"
+          }
+        }
+      }
+    },
     "Enclosure Firmware" : {
       "localizations" : {
         "en" : {
@@ -1014,7 +1055,26 @@
 
     },
     "Install" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Install"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安裝"
+          }
+        }
+      }
     },
     "Install Advanced Monitoring" : {
       "localizations" : {
@@ -1596,6 +1656,73 @@
         }
       }
     },
+    "Opened Disk Utility." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opened Disk Utility."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已打开“磁盘工具”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已打開「磁碟工具程式」。"
+          }
+        }
+      }
+    },
+    "Opened in Finder." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opened in Finder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在 Finder 中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在 Finder 中打開。"
+          }
+        }
+      }
+    },
+    "Opened Settings." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opened Settings."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已打开设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已打開設定。"
+          }
+        }
+      }
+    },
     "Overall Health" : {
       "localizations" : {
         "en" : {
@@ -1980,6 +2107,28 @@
         }
       }
     },
+    "Quitting DrivePulse…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitting DrivePulse…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在退出 DrivePulse…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在退出 DrivePulse…"
+          }
+        }
+      }
+    },
     "Read" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2203,6 +2352,9 @@
           }
         }
       }
+    },
+    "Settings Bridge" : {
+
     },
     "Size" : {
 
@@ -2551,7 +2703,26 @@
       }
     },
     "Update" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新"
+          }
+        }
+      }
     },
     "Update Advanced Monitoring" : {
       "localizations" : {
@@ -2594,6 +2765,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "需要更新"
+          }
+        }
+      }
+    },
+    "Update SMART Helper for Complete Health Data" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update SMART Helper for Complete Health Data"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 SMART 助手以获取完整健康数据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 SMART 助理以取得完整健康資料"
           }
         }
       }

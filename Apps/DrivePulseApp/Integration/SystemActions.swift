@@ -9,7 +9,6 @@ struct SystemAction: Identifiable, Equatable {
         case openInFinder
         case eject
         case openDiskUtility
-        case settings
         case quit
     }
 
@@ -17,7 +16,6 @@ struct SystemAction: Identifiable, Equatable {
         case revealInFinder(volumeBSDName: String)
         case ejectPhysicalDevice(bsdName: String)
         case openDiskUtility(bsdName: String)
-        case openSettings
         case quit
     }
 
@@ -34,8 +32,6 @@ struct SystemAction: Identifiable, Equatable {
             return String(localized: "Eject Disk")
         case .openDiskUtility:
             return String(localized: "Disk Utility")
-        case .settings:
-            return String(localized: "Settings")
         case .quit:
             return String(localized: "Quit")
         }
@@ -49,8 +45,6 @@ struct SystemAction: Identifiable, Equatable {
             return String(localized: "Eject")
         case .openDiskUtility:
             return String(localized: "Disk Utility")
-        case .settings:
-            return String(localized: "Settings")
         case .quit:
             return String(localized: "Quit")
         }
@@ -64,16 +58,39 @@ struct SystemAction: Identifiable, Equatable {
             return "eject"
         case .openDiskUtility:
             return "internaldrive"
-        case .settings:
-            return "gearshape"
         case .quit:
             return "power"
         }
     }
 
-    static func actions(for device: ExternalDevice?) -> [Self] {
+    var successFeedbackMessage: String {
+        switch kind {
+        case .openInFinder:
+            return String(localized: "Opened in Finder.")
+        case .eject:
+            return String(localized: "Ejected disk.")
+        case .openDiskUtility:
+            return String(localized: "Opened Disk Utility.")
+        case .quit:
+            return String(localized: "Quitting DrivePulse…")
+        }
+    }
+
+    /// Whether dispatching this action should dismiss the menu bar panel so
+    /// the window it opens (Finder, Disk Utility) is what ends up in front,
+    /// instead of competing with the still-open panel for focus.
+    var dismissesMenuBarPanelOnDispatch: Bool {
+        switch kind {
+        case .openInFinder, .openDiskUtility:
+            return true
+        case .eject, .quit:
+            return false
+        }
+    }
+
+    static func footerActions(for device: ExternalDevice?) -> [Self] {
         guard let device else {
-            return [Self(kind: .settings, intent: .openSettings)]
+            return [Self(kind: .quit, intent: .quit)]
         }
 
         var actions: [Self] = []
@@ -99,17 +116,8 @@ struct SystemAction: Identifiable, Equatable {
                 intent: .openDiskUtility(bsdName: device.physicalStoreBSDName)
             )
         )
-        actions.append(Self(kind: .settings, intent: .openSettings))
         actions.append(Self(kind: .quit, intent: .quit))
         return actions
-    }
-
-    static func footerActions(for device: ExternalDevice?) -> [Self] {
-        guard let device else {
-            return [Self(kind: .quit, intent: .quit)]
-        }
-
-        return actions(for: device).filter { $0.kind != .settings }
     }
 }
 
@@ -120,18 +128,15 @@ protocol SystemActionPerforming: Sendable {
 struct SystemActions: SystemActionPerforming {
     private let diskArbitration: any DiskArbitrationClient
     private let workspace: any WorkspaceClient
-    private let commandRunner: any CommandRunner
     private let actionQueue: DispatchQueue
 
     init(
         diskArbitration: any DiskArbitrationClient = LiveDiskArbitrationClient(),
         workspace: any WorkspaceClient = LiveWorkspaceClient(),
-        commandRunner: any CommandRunner = ProcessCommandRunner(),
-        actionQueue: DispatchQueue = DispatchQueue(label: "DrivePulse.SystemActions")
+        actionQueue: DispatchQueue = DispatchQueue(label: "DrivePulse.SystemActions", qos: .userInitiated)
     ) {
         self.diskArbitration = diskArbitration
         self.workspace = workspace
-        self.commandRunner = commandRunner
         self.actionQueue = actionQueue
     }
 
@@ -147,16 +152,10 @@ struct SystemActions: SystemActionPerforming {
                 try diskArbitration.ejectWholeDisk(bsdName: bsdName)
             }
         case .openDiskUtility:
-            try await runOnActionQueue {
-                // Passing /dev/diskN as an argument causes Launch Services to show
-                // a "no permission" dialog. Open Disk Utility without a file argument.
-                _ = try commandRunner.run(
-                    "/usr/bin/open",
-                    arguments: ["-b", "com.apple.DiskUtility"]
-                )
-            }
-        case .openSettings:
-            break
+            // Passing /dev/diskN as a target causes Launch Services to show a
+            // "no permission" dialog, so Disk Utility is opened as a plain
+            // application launch instead of pointing it at a specific disk.
+            try await workspace.openApplication(bundleIdentifier: "com.apple.DiskUtility")
         case .quit:
             await MainActor.run {
                 NSApplication.shared.terminate(nil)
@@ -187,7 +186,7 @@ private enum SystemActionError: LocalizedError {
     case volumeNotMounted
     case diskNotFound
     case operationTimedOut
-    case commandFailed(message: String?)
+    case applicationNotFound
     case diskArbitrationFailed(status: DAReturn, message: String?)
 
     var errorDescription: String? {
@@ -195,13 +194,42 @@ private enum SystemActionError: LocalizedError {
         case .volumeNotMounted:
             return String(localized: "No mounted volume available.")
         case .diskNotFound:
-            return String(localized: "Action couldn't be completed.")
+            return String(localized: "Couldn't find that disk. It may have been disconnected or reassigned.")
         case .operationTimedOut:
             return String(localized: "Action timed out.")
-        case .commandFailed:
+        case .applicationNotFound:
             return String(localized: "Action couldn't be completed.")
-        case .diskArbitrationFailed:
-            return String(localized: "Action couldn't be completed.")
+        case .diskArbitrationFailed(let status, let message):
+            // DiskArbitration's dissenter message is already a system-provided,
+            // human-readable reason (e.g. "couldn't be unmounted because one or
+            // more programs may be using it") — the same text Finder would show,
+            // so surface it instead of a generic fallback. Some dissenters carry
+            // a status but no message string, so fall back to a description of
+            // the status code rather than a completely generic message.
+            if let message, message.isEmpty == false {
+                return message
+            }
+            return Self.description(for: status)
+        }
+    }
+
+    private static func description(for status: DAReturn) -> String {
+        switch status {
+        case DAReturn(kDAReturnBusy):
+            return String(localized: "The disk is busy — something may still be reading or writing to it.")
+        case DAReturn(kDAReturnExclusiveAccess):
+            return String(localized: "The disk couldn't be accessed exclusively — another process has it open.")
+        case DAReturn(kDAReturnNotFound), DAReturn(kDAReturnNotMounted):
+            return String(localized: "Couldn't find that disk. It may have been disconnected or reassigned.")
+        case DAReturn(kDAReturnNotPermitted), DAReturn(kDAReturnNotPrivileged):
+            return String(localized: "DrivePulse doesn't have permission to complete this action.")
+        case DAReturn(kDAReturnNotReady):
+            return String(localized: "The disk isn't ready yet — try again in a moment.")
+        default:
+            return String(
+                format: String(localized: "Action couldn't be completed (status 0x%08X)."),
+                UInt32(bitPattern: status)
+            )
         }
     }
 }
@@ -214,49 +242,50 @@ protocol DiskArbitrationClient: Sendable {
 protocol WorkspaceClient: Sendable {
     @MainActor
     func reveal(_ urls: [URL]) async
-}
 
-protocol CommandRunner: Sendable {
-    func run(_ executablePath: String, arguments: [String]) throws -> Data
+    @MainActor
+    func openApplication(bundleIdentifier: String) async throws
 }
 
 private struct LiveWorkspaceClient: WorkspaceClient {
     @MainActor
     func reveal(_ urls: [URL]) async {
+        // The app runs with an accessory activation policy (no Dock icon), so
+        // without an explicit activate() the window server can leave Finder's
+        // reveal noticeably slow to come forward.
+        NSApp.activate(ignoringOtherApps: true)
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
-}
 
-private struct ProcessCommandRunner: CommandRunner {
-    @discardableResult
-    func run(_ executablePath: String, arguments: [String]) throws -> Data {
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = arguments
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-
-        try process.run()
-        process.waitUntilExit()
-
-        let output = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorOutput = errorPipe.fileHandleForReading.readDataToEndOfFile()
-
-        guard process.terminationStatus == 0 else {
-            let message = String(data: errorOutput.isEmpty ? output : errorOutput, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            throw SystemActionError.commandFailed(message: message)
+    @MainActor
+    func openApplication(bundleIdentifier: String) async throws {
+        guard let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            throw SystemActionError.applicationNotFound
         }
 
-        return output
+        NSApp.activate(ignoringOtherApps: true)
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
     }
 }
 
 private final class LiveDiskArbitrationClient: DiskArbitrationClient, @unchecked Sendable {
-    private let sessionQueue = DispatchQueue(label: "DrivePulse.SystemActions.DiskArbitration")
+    // Matches the QoS of the `actionQueue` thread that blocks on
+    // `waitForCompletion`, so the DiskArbitration completion callback isn't
+    // scheduled at a lower priority than the thread waiting on it (Thread
+    // Performance Checker flags this as a priority inversion otherwise).
+    private let sessionQueue = DispatchQueue(label: "DrivePulse.SystemActions.DiskArbitration", qos: .userInitiated)
     private let operationTimeout: DispatchTimeInterval
 
     init(operationTimeout: DispatchTimeInterval = .seconds(10)) {
