@@ -120,11 +120,11 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         assertRegistryRace(events: [.callback(.success), .timeout], expected: .success)
     }
 
-    func testTimeoutWinningCallbackResumesOnceAndCleansUpOnLateCallback() {
+    func testTimeoutWinningCallbackResumesAndCleansUpBeforeLateCallback() {
         assertRegistryRace(events: [.timeout, .callback(.success)], expected: .timedOut)
     }
 
-    func testCancellationWinningCallbackAndLateTimeoutResumesOnceAndCleansUpOnCallback() {
+    func testCancellationWinningCallbackAndLateTimeoutResumesAndCleansUpImmediately() {
         assertRegistryRace(events: [.cancelled, .timeout, .callback(.success)], expected: .cancelled)
     }
 
@@ -144,7 +144,7 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         XCTAssertEqual(registry.registeredContextCount, 0)
     }
 
-    func testCancellationBeforeContextInstallWinsThenLateCallbackCleansUp() {
+    func testCancellationBeforeContextInstallWinsAndCleansUpAtInstall() {
         let probe = CompletionProbe()
         let registry = DiskArbitrationCallbackRegistry(cleanupObserver: { probe.recordCleanup($0) })
         let cancellation = DiskArbitrationOperationCancellation(registry: registry)
@@ -158,6 +158,88 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         XCTAssertEqual(probe.results, [.cancelled])
         XCTAssertEqual(probe.cleanedContextKeys, [UInt(bitPattern: context)])
         XCTAssertEqual(registry.registeredContextCount, 0)
+    }
+
+    func testTimeoutCleansUpWithoutAnyCallback() {
+        let probe = CompletionProbe()
+        let registry = DiskArbitrationCallbackRegistry(cleanupObserver: { probe.recordCleanup($0) })
+        let context = registry.register(resume: { probe.record($0) }, cleanup: { probe.recordResourceCleanup() })
+
+        registry.resolve(context: context, event: .timeout)
+
+        XCTAssertEqual(probe.results, [.timedOut])
+        XCTAssertEqual(probe.cleanedContextKeys, [UInt(bitPattern: context)])
+        XCTAssertEqual(probe.resourceCleanupCount, 1)
+        XCTAssertEqual(registry.registeredContextCount, 0)
+    }
+
+    func testCancellationCleansUpWithoutAnyCallback() {
+        let probe = CompletionProbe()
+        let registry = DiskArbitrationCallbackRegistry(cleanupObserver: { probe.recordCleanup($0) })
+        let context = registry.register(resume: { probe.record($0) }, cleanup: { probe.recordResourceCleanup() })
+
+        registry.resolve(context: context, event: .cancelled)
+
+        XCTAssertEqual(probe.results, [.cancelled])
+        XCTAssertEqual(probe.resourceCleanupCount, 1)
+        XCTAssertEqual(registry.registeredContextCount, 0)
+    }
+
+    func testStaleCallbackCannotCompleteNewOperationAfterTerminalCleanup() {
+        let probe = CompletionProbe()
+        let registry = DiskArbitrationCallbackRegistry()
+        let staleContext = registry.register { probe.record($0) }
+        registry.resolve(context: staleContext, event: .timeout)
+
+        var newContexts: [UnsafeMutableRawPointer] = []
+        for _ in 0..<1_000 {
+            let context = registry.register { probe.record($0) }
+            newContexts.append(context)
+        }
+
+        XCTAssertFalse(newContexts.contains { UInt(bitPattern: $0) == UInt(bitPattern: staleContext) })
+        registry.resolveCallback(context: staleContext, result: .success)
+        XCTAssertEqual(probe.results, [.timedOut])
+
+        for context in newContexts {
+            registry.resolve(context: context, event: .cancelled)
+        }
+        XCTAssertEqual(registry.registeredContextCount, 0)
+    }
+
+    func testConcurrentCallbackTimeoutAndCancellationHaveExactlyOneWinnerAndCleanup() {
+        for _ in 0..<100 {
+            let probe = CompletionProbe()
+            let registry = DiskArbitrationCallbackRegistry()
+            let context = registry.register(resume: { probe.record($0) }, cleanup: { probe.recordResourceCleanup() })
+            let contextKey = UInt(bitPattern: context)
+            let ready = DispatchGroup()
+            let start = DispatchSemaphore(value: 0)
+            let finished = DispatchGroup()
+            let contenders: [@Sendable () -> Void] = [
+                { registry.resolveCallback(context: UnsafeMutableRawPointer(bitPattern: contextKey), result: .success) },
+                { registry.resolve(context: UnsafeMutableRawPointer(bitPattern: contextKey), event: .timeout) },
+                { registry.resolve(context: UnsafeMutableRawPointer(bitPattern: contextKey), event: .cancelled) }
+            ]
+
+            for contender in contenders {
+                ready.enter()
+                finished.enter()
+                DispatchQueue.global().async {
+                    ready.leave()
+                    start.wait()
+                    contender()
+                    finished.leave()
+                }
+            }
+            ready.wait()
+            for _ in contenders { start.signal() }
+            finished.wait()
+
+            XCTAssertEqual(probe.results.count, 1)
+            XCTAssertEqual(probe.resourceCleanupCount, 1)
+            XCTAssertEqual(registry.registeredContextCount, 0)
+        }
     }
 
     private func assertRegistryRace(
@@ -214,6 +296,7 @@ private final class CompletionProbe: @unchecked Sendable {
     private let lock = NSLock()
     private(set) var results: [DiskArbitrationOperationResult] = []
     private(set) var cleanedContextKeys: [UInt] = []
+    private(set) var resourceCleanupCount = 0
 
     func record(_ result: DiskArbitrationOperationResult) {
         lock.withLock { results.append(result) }
@@ -221,6 +304,10 @@ private final class CompletionProbe: @unchecked Sendable {
 
     func recordCleanup(_ key: UInt) {
         lock.withLock { cleanedContextKeys.append(key) }
+    }
+
+    func recordResourceCleanup() {
+        lock.withLock { resourceCleanupCount += 1 }
     }
 }
 

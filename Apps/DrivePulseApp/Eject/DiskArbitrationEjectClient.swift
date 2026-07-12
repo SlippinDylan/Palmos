@@ -229,11 +229,11 @@ final class DiskArbitrationCallbackRegistry: @unchecked Sendable {
 
     private let lock = NSLock()
     private var entries: [UInt: Entry] = [:]
+    private var nextToken: UInt = 1
     private var cleanupObserver: (@Sendable (UInt) -> Void)?
 
     private struct Entry {
         let completion: DiskArbitrationOperationCompletion
-        let context: UnsafeMutableRawPointer
         let cleanup: @Sendable () -> Void
     }
 
@@ -245,32 +245,42 @@ final class DiskArbitrationCallbackRegistry: @unchecked Sendable {
         resume: @escaping @Sendable (DiskArbitrationOperationResult) -> Void,
         cleanup: @escaping @Sendable () -> Void = {}
     ) -> UnsafeMutableRawPointer {
-        let context = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
-        let key = UInt(bitPattern: context)
         let completion = DiskArbitrationOperationCompletion(resume: resume)
-        lock.withLock { entries[key] = Entry(completion: completion, context: context, cleanup: cleanup) }
-        return context
+        let key = lock.withLock {
+            let key = nextToken
+            precondition(key != 0, "Disk Arbitration callback token space exhausted")
+            nextToken &+= 1
+            entries[key] = Entry(completion: completion, cleanup: cleanup)
+            return key
+        }
+        return UnsafeMutableRawPointer(bitPattern: key)!
     }
 
     func resolve(context: UnsafeMutableRawPointer?, event: DiskArbitrationOperationCompletion.Event) {
-        guard let context else { return }
-        let completion = lock.withLock { entries[UInt(bitPattern: context)]?.completion }
-        completion?.resolve(event)
+        resolveTerminal(context: context, event: event)
     }
 
     func resolveCallback(context: UnsafeMutableRawPointer?, result: DiskArbitrationOperationResult) {
         guard let context else { return }
         let key = UInt(bitPattern: context)
-        let entry = lock.withLock { entries.removeValue(forKey: key) }
-        guard let entry else { return }
-        entry.completion.resolve(.callback(result))
-        entry.cleanup()
-        entry.context.deallocate()
-        cleanupObserver?(key)
+        resolveTerminal(context: context, event: .callback(result))
     }
 
     var registeredContextCount: Int {
         lock.withLock { entries.count }
+    }
+
+    private func resolveTerminal(
+        context: UnsafeMutableRawPointer?,
+        event: DiskArbitrationOperationCompletion.Event
+    ) {
+        guard let context else { return }
+        let key = UInt(bitPattern: context)
+        let entry = lock.withLock { entries.removeValue(forKey: key) }
+        guard let entry else { return }
+        entry.completion.resolve(event)
+        entry.cleanup()
+        cleanupObserver?(key)
     }
 }
 
