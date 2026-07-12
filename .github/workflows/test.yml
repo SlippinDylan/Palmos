@@ -1,0 +1,46 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run Tests
+    # macos-26 is required: the project uses macOS 26 APIs guarded by @available,
+    # and Xcode 16.x on macos-15 does not ship the macOS 26 SDK.
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pin to a specific Xcode to avoid silent breakage on runner image updates.
+      - name: Select Xcode 26.4
+        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+
+      - name: Run DrivePulseCore Tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace DrivePulse.xcworkspace \
+            -scheme DrivePulseCore \
+            -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Run DrivePulseApp Tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace DrivePulse.xcworkspace \
+            -scheme DrivePulseApp \
+            -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
