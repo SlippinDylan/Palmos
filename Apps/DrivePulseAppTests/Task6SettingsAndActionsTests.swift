@@ -166,20 +166,6 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertEqual(workspace.revealedURLs, [URL(fileURLWithPath: "/Volumes/Field")])
     }
 
-    func testEjectActionUsesNativeDiskArbitrationSequence() async throws {
-        let diskArbitration = StubDiskArbitrationClient()
-        let actions = SystemActions(
-            diskArbitration: diskArbitration,
-            workspace: StubWorkspaceClient()
-        )
-
-        try await actions.perform(
-            SystemAction(kind: .eject, intent: .ejectPhysicalDevice(bsdName: "disk42"))
-        )
-
-        XCTAssertEqual(diskArbitration.ejectedWholeDiskBSDNames, ["disk42"])
-    }
-
     func testOpenDiskUtilityActionLaunchesDiskUtilityByBundleIdentifier() async throws {
         let workspace = StubWorkspaceClient()
         let actions = SystemActions(
@@ -194,21 +180,11 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertEqual(workspace.openedApplicationBundleIdentifiers, ["com.apple.DiskUtility"])
     }
 
-    func testDiskArbitrationCompletionTimesOut() {
-        let completion = DiskArbitrationCompletion(ignoringStatuses: [])
-
-        XCTAssertThrowsError(
-            try completion.waitForCompletion(timeout: .milliseconds(10))
-        ) { error in
-            XCTAssertEqual(error.localizedDescription, "Action timed out.")
-        }
-    }
 }
 
-private final class StubDiskArbitrationClient: DiskArbitrationClient, @unchecked Sendable {
+private final class StubDiskArbitrationClient: DiskVolumeLocating, @unchecked Sendable {
     var volumeURLs: [String: URL] = [:]
     private(set) var lookedUpVolumeBSDNames: [String] = []
-    private(set) var ejectedWholeDiskBSDNames: [String] = []
 
     init(volumeURLs: [String: URL] = [:]) {
         self.volumeURLs = volumeURLs
@@ -222,10 +198,6 @@ private final class StubDiskArbitrationClient: DiskArbitrationClient, @unchecked
         }
 
         return url
-    }
-
-    func ejectWholeDisk(bsdName: String) throws {
-        ejectedWholeDiskBSDNames.append(bsdName)
     }
 }
 
