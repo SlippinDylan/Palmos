@@ -46,23 +46,33 @@ final class EjectTargetResolverTests: XCTestCase {
         let missing = LiveEjectTargetResolver(snapshotProvider: SnapshotAdapter(snapshots: [[]]))
         await XCTAssertThrowsErrorAsync(try await missing.resolve(deviceID: DeviceID(rawValue: "serial:x"), displayName: "X", topologyGeneration: 1))
 
-        let internalMedia = media(id: "serial:x", bsd: "disk0", registryID: 1, isInternal: true)
+        let internalMedia = media(id: "serial:x", bsd: "disk0", registryID: 1, isExternal: false)
         let internalResolver = LiveEjectTargetResolver(snapshotProvider: SnapshotAdapter(snapshots: [[internalMedia]]))
-        await XCTAssertThrowsErrorAsync(try await internalResolver.resolve(deviceID: DeviceID(rawValue: "serial:x"), displayName: "X", topologyGeneration: 1))
+        await XCTAssertThrowsErrorAsync(
+            try await internalResolver.resolve(deviceID: DeviceID(rawValue: "serial:x"), displayName: "X", topologyGeneration: 1),
+            equals: .unsafeMedia
+        )
+
+        let fixedMedia = media(id: "serial:x", bsd: "disk2", registryID: 2, isEjectable: false)
+        let fixedResolver = LiveEjectTargetResolver(snapshotProvider: SnapshotAdapter(snapshots: [[fixedMedia]]))
+        await XCTAssertThrowsErrorAsync(
+            try await fixedResolver.resolve(deviceID: DeviceID(rawValue: "serial:x"), displayName: "X", topologyGeneration: 1),
+            equals: .unsafeMedia
+        )
     }
 
     func testRevalidationRejectsBSDReassignmentAndIdentityChanges() async throws {
         let original = media(id: "serial:t7", bsd: "disk4", registryID: 4_001)
-        let cases = [
-            media(id: "serial:t7", bsd: "disk4", registryID: 9_999),
-            media(id: "serial:t7", bsd: "disk8", registryID: 4_001),
-            media(id: "serial:other", bsd: "disk4", registryID: 4_001)
+        let cases: [(EjectMediaSnapshot, EjectTargetResolutionError)] = [
+            (media(id: "serial:t7", bsd: "disk4", registryID: 9_999), .targetChanged),
+            (media(id: "serial:t7", bsd: "disk8", registryID: 4_001), .targetChanged),
+            (media(id: "serial:other", bsd: "disk4", registryID: 4_001), .deviceNotFound)
         ]
 
-        for changed in cases {
+        for (changed, expectedError) in cases {
             let resolver = LiveEjectTargetResolver(snapshotProvider: SnapshotAdapter(snapshots: [[original], [changed]]))
             let resolved = try await resolver.resolve(deviceID: DeviceID(rawValue: "serial:t7"), displayName: "T7", topologyGeneration: 3)
-            await XCTAssertThrowsErrorAsync(try await resolver.revalidate(resolved.target))
+            await XCTAssertThrowsErrorAsync(try await resolver.revalidate(resolved.target), equals: expectedError)
         }
     }
 }
@@ -76,17 +86,17 @@ private actor SnapshotAdapter: EjectTargetSnapshotProviding {
 }
 
 private func media(
-    id: String, bsd: String, registryID: UInt64, isInternal: Bool = false,
-    children: [String] = [], container: String? = nil
+    id: String, bsd: String, registryID: UInt64, isExternal: Bool = true,
+    isEjectable: Bool = true, children: [String] = [], container: String? = nil
 ) -> EjectMediaSnapshot {
     EjectMediaSnapshot(deviceID: DeviceID(rawValue: id), bsdName: bsd, registryEntryID: registryID,
-                       isWhole: true, isInternal: isInternal, isEjectable: true,
+                       isWhole: true, isExternal: isExternal, isEjectable: isEjectable,
                        childBSDNames: children, apfsContainerBSDName: container, mountURL: nil)
 }
 
 private func node(bsd: String, children: [String] = [], mount: String? = nil) -> EjectMediaSnapshot {
     EjectMediaSnapshot(deviceID: nil, bsdName: bsd, registryEntryID: nil, isWhole: false,
-                       isInternal: false, isEjectable: false, childBSDNames: children,
+                       isExternal: false, isEjectable: false, childBSDNames: children,
                        apfsContainerBSDName: nil, mountURL: mount.map(URL.init(fileURLWithPath:)))
 }
 
@@ -99,4 +109,20 @@ private func XCTAssertThrowsErrorAsync<T>(
         _ = try await expression()
         XCTFail("Expected error", file: file, line: line)
     } catch {}
+}
+
+private func XCTAssertThrowsErrorAsync<T>(
+    _ expression: @autoclosure () async throws -> T,
+    equals expectedError: EjectTargetResolutionError,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected error", file: file, line: line)
+    } catch let error as EjectTargetResolutionError {
+        XCTAssertEqual(error, expectedError, file: file, line: line)
+    } catch {
+        XCTFail("Unexpected error: \(error)", file: file, line: line)
+    }
 }

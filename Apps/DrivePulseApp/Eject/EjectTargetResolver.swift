@@ -1,3 +1,4 @@
+import DiskArbitration
 import Foundation
 
 import DrivePulseCore
@@ -30,7 +31,7 @@ struct EjectMediaSnapshot: Equatable, Sendable {
     let bsdName: String
     let registryEntryID: UInt64?
     let isWhole: Bool
-    let isInternal: Bool
+    let isExternal: Bool
     let isEjectable: Bool
     let childBSDNames: [String]
     let apfsContainerBSDName: String?
@@ -42,11 +43,41 @@ protocol EjectTargetSnapshotProviding: Sendable {
     func currentMedia() async throws -> [EjectMediaSnapshot]
 }
 
+struct LiveEjectTargetSnapshotProvider: EjectTargetSnapshotProviding {
+    func currentMedia() async throws -> [EjectMediaSnapshot] {
+        guard let session = DASessionCreate(kCFAllocatorDefault) else { return [] }
+
+        let records = DiskDiscoveryEnumerator(session: session).records()
+        let devices = ExternalDeviceDiscoveryMapper().map(records)
+        let devicesByBSDName = Dictionary(uniqueKeysWithValues: devices.map { ($0.physicalStoreBSDName, $0) })
+        let childNamesByParent = Dictionary(grouping: records, by: \DiskDiscoveryRecord.parentBSDName)
+
+        return records.map { record in
+            let device = devicesByBSDName[record.bsdName]
+            return EjectMediaSnapshot(
+                deviceID: device?.id,
+                bsdName: record.bsdName,
+                registryEntryID: record.registryEntryID,
+                isWhole: record.isWholeMedia,
+                isExternal: DeviceIdentityResolver.isExternalPhysicalDevice(record.descriptor),
+                isEjectable: record.isEjectable,
+                childBSDNames: (childNamesByParent[record.bsdName] ?? []).map(\.bsdName),
+                apfsContainerBSDName: device?.apfsContainerBSDName,
+                mountURL: record.volumePath
+            )
+        }
+    }
+}
+
 struct LiveEjectTargetResolver: EjectTargetResolving {
     private let snapshotProvider: any EjectTargetSnapshotProviding
 
     init(snapshotProvider: any EjectTargetSnapshotProviding) {
         self.snapshotProvider = snapshotProvider
+    }
+
+    init() {
+        self.init(snapshotProvider: LiveEjectTargetSnapshotProvider())
     }
 
     func resolve(
@@ -89,7 +120,7 @@ struct LiveEjectTargetResolver: EjectTargetResolving {
         guard let wholeMedia = media.first(where: { $0.isWhole && $0.deviceID == deviceID }) else {
             throw EjectTargetResolutionError.deviceNotFound
         }
-        guard wholeMedia.isInternal == false, wholeMedia.isEjectable else {
+        guard wholeMedia.isExternal, wholeMedia.isEjectable else {
             throw EjectTargetResolutionError.unsafeMedia
         }
         guard wholeMedia.bsdName.isEmpty == false, let registryEntryID = wholeMedia.registryEntryID else {

@@ -234,6 +234,8 @@ struct DiskDiscoveryRecord: Equatable {
     let deviceInternal: Bool?
     let isNetworkVolume: Bool
     let isWholeMedia: Bool
+    let isEjectable: Bool
+    let registryEntryID: UInt64?
     let volumePath: URL?
     let mediaName: String?
     let deviceModel: String?
@@ -251,6 +253,8 @@ struct DiskDiscoveryRecord: Equatable {
         deviceInternal: Bool?,
         isNetworkVolume: Bool,
         isWholeMedia: Bool,
+        isEjectable: Bool = false,
+        registryEntryID: UInt64? = nil,
         volumePath: URL?,
         mediaName: String?,
         deviceModel: String?,
@@ -267,6 +271,8 @@ struct DiskDiscoveryRecord: Equatable {
         self.deviceInternal = deviceInternal
         self.isNetworkVolume = isNetworkVolume
         self.isWholeMedia = isWholeMedia
+        self.isEjectable = isEjectable
+        self.registryEntryID = registryEntryID
         self.volumePath = volumePath
         self.mediaName = mediaName
         self.deviceModel = deviceModel
@@ -572,7 +578,7 @@ struct ExternalDeviceDiscoveryMapper {
     }
 }
 
-private struct DiskDiscoveryEnumerator {
+struct DiskDiscoveryEnumerator {
     private let session: DASession
 
     init(session: DASession) {
@@ -642,6 +648,10 @@ private struct DiskDiscoveryEnumerator {
             isWholeMedia: description?[kDADiskDescriptionMediaWholeKey as String] as? Bool
                 ?? boolProperty(named: kIOMediaWholeKey, for: service)
                 ?? false,
+            isEjectable: description?[kDADiskDescriptionMediaEjectableKey as String] as? Bool
+                ?? boolProperty(named: kIOMediaEjectableKey, for: service)
+                ?? false,
+            registryEntryID: registryEntryID(for: service),
             volumePath: description?[kDADiskDescriptionVolumePathKey as String] as? URL,
             mediaName: description?[kDADiskDescriptionMediaNameKey as String] as? String,
             deviceModel: description?[kDADiskDescriptionDeviceModelKey as String] as? String,
@@ -725,6 +735,14 @@ private struct DiskDiscoveryEnumerator {
         }
 
         return nil
+    }
+
+    private func registryEntryID(for service: io_service_t) -> UInt64? {
+        var identifier: UInt64 = 0
+        guard IORegistryEntryGetRegistryEntryID(service, &identifier) == KERN_SUCCESS else {
+            return nil
+        }
+        return identifier
     }
 }
 
