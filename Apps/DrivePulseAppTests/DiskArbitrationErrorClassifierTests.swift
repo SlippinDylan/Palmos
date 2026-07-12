@@ -36,10 +36,14 @@ final class DiskArbitrationErrorClassifierTests: XCTestCase {
 
         XCTAssertEqual(fixture.signedStatus, 49_168)
         XCTAssertEqual(fixture.hexStatus, "0x0000C010")
-        XCTAssertEqual(fixture.machSystem, 3)
-        XCTAssertEqual(fixture.machSubsystem, 0)
+        XCTAssertEqual(fixture.machSystem, 0)
+        XCTAssertEqual(fixture.machSubsystem, 3)
         XCTAssertEqual(fixture.unixErrno, 16)
         XCTAssertEqual(fixture.expectedCategory, "busy")
+        let fields = classifier.machFields(from: DAReturn(fixture.signedStatus))
+        XCTAssertEqual(fields.system, fixture.machSystem)
+        XCTAssertEqual(fields.subsystem, fixture.machSubsystem)
+        XCTAssertEqual(fields.code, fixture.unixErrno)
         XCTAssertEqual(classifier.classify(DAReturn(fixture.signedStatus)), .busy)
         XCTAssertEqual(classifier.unixErrno(from: DAReturn(fixture.signedStatus)), fixture.unixErrno)
     }
