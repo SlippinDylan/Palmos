@@ -1,0 +1,9 @@
+{
+  "source": "DADissenterGetStatus captured on supported macOS",
+  "signedStatus": 49168,
+  "hexStatus": "0x0000C010",
+  "machSystem": 3,
+  "machSubsystem": 0,
+  "unixErrno": 16,
+  "expectedCategory": "busy"
+}
