@@ -65,6 +65,8 @@
 		10000000000000000000003C /* SettingsWindowActivator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003C /* SettingsWindowActivator.swift */; };
 		10000000000000000000003D /* EjectModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003D /* EjectModelsTests.swift */; };
 		10000000000000000000003E /* EjectModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003E /* EjectModels.swift */; };
+		10000000000000000000003F /* EjectTargetResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003F /* EjectTargetResolverTests.swift */; };
+		100000000000000000000040 /* EjectTargetResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000040 /* EjectTargetResolver.swift */; };
 		E268DE9D187C136F974A3F7E /* MenuBarExtraAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 322662F17F85D329F8C03472 /* MenuBarExtraAccess */; };
 /* End PBXBuildFile section */
 
@@ -161,6 +163,8 @@
 		20000000000000000000003C /* SettingsWindowActivator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowActivator.swift; sourceTree = "<group>"; };
 		20000000000000000000003D /* EjectModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectModelsTests.swift; sourceTree = "<group>"; };
 		20000000000000000000003E /* EjectModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectModels.swift; sourceTree = "<group>"; };
+		20000000000000000000003F /* EjectTargetResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectTargetResolverTests.swift; sourceTree = "<group>"; };
+		200000000000000000000040 /* EjectTargetResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectTargetResolver.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -233,6 +237,7 @@
 			isa = PBXGroup;
 			children = (
 				20000000000000000000003E /* EjectModels.swift */,
+				200000000000000000000040 /* EjectTargetResolver.swift */,
 			);
 			path = Eject;
 			sourceTree = "<group>";
@@ -295,6 +300,7 @@
 				200000000000000000000037 /* StorageLocationsTests.swift */,
 				20000000000000000000003A /* OverviewCardViewTests.swift */,
 				20000000000000000000003D /* EjectModelsTests.swift */,
+				20000000000000000000003F /* EjectTargetResolverTests.swift */,
 				200000000000000000000022 /* Task7HelperPackagingTests.swift */,
 				200000000000000000000011 /* Task6SettingsAndActionsTests.swift */,
 				20000000000000000000002B /* ThroughputChartModelTests.swift */,
@@ -586,6 +592,7 @@
 				100000000000000000000017 /* DrivePulseXPCContracts.swift in Sources */,
 				100000000000000000000018 /* DrivePulseXPCMessages.swift in Sources */,
 				10000000000000000000003E /* EjectModels.swift in Sources */,
+				100000000000000000000040 /* EjectTargetResolver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -602,6 +609,7 @@
 				100000000000000000000037 /* StorageLocationsTests.swift in Sources */,
 				10000000000000000000003A /* OverviewCardViewTests.swift in Sources */,
 				10000000000000000000003D /* EjectModelsTests.swift in Sources */,
+				10000000000000000000003F /* EjectTargetResolverTests.swift in Sources */,
 				100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */,
 				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
 				10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */,
