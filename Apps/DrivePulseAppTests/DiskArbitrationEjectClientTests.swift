@@ -57,6 +57,53 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         XCTAssertEqual(adapter.calls, [.unmount("disk4", force: false)])
     }
 
+    func testForceUnmountTimeoutReportsForceUnmountingStage() async {
+        let client = DiskArbitrationEjectClient(
+            operations: StubDiskArbitrationOperating(results: [.timedOut])
+        )
+
+        let result = await client.performConfirmedForceEject(bsdName: "disk4")
+
+        XCTAssertEqual(result.failure?.stage, .forceUnmounting)
+        XCTAssertEqual(result.failure?.category, .timedOut)
+    }
+
+    func testEjectTimeoutReportsEjectingStage() async {
+        let client = DiskArbitrationEjectClient(
+            operations: StubDiskArbitrationOperating(results: [.success, .timedOut])
+        )
+
+        let result = await client.performNormalEject(bsdName: "disk4")
+
+        XCTAssertEqual(result.failure?.stage, .ejecting)
+        XCTAssertEqual(result.failure?.category, .timedOut)
+    }
+
+    func testFailurePreservesRawStatusMessageAndPhysicalBSDName() async {
+        let status = DAReturn(kDAReturnExclusiveAccess)
+        let client = DiskArbitrationEjectClient(operations: StubDiskArbitrationOperating(results: [
+            .failure(status: status, message: "system detail")
+        ]))
+
+        let result = await client.performNormalEject(bsdName: "disk99")
+
+        XCTAssertEqual(result.failure?.rawStatus, status)
+        XCTAssertEqual(result.failure?.systemMessage, "system detail")
+        XCTAssertEqual(result.failure?.physicalBSDName, "disk99")
+    }
+
+    func testForcedUnmountFailureStopsBeforeEject() async {
+        let adapter = StubDiskArbitrationOperating(results: [
+            .failure(status: DAReturn(kDAReturnNotPermitted), message: nil)
+        ])
+        let client = DiskArbitrationEjectClient(operations: adapter)
+
+        let result = await client.performConfirmedForceEject(bsdName: "disk4")
+
+        XCTAssertEqual(adapter.calls, [.unmount("disk4", force: true)])
+        XCTAssertEqual(result.failure?.stage, .forceUnmounting)
+    }
+
     func testForceUnmountSuccessThenEjectFailureRemainsEjectingFailure() async {
         let adapter = StubDiskArbitrationOperating(results: [
             .success, .failure(status: DAReturn(kDAReturnNotReady), message: "not ready")
@@ -69,37 +116,76 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         XCTAssertEqual(result.failure?.category, .notReady)
     }
 
-    func testCallbackWinningTimeoutCompletesAndReleasesContextExactlyOnce() async {
-        await assertRace(first: .callback(.success), second: .timeout, expected: .success)
+    func testCallbackWinningTimeoutResumesAndCleansUpExactlyOnce() {
+        assertRegistryRace(events: [.callback(.success), .timeout], expected: .success)
     }
 
-    func testTimeoutWinningCallbackCompletesAndReleasesContextExactlyOnce() async {
-        await assertRace(first: .timeout, second: .callback(.success), expected: .timedOut)
+    func testTimeoutWinningCallbackResumesOnceAndCleansUpOnLateCallback() {
+        assertRegistryRace(events: [.timeout, .callback(.success)], expected: .timedOut)
     }
 
-    func testCancellationBeforeCallbackOrTimeoutCompletesAndReleasesContextExactlyOnce() async {
-        await assertRace(first: .cancelled, second: .callback(.success), expected: .cancelled)
+    func testCancellationWinningCallbackAndLateTimeoutResumesOnceAndCleansUpOnCallback() {
+        assertRegistryRace(events: [.cancelled, .timeout, .callback(.success)], expected: .cancelled)
     }
 
-    private func assertRace(
-        first: DiskArbitrationOperationCompletion.Event,
-        second: DiskArbitrationOperationCompletion.Event,
-        expected: DiskArbitrationOperationResult
-    ) async {
+    func testTimedOutContextCannotAliasNewOperationBeforeLateCallback() {
         let probe = CompletionProbe()
-        let completion = DiskArbitrationOperationCompletion(
-            resume: { result in probe.record(result) },
-            releaseContext: { probe.releaseContext() }
-        )
+        let registry = DiskArbitrationCallbackRegistry(cleanupObserver: { probe.recordCleanup($0) })
+        let oldContext = registry.register { probe.record($0) }
+        registry.resolve(context: oldContext, event: .timeout)
 
-        completion.resolve(first)
-        completion.resolve(second)
-        completion.resolve(.timeout)
-        completion.resolve(.cancelled)
+        let newContext = registry.register { probe.record($0) }
+
+        XCTAssertNotEqual(UInt(bitPattern: oldContext), UInt(bitPattern: newContext))
+        registry.resolveCallback(context: oldContext, result: .success)
+        registry.resolveCallback(context: newContext, result: .success)
+        XCTAssertEqual(probe.results, [.timedOut, .success])
+        XCTAssertEqual(Set(probe.cleanedContextKeys).count, 2)
+        XCTAssertEqual(registry.registeredContextCount, 0)
+    }
+
+    func testCancellationBeforeContextInstallWinsThenLateCallbackCleansUp() {
+        let probe = CompletionProbe()
+        let registry = DiskArbitrationCallbackRegistry(cleanupObserver: { probe.recordCleanup($0) })
+        let cancellation = DiskArbitrationOperationCancellation(registry: registry)
+        cancellation.cancel()
+        let context = registry.register { probe.record($0) }
+
+        cancellation.install(context)
+        registry.resolve(context: context, event: .timeout)
+        registry.resolveCallback(context: context, result: .success)
+
+        XCTAssertEqual(probe.results, [.cancelled])
+        XCTAssertEqual(probe.cleanedContextKeys, [UInt(bitPattern: context)])
+        XCTAssertEqual(registry.registeredContextCount, 0)
+    }
+
+    private func assertRegistryRace(
+        events: [RegistryEvent],
+        expected: DiskArbitrationOperationResult
+    ) {
+        let probe = CompletionProbe()
+        let registry = DiskArbitrationCallbackRegistry(cleanupObserver: { probe.recordCleanup($0) })
+        let context = registry.register { probe.record($0) }
+
+        for event in events {
+            switch event {
+            case .callback(let result): registry.resolveCallback(context: context, result: result)
+            case .timeout: registry.resolve(context: context, event: .timeout)
+            case .cancelled: registry.resolve(context: context, event: .cancelled)
+            }
+        }
 
         XCTAssertEqual(probe.results, [expected])
-        XCTAssertEqual(probe.contextReleaseCount, 1)
+        XCTAssertEqual(probe.cleanedContextKeys, [UInt(bitPattern: context)])
+        XCTAssertEqual(registry.registeredContextCount, 0)
     }
+}
+
+private enum RegistryEvent {
+    case callback(DiskArbitrationOperationResult)
+    case timeout
+    case cancelled
 }
 
 private final class StubDiskArbitrationOperating: DiskArbitrationOperating, @unchecked Sendable {
@@ -127,14 +213,14 @@ private final class StubDiskArbitrationOperating: DiskArbitrationOperating, @unc
 private final class CompletionProbe: @unchecked Sendable {
     private let lock = NSLock()
     private(set) var results: [DiskArbitrationOperationResult] = []
-    private(set) var contextReleaseCount = 0
+    private(set) var cleanedContextKeys: [UInt] = []
 
     func record(_ result: DiskArbitrationOperationResult) {
         lock.withLock { results.append(result) }
     }
 
-    func releaseContext() {
-        lock.withLock { contextReleaseCount += 1 }
+    func recordCleanup(_ key: UInt) {
+        lock.withLock { cleanedContextKeys.append(key) }
     }
 }
 

@@ -141,16 +141,17 @@ final class LiveDiskArbitrationOperating: DiskArbitrationOperating, @unchecked S
                     }
 
                     DASessionSetDispatchQueue(session, sessionQueue)
-                    let context = DiskArbitrationCallbackRegistry.shared.register { result in
-                        DASessionSetDispatchQueue(session, nil)
+                    let context = DiskArbitrationCallbackRegistry.shared.register(resume: { result in
                         continuation.resume(returning: result)
-                    }
+                    }, cleanup: {
+                        DASessionSetDispatchQueue(session, nil)
+                    })
                     cancellation.install(context)
                     operation(disk, context)
 
                     Task {
                         try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-                        DiskArbitrationCallbackRegistry.shared.resolve(context: context, result: .timedOut)
+                        DiskArbitrationCallbackRegistry.shared.resolve(context: context, event: .timeout)
                     }
                 }
             }
@@ -160,10 +161,15 @@ final class LiveDiskArbitrationOperating: DiskArbitrationOperating, @unchecked S
     }
 }
 
-private final class DiskArbitrationOperationCancellation: @unchecked Sendable {
+final class DiskArbitrationOperationCancellation: @unchecked Sendable {
     private let lock = NSLock()
+    private let registry: DiskArbitrationCallbackRegistry
     private var context: UnsafeMutableRawPointer?
     private var isCancelled = false
+
+    init(registry: DiskArbitrationCallbackRegistry = .shared) {
+        self.registry = registry
+    }
 
     func install(_ context: UnsafeMutableRawPointer) {
         let shouldCancel = lock.withLock {
@@ -171,7 +177,7 @@ private final class DiskArbitrationOperationCancellation: @unchecked Sendable {
             return isCancelled
         }
         if shouldCancel {
-            DiskArbitrationCallbackRegistry.shared.resolve(context: context, event: .cancelled)
+            registry.resolve(context: context, event: .cancelled)
         }
     }
 
@@ -181,7 +187,7 @@ private final class DiskArbitrationOperationCancellation: @unchecked Sendable {
             return self.context
         }
         if let context = installedContext {
-            DiskArbitrationCallbackRegistry.shared.resolve(context: context, event: .cancelled)
+            registry.resolve(context: context, event: .cancelled)
         }
     }
 }
@@ -196,14 +202,9 @@ final class DiskArbitrationOperationCompletion: @unchecked Sendable {
     private let lock = NSLock()
     private var isResolved = false
     private let resume: @Sendable (DiskArbitrationOperationResult) -> Void
-    private let releaseContext: @Sendable () -> Void
 
-    init(
-        resume: @escaping @Sendable (DiskArbitrationOperationResult) -> Void,
-        releaseContext: @escaping @Sendable () -> Void
-    ) {
+    init(resume: @escaping @Sendable (DiskArbitrationOperationResult) -> Void) {
         self.resume = resume
-        self.releaseContext = releaseContext
     }
 
     func resolve(_ event: Event) {
@@ -220,40 +221,56 @@ final class DiskArbitrationOperationCompletion: @unchecked Sendable {
         }
         guard won else { return }
         resume(result)
-        releaseContext()
     }
 }
 
-private final class DiskArbitrationCallbackRegistry: @unchecked Sendable {
+final class DiskArbitrationCallbackRegistry: @unchecked Sendable {
     static let shared = DiskArbitrationCallbackRegistry()
 
     private let lock = NSLock()
-    private var completions: [UInt: DiskArbitrationOperationCompletion] = [:]
+    private var entries: [UInt: Entry] = [:]
+    private var cleanupObserver: (@Sendable (UInt) -> Void)?
 
-    func register(resume: @escaping @Sendable (DiskArbitrationOperationResult) -> Void) -> UnsafeMutableRawPointer {
-        let context = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
-        let key = UInt(bitPattern: context)
-        let completion = DiskArbitrationOperationCompletion(
-            resume: resume,
-            releaseContext: { [weak self] in self?.release(key: key) }
-        )
-        lock.withLock { completions[key] = completion }
-        return context
+    private struct Entry {
+        let completion: DiskArbitrationOperationCompletion
+        let context: UnsafeMutableRawPointer
+        let cleanup: @Sendable () -> Void
     }
 
-    func resolve(context: UnsafeMutableRawPointer?, result: DiskArbitrationOperationResult) {
-        resolve(context: context, event: .callback(result))
+    init(cleanupObserver: (@Sendable (UInt) -> Void)? = nil) {
+        self.cleanupObserver = cleanupObserver
+    }
+
+    func register(
+        resume: @escaping @Sendable (DiskArbitrationOperationResult) -> Void,
+        cleanup: @escaping @Sendable () -> Void = {}
+    ) -> UnsafeMutableRawPointer {
+        let context = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+        let key = UInt(bitPattern: context)
+        let completion = DiskArbitrationOperationCompletion(resume: resume)
+        lock.withLock { entries[key] = Entry(completion: completion, context: context, cleanup: cleanup) }
+        return context
     }
 
     func resolve(context: UnsafeMutableRawPointer?, event: DiskArbitrationOperationCompletion.Event) {
         guard let context else { return }
-        let completion = lock.withLock { completions[UInt(bitPattern: context)] }
+        let completion = lock.withLock { entries[UInt(bitPattern: context)]?.completion }
         completion?.resolve(event)
     }
 
-    private func release(key: UInt) {
-        _ = lock.withLock { completions.removeValue(forKey: key) }
-        UnsafeMutableRawPointer(bitPattern: key)?.deallocate()
+    func resolveCallback(context: UnsafeMutableRawPointer?, result: DiskArbitrationOperationResult) {
+        guard let context else { return }
+        let key = UInt(bitPattern: context)
+        let entry = lock.withLock { entries.removeValue(forKey: key) }
+        guard let entry else { return }
+        entry.completion.resolve(.callback(result))
+        entry.cleanup()
+        entry.context.deallocate()
+        cleanupObserver?(key)
+    }
+
+    var registeredContextCount: Int {
+        lock.withLock { entries.count }
     }
 }
 
@@ -275,5 +292,5 @@ private func completeDiskArbitrationOperation(dissenter: DADissenter?, context: 
     } else {
         result = .success
     }
-    DiskArbitrationCallbackRegistry.shared.resolve(context: context, result: result)
+    DiskArbitrationCallbackRegistry.shared.resolveCallback(context: context, result: result)
 }
