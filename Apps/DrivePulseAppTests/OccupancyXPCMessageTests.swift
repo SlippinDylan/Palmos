@@ -82,6 +82,30 @@ final class OccupancyXPCMessageTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(holder.displayName).allSatisfy { $0 == "界" })
     }
 
+    func testSingleOversizedGraphemeFallsBackToValidUnicodeScalarBoundary() throws {
+        let oversizedGrapheme = "a" + String(repeating: "\u{0301}", count: 150)
+        XCTAssertEqual(oversizedGrapheme.count, 1)
+        XCTAssertGreaterThan(oversizedGrapheme.utf8.count, OccupancyXPCLimits.maxNameUTF8Bytes)
+
+        let data = try DrivePulseXPCMessages.encodeOccupancyResponse(.init(
+            workflowID: UUID(),
+            holders: [.init(
+                pid: 42,
+                executableName: oversizedGrapheme,
+                displayName: nil,
+                type: "unknown"
+            )],
+            isComplete: true
+        ))
+        let name = try XCTUnwrap(
+            DrivePulseXPCMessages.decodeOccupancyResponse(from: data).holders.first?.executableName
+        )
+
+        XCTAssertFalse(name.isEmpty)
+        XCTAssertLessThanOrEqual(name.utf8.count, OccupancyXPCLimits.maxNameUTF8Bytes)
+        XCTAssertNotNil(String(data: Data(name.utf8), encoding: .utf8))
+    }
+
     func testResponseRejectsFinalEncodedDataAboveLimitAfterNormalization() {
         let response = OccupancyScanResponse(
             workflowID: UUID(),

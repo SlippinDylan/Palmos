@@ -193,7 +193,17 @@ enum DrivePulseXPCMessages {
             result.append(character)
             byteCount += characterBytes
         }
-        return result
+        guard result.isEmpty else { return result }
+
+        var scalarResult = String.UnicodeScalarView()
+        byteCount = 0
+        for scalar in name.unicodeScalars {
+            let scalarBytes = String(scalar).utf8.count
+            guard byteCount + scalarBytes <= OccupancyXPCLimits.maxNameUTF8Bytes else { break }
+            scalarResult.append(scalar)
+            byteCount += scalarBytes
+        }
+        return String(scalarResult)
     }
 
     private static func isValidRawName(_ name: String) -> Bool {
