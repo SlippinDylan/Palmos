@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
 
+import DrivePulseCore
+
 struct MenuBarVisualStyle {
     let usesLiquidGlass: Bool
 
@@ -147,7 +149,12 @@ struct ActionBarView: View {
     let actions: [SystemAction]
     let isPerformingAction: Bool
     let message: String?
+    let ejectState: EjectWorkflowState
+    let selectedDeviceID: DeviceID?
     let onAction: (SystemAction) -> Void
+    let onCancelEject: () -> Void
+    let onRetryEject: () -> Void
+    let onRequestForceEject: () -> Void
 
     private var visualStyle: MenuBarVisualStyle {
         .current()
@@ -190,6 +197,18 @@ struct ActionBarView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
+            }
+
+            if let presentation = EjectRecoveryPresentation(
+                state: ejectState,
+                selectedDeviceID: selectedDeviceID
+            ) {
+                EjectRecoveryView(
+                    presentation: presentation,
+                    onCancel: onCancelEject,
+                    onRetry: onRetryEject,
+                    onRequestForce: onRequestForceEject
+                )
             }
         }
     }

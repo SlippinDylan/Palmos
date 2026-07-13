@@ -828,6 +828,60 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertNil(controller.actionFeedback)
     }
 
+    func testSuccessfulEjectPublishesSafeRemovalFeedbackAndAutoDismisses() async throws {
+        let device = makeDevice(id: "disk21", volumes: [])
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: device),
+            ejecter: ImmediateDiskEjecter(normalResult: .success(()))
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            ejectCoordinator: coordinator,
+            actionSuccessFeedbackDuration: 0.01
+        )
+        let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
+
+        controller.perform(action)
+        await waitUntil { controller.actionFeedback != nil }
+        guard case .succeeded(let target) = coordinator.state else {
+            return XCTFail("Expected successful eject state")
+        }
+        XCTAssertEqual(
+            controller.actionFeedback,
+            EjectLocalization.successFeedback(target: target)
+        )
+        await waitUntilEventually(timeout: 1) { controller.actionFeedback == nil }
+    }
+
+    func testDisappearancePublishesNeutralFeedbackAndAutoDismisses() async throws {
+        let device = makeDevice(id: "disk21", volumes: [])
+        let coordinator = makeEjectCoordinator(
+            resolver: DisappearingEjectTargetResolver(device: device),
+            ejecter: ImmediateDiskEjecter(normalResult: .success(()))
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            ejectCoordinator: coordinator,
+            actionFailureFeedbackDuration: 0.01
+        )
+        let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
+
+        controller.perform(action)
+        await waitUntil { controller.actionFeedback != nil }
+        let feedback = try XCTUnwrap(controller.actionFeedback)
+        guard case .disappeared(let target) = coordinator.state else {
+            return XCTFail("Expected neutral disappearance state")
+        }
+        XCTAssertEqual(
+            feedback,
+            EjectLocalization.disappearanceFeedback(target: target)
+        )
+        XCTAssertNotEqual(feedback, EjectLocalization.successFeedback(target: target))
+        await waitUntilEventually(timeout: 1) { controller.actionFeedback == nil }
+    }
+
     func testAppCompositionSharesTrackerAcrossEjectAndDrivePulseOwnedIO() async throws {
         let disk4 = makeDevice(id: "disk4", volumes: ["disk4s1"])
         let disk5 = makeDevice(id: "disk5", volumes: [])
@@ -2078,6 +2132,39 @@ private actor RecordingEjectTargetResolver: EjectTargetResolving {
                 mountURLs: []
             )
         )
+    }
+}
+
+private actor DisappearingEjectTargetResolver: EjectTargetResolving {
+    private let device: ExternalDevice
+
+    init(device: ExternalDevice) {
+        self.device = device
+    }
+
+    func resolve(
+        deviceID: DeviceID,
+        displayName: String,
+        topologyGeneration: Int
+    ) async throws -> ResolvedEjectTarget {
+        ResolvedEjectTarget(
+            target: EjectWorkflowTarget(
+                deviceID: deviceID,
+                physicalBSDName: device.physicalStoreBSDName,
+                mediaRegistryEntryID: 42,
+                displayName: displayName,
+                topologyGeneration: topologyGeneration
+            ),
+            scope: OccupancyTargetScope(
+                physicalBSDName: device.physicalStoreBSDName,
+                deviceNodes: ["/dev/\(device.physicalStoreBSDName)"],
+                mountURLs: []
+            )
+        )
+    }
+
+    func revalidate(_ target: EjectWorkflowTarget) async throws -> ResolvedEjectTarget {
+        throw EjectTargetResolutionError.targetChanged
     }
 }
 

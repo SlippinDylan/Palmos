@@ -132,7 +132,7 @@ final class DrivePulseAppController: ObservableObject {
             self?.applyObservedDevices(devices)
         }
         self.ejectStateObservation = self.ejectCoordinator.$state.sink { [weak self] state in
-            self?.setEjectWorkflowActive(state.isActiveWorkflow)
+            self?.handleEjectStateChange(state)
         }
         startThroughputSampling()
 
@@ -350,6 +350,24 @@ final class DrivePulseAppController: ObservableObject {
     private func setEjectWorkflowActive(_ isActive: Bool) {
         isEjectWorkflowActive = isActive
         updateActionControlState()
+    }
+
+    private func handleEjectStateChange(_ state: EjectWorkflowState) {
+        setEjectWorkflowActive(state.isActiveWorkflow)
+        switch state {
+        case .succeeded(let target):
+            presentActionFeedback(
+                EjectLocalization.successFeedback(target: target),
+                clearsAfter: actionSuccessFeedbackDuration
+            )
+        case .disappeared(let target):
+            presentActionFeedback(
+                EjectLocalization.disappearanceFeedback(target: target),
+                clearsAfter: actionFailureFeedbackDuration
+            )
+        case .idle, .working, .awaitingRecovery, .awaitingForceConfirmation, .failed:
+            break
+        }
     }
 
     private func updateActionControlState() {

@@ -5,6 +5,16 @@ import DrivePulseCore
 struct MenuBarRootView: View {
     @ObservedObject var controller: DrivePulseAppController
     @ObservedObject var settingsWindowActivator: SettingsWindowActivator
+    @ObservedObject private var ejectCoordinator: EjectCoordinator
+
+    init(
+        controller: DrivePulseAppController,
+        settingsWindowActivator: SettingsWindowActivator
+    ) {
+        self.controller = controller
+        self.settingsWindowActivator = settingsWindowActivator
+        _ejectCoordinator = ObservedObject(wrappedValue: controller.ejectCoordinator)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -62,13 +72,24 @@ struct MenuBarRootView: View {
                 actions: controller.selectedFooterActions,
                 isPerformingAction: controller.isPerformingSystemAction,
                 message: controller.actionFeedback,
-                onAction: controller.perform
+                ejectState: ejectCoordinator.state,
+                selectedDeviceID: controller.state.selectedDeviceID,
+                onAction: controller.perform,
+                onCancelEject: controller.cancelEject,
+                onRetryEject: controller.retryEject,
+                onRequestForceEject: controller.requestForceEject
             )
             .padding(14)
             .background(.regularMaterial)
         }
         .frame(width: 360)
         .containerBackground(.regularMaterial, for: .window)
+        .ejectForceConfirmation(
+            state: ejectCoordinator.state,
+            selectedDeviceID: controller.state.selectedDeviceID,
+            onCancel: controller.cancelForceConfirmation,
+            onConfirm: controller.confirmForceEject
+        )
     }
 
     private var contentAreaHeight: CGFloat {
