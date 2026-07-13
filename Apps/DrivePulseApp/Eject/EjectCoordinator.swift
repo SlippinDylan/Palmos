@@ -17,6 +17,10 @@ final class EjectCoordinator: ObservableObject {
     private var pendingTarget: EjectWorkflowTarget?
     private var activeWorkflow: ActiveWorkflow?
     private var operationTask: Task<Void, Never>?
+    private var topologyValidationTask: Task<Void, Never>?
+    private var latestTopologyGeneration: Int?
+    private var releaseWorkflowID: UUID?
+    private var releaseTask: Task<Void, Never>?
 
     init(
         resolver: any EjectTargetResolving,
@@ -36,6 +40,7 @@ final class EjectCoordinator: ObservableObject {
         guard workflowID == nil else { return }
         let id = UUID()
         workflowID = id
+        latestTopologyGeneration = topologyGeneration
         operationTask = Task { [weak self] in
             await self?.prepareAndEject(
                 workflowID: id,
@@ -49,6 +54,7 @@ final class EjectCoordinator: ObservableObject {
     func cancel() {
         guard let id = workflowID else { return }
         operationTask?.cancel()
+        topologyValidationTask?.cancel()
         operationTask = Task { [weak self] in
             await self?.finishCancellation(workflowID: id)
         }
@@ -81,9 +87,18 @@ final class EjectCoordinator: ObservableObject {
     }
 
     func deviceTopologyDidChange(generation: Int) {
+        guard workflowID != nil,
+              generation > (latestTopologyGeneration ?? Int.min) else {
+            return
+        }
+        latestTopologyGeneration = generation
         guard let activeWorkflow else { return }
-        startOperation(workflowID: activeWorkflow.id) { [weak self] in
-            await self?.revalidateForTopologyChange(workflowID: activeWorkflow.id)
+        topologyValidationTask?.cancel()
+        topologyValidationTask = Task { [weak self] in
+            await self?.revalidateForTopologyChange(
+                workflowID: activeWorkflow.id,
+                generation: generation
+            )
         }
     }
 
@@ -141,10 +156,11 @@ final class EjectCoordinator: ObservableObject {
 
     private func revalidateAndPerformNormalEject(workflowID id: UUID) async {
         guard let workflow = activeWorkflow, workflow.id == id else { return }
+        let validationGeneration = latestTopologyGeneration ?? workflow.target.topologyGeneration
         do {
             let refreshed = try await resolver.revalidate(workflow.target)
             guard isCurrent(id) else { return }
-            workflow.scope = refreshed.scope
+            workflow.refreshScope(refreshed.scope, generation: validationGeneration)
             state = .working(target: workflow.target, stage: .unmounting)
             let result = await ejecter.performNormalEject(bsdName: workflow.target.physicalBSDName)
             guard isCurrent(id) else { return }
@@ -156,10 +172,11 @@ final class EjectCoordinator: ObservableObject {
 
     private func revalidateAndPerformForceEject(workflowID id: UUID) async {
         guard let workflow = activeWorkflow, workflow.id == id else { return }
+        let validationGeneration = latestTopologyGeneration ?? workflow.target.topologyGeneration
         do {
             let refreshed = try await resolver.revalidate(workflow.target)
             guard isCurrent(id) else { return }
-            workflow.scope = refreshed.scope
+            workflow.refreshScope(refreshed.scope, generation: validationGeneration)
             state = .working(target: workflow.target, stage: .forceUnmounting)
             let result = await ejecter.performConfirmedForceEject(bsdName: workflow.target.physicalBSDName)
             guard isCurrent(id) else { return }
@@ -174,14 +191,21 @@ final class EjectCoordinator: ObservableObject {
         }
     }
 
-    private func revalidateForTopologyChange(workflowID id: UUID) async {
+    private func revalidateForTopologyChange(workflowID id: UUID, generation: Int) async {
         guard let workflow = activeWorkflow, workflow.id == id else { return }
         do {
             let refreshed = try await resolver.revalidate(workflow.target)
-            guard isCurrent(id) else { return }
-            workflow.scope = refreshed.scope
+            guard isCurrent(id), latestTopologyGeneration == generation else { return }
+            workflow.refreshScope(refreshed.scope, generation: generation)
         } catch {
-            await handleRevalidationError(error, target: workflow.target, workflowID: id)
+            guard isCurrent(id), latestTopologyGeneration == generation else { return }
+            if isDisappearance(error) {
+                operationTask?.cancel()
+                await finishDisappearance(target: workflow.target, workflowID: id)
+            } else {
+                operationTask?.cancel()
+                await handleRevalidationError(error, target: workflow.target, workflowID: id)
+            }
         }
     }
 
@@ -215,9 +239,7 @@ final class EjectCoordinator: ObservableObject {
     ) async {
         guard isCurrent(id) else { return }
         if isDisappearance(error) {
-            await releaseBarrier(workflowID: id)
-            state = .disappeared(target)
-            clearWorkflow(id)
+            await finishDisappearance(target: target, workflowID: id)
             return
         }
 
@@ -234,6 +256,7 @@ final class EjectCoordinator: ObservableObject {
 
     private func finishSuccess(workflow: ActiveWorkflow) async {
         await releaseBarrier(workflowID: workflow.id)
+        guard canCommitTerminal(workflow.id) else { return }
         state = .succeeded(workflow.target)
         clearWorkflow(workflow.id)
     }
@@ -244,21 +267,41 @@ final class EjectCoordinator: ObservableObject {
         workflowID id: UUID
     ) async {
         await releaseBarrier(workflowID: id)
+        guard canCommitTerminal(id) else { return }
         state = .failed(target: target, failure: failure)
+        clearWorkflow(id)
+    }
+
+    private func finishDisappearance(target: EjectWorkflowTarget, workflowID id: UUID) async {
+        await releaseBarrier(workflowID: id)
+        guard canCommitTerminal(id) else { return }
+        state = .disappeared(target)
         clearWorkflow(id)
     }
 
     private func finishCancellation(workflowID id: UUID) async {
         guard isCurrent(id) else { return }
         await releaseBarrier(workflowID: id)
+        guard workflowID == id else { return }
         state = .idle
         clearWorkflow(id)
     }
 
     private func releaseBarrier(workflowID id: UUID) async {
+        if releaseWorkflowID == id, let releaseTask {
+            await releaseTask.value
+            return
+        }
         guard let workflow = activeWorkflow, workflow.id == id else { return }
         activeWorkflow = nil
-        await workflow.barrier.release()
+        let task = Task { await workflow.barrier.release() }
+        releaseWorkflowID = id
+        releaseTask = task
+        await task.value
+        if releaseWorkflowID == id {
+            releaseWorkflowID = nil
+            releaseTask = nil
+        }
     }
 
     private func startOperation(
@@ -275,9 +318,17 @@ final class EjectCoordinator: ObservableObject {
         pendingTarget = nil
         activeWorkflow = nil
         operationTask = nil
+        topologyValidationTask = nil
+        latestTopologyGeneration = nil
+        releaseWorkflowID = nil
+        releaseTask = nil
     }
 
     private func isCurrent(_ id: UUID) -> Bool {
+        workflowID == id && Task.isCancelled == false
+    }
+
+    private func canCommitTerminal(_ id: UUID) -> Bool {
         workflowID == id && Task.isCancelled == false
     }
 
@@ -306,6 +357,7 @@ private final class ActiveWorkflow {
     let id: UUID
     let target: EjectWorkflowTarget
     var scope: OccupancyTargetScope
+    private(set) var scopeGeneration: Int
     let barrier: any EjectBarrier
 
     init(
@@ -317,6 +369,13 @@ private final class ActiveWorkflow {
         self.id = id
         self.target = target
         self.scope = scope
+        self.scopeGeneration = target.topologyGeneration
         self.barrier = barrier
+    }
+
+    func refreshScope(_ scope: OccupancyTargetScope, generation: Int) {
+        guard generation >= scopeGeneration else { return }
+        self.scope = scope
+        scopeGeneration = generation
     }
 }

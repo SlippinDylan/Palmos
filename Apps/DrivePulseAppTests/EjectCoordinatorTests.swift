@@ -208,6 +208,236 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(releaseCount, 1)
     }
 
+    func testValidTopologyChangeDuringBarrierDrainDoesNotCancelNormalFlow() async throws {
+        let drainGate = AsyncGate()
+        let fixture = Fixture(barrierWaitGate: drainGate)
+        await fixture.resolver.setRevalidations([.success(fixture.resolved()), .success(fixture.resolved())])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.events.snapshot()).contains("drain") }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 1 }
+        await drainGate.open()
+
+        try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
+        let normalCalls = await fixture.ejecter.normalCalls()
+        XCTAssertEqual(normalCalls, ["disk4"])
+    }
+
+    func testTopologyChangeIgnoresNonNewGenerations() async throws {
+        let scanGate = AsyncGate()
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))], scanGate: scanGate)
+        await fixture.resolver.setRevalidations([.success(fixture.resolved()), .success(fixture.resolved())])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.scanner.scannedScopes()).count == 1 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 9)
+        fixture.coordinator.deviceTopologyDidChange(generation: 8)
+        try await Task.sleep(for: .milliseconds(20))
+        let callsBeforeNewGeneration = await fixture.resolver.revalidationCalls()
+        XCTAssertEqual(callsBeforeNewGeneration.count, 1)
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 2 }
+        await scanGate.open()
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+    }
+
+    func testValidTopologyChangeDuringNormalEjectDoesNotCancelOperation() async throws {
+        let normalGate = AsyncGate()
+        let fixture = Fixture(normalGate: normalGate)
+        await fixture.resolver.setRevalidations([.success(fixture.resolved()), .success(fixture.resolved())])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.ejecter.normalCalls()).count == 1 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 2 }
+        await normalGate.open()
+
+        try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
+    }
+
+    func testValidTopologyChangeDuringForceEjectDoesNotCancelOperation() async throws {
+        let forceGate = AsyncGate()
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))], forceGate: forceGate)
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .success(fixture.resolved()),
+            .success(fixture.resolved())
+        ])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        fixture.coordinator.requestForce()
+        fixture.coordinator.confirmForce()
+        try await waitUntil { (await fixture.ejecter.forceCalls()).count == 1 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 3 }
+        await forceGate.open()
+
+        try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
+    }
+
+    func testValidTopologyChangeDuringOccupancyScanDoesNotCancelRecovery() async throws {
+        let scanGate = AsyncGate()
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))], scanGate: scanGate)
+        await fixture.resolver.setRevalidations([.success(fixture.resolved()), .success(fixture.resolved())])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.scanner.scannedScopes()).count == 1 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 2 }
+        await scanGate.open()
+
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        let releases = await fixture.barrier.releases()
+        XCTAssertEqual(releases, 0)
+    }
+
+    func testInvalidTopologyDuringNormalEjectEndsNeutrallyWithoutReplacementAction() async throws {
+        let normalGate = AsyncGate()
+        let fixture = Fixture(normalGate: normalGate)
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .failure(EjectTargetResolutionError.targetChanged)
+        ])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.ejecter.normalCalls()).count == 1 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+
+        try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
+        await normalGate.open()
+        try await Task.sleep(for: .milliseconds(20))
+        let normalCalls = await fixture.ejecter.normalCalls()
+        let forceCalls = await fixture.ejecter.forceCalls()
+        XCTAssertEqual(fixture.coordinator.state, .disappeared(fixture.target))
+        XCTAssertEqual(normalCalls, ["disk4"])
+        XCTAssertEqual(forceCalls, [])
+    }
+
+    func testInvalidTopologyDuringBarrierDrainEndsNeutrallyWithoutDispatchingEject() async throws {
+        let drainGate = AsyncGate()
+        let fixture = Fixture(barrierWaitGate: drainGate)
+        await fixture.resolver.setRevalidations([.failure(EjectTargetResolutionError.deviceNotFound)])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.events.snapshot()).contains("drain") }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+
+        try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
+        await drainGate.open()
+        try await Task.sleep(for: .milliseconds(20))
+        let normalCalls = await fixture.ejecter.normalCalls()
+        XCTAssertEqual(fixture.coordinator.state, .disappeared(fixture.target))
+        XCTAssertEqual(normalCalls, [])
+    }
+
+    func testInvalidTopologyDuringForceEjectEndsNeutrallyWithoutSecondAction() async throws {
+        let forceGate = AsyncGate()
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))], forceGate: forceGate)
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .success(fixture.resolved()),
+            .failure(EjectTargetResolutionError.targetChanged)
+        ])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        fixture.coordinator.requestForce()
+        fixture.coordinator.confirmForce()
+        try await waitUntil { (await fixture.ejecter.forceCalls()).count == 1 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+
+        try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
+        await forceGate.open()
+        try await Task.sleep(for: .milliseconds(20))
+        let normalCalls = await fixture.ejecter.normalCalls()
+        let forceCalls = await fixture.ejecter.forceCalls()
+        XCTAssertEqual(fixture.coordinator.state, .disappeared(fixture.target))
+        XCTAssertEqual(normalCalls, ["disk4"])
+        XCTAssertEqual(forceCalls, ["disk4"])
+    }
+
+    func testInvalidTopologyDuringOccupancyScanEndsNeutrallyWithoutRecoveryOverwrite() async throws {
+        let scanGate = AsyncGate()
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))], scanGate: scanGate)
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .failure(EjectTargetResolutionError.deviceNotFound)
+        ])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.scanner.scannedScopes()).count == 1 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+
+        try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
+        await scanGate.open()
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(fixture.coordinator.state, .disappeared(fixture.target))
+    }
+
+    func testCancelDuringSuspendedSuccessReleasePreventsStaleTerminalOverwrite() async throws {
+        let releaseGate = AsyncGate()
+        let fixture = Fixture(
+            normalResults: [.success(()), .failure(Fixture.failure(.busy))],
+            releaseGate: releaseGate
+        )
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { await fixture.barrier.releases() == 1 }
+
+        fixture.coordinator.cancel()
+        XCTAssertNotEqual(fixture.coordinator.state, .idle)
+        await releaseGate.open()
+        try await waitUntil { fixture.coordinator.state == .idle }
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 10)
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        try await Task.sleep(for: .milliseconds(20))
+
+        let releases = await fixture.barrier.releases()
+        XCTAssertNotNil(fixture.coordinator.state.recovery)
+        XCTAssertEqual(releases, 1)
+        fixture.coordinator.cancel()
+    }
+
+    func testCancelDuringSuspendedFailureReleasePreventsStaleTerminalOverwrite() async throws {
+        let releaseGate = AsyncGate()
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.io))], releaseGate: releaseGate)
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { await fixture.barrier.releases() == 1 }
+
+        fixture.coordinator.cancel()
+        await releaseGate.open()
+        try await waitUntil { fixture.coordinator.state == .idle }
+        try await Task.sleep(for: .milliseconds(20))
+
+        let releases = await fixture.barrier.releases()
+        XCTAssertEqual(fixture.coordinator.state, .idle)
+        XCTAssertEqual(releases, 1)
+    }
+
+    func testCancelDuringSuspendedDisappearanceReleasePreventsStaleTerminalOverwrite() async throws {
+        let releaseGate = AsyncGate()
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))], releaseGate: releaseGate)
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .failure(EjectTargetResolutionError.deviceNotFound)
+        ])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        try await waitUntil { await fixture.barrier.releases() == 1 }
+
+        fixture.coordinator.cancel()
+        await releaseGate.open()
+        try await waitUntil { fixture.coordinator.state == .idle }
+        try await Task.sleep(for: .milliseconds(20))
+
+        let releases = await fixture.barrier.releases()
+        XCTAssertEqual(fixture.coordinator.state, .idle)
+        XCTAssertEqual(releases, 1)
+    }
+
     func testSecondBeginIsIgnoredUntilFirstWorkflowReleases() async throws {
         let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy)), .success(()), .success(())])
         fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
@@ -286,7 +516,12 @@ private final class Fixture {
         quiescerError: DeviceIOQuiescenceError? = nil,
         normalResults: [Result<Void, EjectFailure>] = [.success(())],
         forceResults: [Result<Void, EjectFailure>] = [.success(())],
-        holders: [OccupancyHolder] = []
+        holders: [OccupancyHolder] = [],
+        barrierWaitGate: AsyncGate? = nil,
+        normalGate: AsyncGate? = nil,
+        forceGate: AsyncGate? = nil,
+        scanGate: AsyncGate? = nil,
+        releaseGate: AsyncGate? = nil
     ) {
         let target = self.target
         let scope = OccupancyTargetScope(
@@ -295,10 +530,25 @@ private final class Fixture {
             mountURLs: [URL(fileURLWithPath: "/Volumes/T7")]
         )
         resolver = ResolverSpy(resolved: .init(target: target, scope: scope), events: events)
-        barrier = BarrierSpy(waitError: barrierError, events: events)
+        barrier = BarrierSpy(
+            waitError: barrierError,
+            waitGate: barrierWaitGate,
+            releaseGate: releaseGate,
+            events: events
+        )
         quiescer = QuiescerSpy(barrier: barrier, error: quiescerError, events: events)
-        ejecter = EjecterSpy(normalResults: normalResults, forceResults: forceResults, events: events)
-        scanner = ScannerSpy(result: .init(holders: holders, isComplete: true), events: events)
+        ejecter = EjecterSpy(
+            normalResults: normalResults,
+            forceResults: forceResults,
+            normalGate: normalGate,
+            forceGate: forceGate,
+            events: events
+        )
+        scanner = ScannerSpy(
+            result: .init(holders: holders, isComplete: true),
+            gate: scanGate,
+            events: events
+        )
         coordinator = EjectCoordinator(
             resolver: resolver,
             quiescer: quiescer,
@@ -362,22 +612,33 @@ private actor ResolverSpy: EjectTargetResolving {
 
 private actor BarrierSpy: EjectBarrier {
     private let waitError: DeviceIOQuiescenceError?
+    private let waitGate: AsyncGate?
+    private let releaseGate: AsyncGate?
     private let events: EventLog
     private(set) var releaseCount = 0
 
-    init(waitError: DeviceIOQuiescenceError?, events: EventLog) {
+    init(
+        waitError: DeviceIOQuiescenceError?,
+        waitGate: AsyncGate?,
+        releaseGate: AsyncGate?,
+        events: EventLog
+    ) {
         self.waitError = waitError
+        self.waitGate = waitGate
+        self.releaseGate = releaseGate
         self.events = events
     }
 
     func waitUntilReady() async throws {
         await events.append("drain")
+        await waitGate?.wait()
         if let waitError { throw waitError }
     }
 
     func release() async {
         releaseCount += 1
         await events.append("release")
+        await releaseGate?.wait()
     }
 
     func releases() -> Int { releaseCount }
@@ -408,24 +669,36 @@ private actor EjecterSpy: DiskEjecting {
     private var normalResults: [Result<Void, EjectFailure>]
     private var forceResults: [Result<Void, EjectFailure>]
     private let events: EventLog
+    private let normalGate: AsyncGate?
+    private let forceGate: AsyncGate?
     private(set) var normalBSDNames: [String] = []
     private(set) var forceBSDNames: [String] = []
 
-    init(normalResults: [Result<Void, EjectFailure>], forceResults: [Result<Void, EjectFailure>], events: EventLog) {
+    init(
+        normalResults: [Result<Void, EjectFailure>],
+        forceResults: [Result<Void, EjectFailure>],
+        normalGate: AsyncGate?,
+        forceGate: AsyncGate?,
+        events: EventLog
+    ) {
         self.normalResults = normalResults
         self.forceResults = forceResults
+        self.normalGate = normalGate
+        self.forceGate = forceGate
         self.events = events
     }
 
     func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure> {
         normalBSDNames.append(bsdName)
         await events.append("normal:\(bsdName)")
+        await normalGate?.wait()
         return normalResults.removeFirst()
     }
 
     func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
         forceBSDNames.append(bsdName)
         await events.append("force:\(bsdName)")
+        await forceGate?.wait()
         return forceResults.removeFirst()
     }
 
@@ -435,19 +708,41 @@ private actor EjecterSpy: DiskEjecting {
 
 private actor ScannerSpy: OccupancyScanning {
     private let result: OccupancyScanResult
+    private let gate: AsyncGate?
     private let events: EventLog
     private(set) var scopes: [OccupancyTargetScope] = []
 
-    init(result: OccupancyScanResult, events: EventLog) {
+    init(result: OccupancyScanResult, gate: AsyncGate?, events: EventLog) {
         self.result = result
+        self.gate = gate
         self.events = events
     }
 
     func scan(workflowID: UUID, scope: OccupancyTargetScope) async -> OccupancyScanResult {
         scopes.append(scope)
         await events.append("scan")
+        await gate?.wait()
         return result
     }
 
     func scannedScopes() -> [OccupancyTargetScope] { scopes }
+}
+
+private actor AsyncGate {
+    private var isOpen = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard isOpen == false else { return }
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    func open() {
+        isOpen = true
+        let pending = continuations
+        continuations.removeAll()
+        pending.forEach { $0.resume() }
+    }
 }
