@@ -12,6 +12,76 @@ private final class LockedCounter: @unchecked Sendable {
 }
 
 final class SMARTServiceClientTests: XCTestCase {
+    func testCancellingOccupancyXPCInvalidatesSessionAndIgnoresLateReply() async throws {
+        let handshake = try DrivePulseXPCMessages.encode(
+            HelperHandshake(
+                helperVersion: "1.4.0",
+                contractMajor: XPCContractVersion.currentMajor,
+                contractMinor: XPCContractVersion.currentMinor
+            )
+        )
+        let workflowID = UUID()
+        let session = ControlledOccupancyXPCSession()
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            occupancySession: session
+        )
+        let task = Task {
+            try await client.scan(workflowID: workflowID, physicalBSDName: "disk4")
+        }
+        await session.waitUntilStarted()
+
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Cancelled occupancy scan should throw CancellationError")
+        } catch is CancellationError {
+            // Expected.
+        } catch {
+            XCTFail("Unexpected cancellation error: \(error)")
+        }
+        XCTAssertEqual(session.invalidationCount, 1)
+
+        session.send(.reply(try DrivePulseXPCMessages.encodeOccupancyResponse(.init(
+            workflowID: workflowID,
+            holders: [.init(pid: 7, executableName: "late", displayName: nil, type: "unknown")],
+            isComplete: true
+        ))))
+        await Task.yield()
+        XCTAssertEqual(session.invalidationCount, 1)
+    }
+
+    func testOccupancyScanRejectsResponseForAnotherWorkflow() async throws {
+        let handshake = try DrivePulseXPCMessages.encode(
+            HelperHandshake(
+                helperVersion: "1.4.0",
+                contractMajor: XPCContractVersion.currentMajor,
+                contractMinor: XPCContractVersion.currentMinor
+            )
+        )
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            scanDiskOccupancy: { _ in
+                try DrivePulseXPCMessages.encodeOccupancyResponse(.init(
+                    workflowID: UUID(),
+                    holders: [],
+                    isComplete: true
+                ))
+            }
+        )
+
+        do {
+            _ = try await client.scan(workflowID: UUID(), physicalBSDName: "disk4")
+            XCTFail("Mismatched workflow response should be rejected")
+        } catch {
+            XCTAssertFalse(error is CancellationError)
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The SMART helper returned an occupancy result for another workflow."
+            )
+        }
+    }
+
     func testOccupancyScanDegradesHonestlyWithoutCallingUnsupportedOldHelperEndpoint() async throws {
         let handshake = try DrivePulseXPCMessages.encode(
             HelperHandshake(helperVersion: "1.3.0", contractMajor: 1, contractMinor: 3)
@@ -268,6 +338,37 @@ final class SMARTServiceClientTests: XCTestCase {
             apfsContainerBSDName: nil,
             volumes: []
         )
+    }
+}
+
+private final class ControlledOccupancyXPCSession: OccupancyXPCSession, @unchecked Sendable {
+    private let lock = NSLock()
+    private var eventHandler: (@Sendable (SMARTXPCSessionEvent) -> Void)?
+    private var started = false
+    private var invalidations = 0
+
+    var invalidationCount: Int { lock.withLock { invalidations } }
+
+    func scanDiskOccupancy(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        lock.withLock {
+            started = true
+            self.eventHandler = eventHandler
+        }
+    }
+
+    func invalidate() {
+        lock.withLock { invalidations += 1 }
+    }
+
+    func waitUntilStarted() async {
+        while lock.withLock({ started == false }) { await Task.yield() }
+    }
+
+    func send(_ event: SMARTXPCSessionEvent) {
+        lock.withLock { eventHandler }?(event)
     }
 }
 

@@ -3,6 +3,44 @@ import XCTest
 @testable import DrivePulseApp
 
 final class OccupancyScannerTests: XCTestCase {
+    func testCancellationDuringAppScanReturnsEmptyIncompleteWithoutCallingHelper() async {
+        let app = ControlledAppOccupancyScanner()
+        let helper = RecordingHelperOccupancyScanner(result: .init(holders: [], isComplete: true))
+        let scanner = OccupancyScanner(appScanner: app, helperScanner: helper)
+        let scope = makeScope()
+        let task = Task { await scanner.scan(workflowID: UUID(), scope: scope) }
+        await app.waitUntilStarted()
+
+        task.cancel()
+        app.finish(with: .init(
+            holders: [makeHolder(pid: 42, executableName: "Finder", type: .openFileOrDirectory)],
+            isComplete: true
+        ))
+        let result = await task.value
+
+        XCTAssertEqual(result, .init(holders: [], isComplete: false))
+        let helperScanCount = await helper.scanCount
+        XCTAssertEqual(helperScanCount, 0)
+    }
+
+    func testCancellationDuringHelperScanReturnsEmptyIncompletePromptly() async {
+        let helper = SleepingHelperOccupancyScanner()
+        let scanner = OccupancyScanner(
+            appScanner: StubAppOccupancyScanner(result: .init(holders: [], isComplete: true)),
+            helperScanner: helper
+        )
+        let scope = makeScope()
+        let task = Task { await scanner.scan(workflowID: UUID(), scope: scope) }
+        await helper.waitUntilStarted()
+
+        task.cancel()
+        let result = await task.value
+
+        XCTAssertEqual(result, .init(holders: [], isComplete: false))
+        let scanCount = await helper.scanCount
+        XCTAssertEqual(scanCount, 1)
+    }
+
     func testActionableCompleteAppResultDoesNotCallHelper() async {
         let holder = makeHolder(pid: 42, executableName: "Finder", type: .openFileOrDirectory)
         let app = StubAppOccupancyScanner(result: .init(holders: [holder], isComplete: true))
@@ -170,6 +208,36 @@ private struct StubAppOccupancyScanner: AppOccupancyScanning {
     }
 }
 
+private final class ControlledAppOccupancyScanner: AppOccupancyScanning, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<OccupancyScanResult, Never>?
+    private var started = false
+
+    func scan(
+        scope: OccupancyTargetScope,
+        deadline: ContinuousClock.Instant
+    ) async -> OccupancyScanResult {
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                started = true
+                self.continuation = continuation
+            }
+        }
+    }
+
+    func waitUntilStarted() async {
+        while lock.withLock({ started == false }) { await Task.yield() }
+    }
+
+    func finish(with result: OccupancyScanResult) {
+        let continuation = lock.withLock {
+            defer { self.continuation = nil }
+            return self.continuation
+        }
+        continuation?.resume(returning: result)
+    }
+}
+
 private actor RecordingHelperOccupancyScanner: HelperOccupancyScanning {
     struct Request: Equatable {
         let workflowID: UUID
@@ -195,6 +263,20 @@ private actor RecordingHelperOccupancyScanner: HelperOccupancyScanning {
         requests.append(.init(workflowID: workflowID, physicalBSDName: physicalBSDName))
         if let error { throw error }
         return try XCTUnwrap(result)
+    }
+}
+
+private actor SleepingHelperOccupancyScanner: HelperOccupancyScanning {
+    private(set) var scanCount = 0
+
+    func scan(workflowID: UUID, physicalBSDName: String) async throws -> OccupancyScanResult {
+        scanCount += 1
+        try await Task.sleep(for: .seconds(60))
+        return OccupancyScanResult(holders: [], isComplete: true)
+    }
+
+    func waitUntilStarted() async {
+        while scanCount == 0 { await Task.yield() }
     }
 }
 

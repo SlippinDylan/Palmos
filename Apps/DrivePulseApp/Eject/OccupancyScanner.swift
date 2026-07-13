@@ -30,23 +30,31 @@ struct OccupancyScanner: OccupancyScanning {
             scope: scope,
             deadline: ContinuousClock.now.advanced(by: appScanTimeout)
         )
+        guard Task.isCancelled == false else { return cancelledResult }
         let hasActionableAppHolder = appResult.holders.contains { $0.type != .unknown }
         guard hasActionableAppHolder == false || appResult.isComplete == false else {
             return normalized(appResult)
         }
+        guard Task.isCancelled == false else { return cancelledResult }
 
         do {
             let helperResult = try await helperScanner.scan(
                 workflowID: workflowID,
                 physicalBSDName: scope.physicalBSDName
             )
+            guard Task.isCancelled == false else { return cancelledResult }
             return normalized(.init(
                 holders: appResult.holders + helperResult.holders,
                 isComplete: helperResult.isComplete
             ))
         } catch {
+            guard Task.isCancelled == false else { return cancelledResult }
             return normalized(.init(holders: appResult.holders, isComplete: false))
         }
+    }
+
+    private var cancelledResult: OccupancyScanResult {
+        OccupancyScanResult(holders: [], isComplete: false)
     }
 
     private func normalized(_ result: OccupancyScanResult) -> OccupancyScanResult {
