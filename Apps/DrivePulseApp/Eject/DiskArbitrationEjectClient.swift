@@ -147,8 +147,11 @@ final class LiveDiskArbitrationOperating: DiskArbitrationOperating, @unchecked S
                         DASessionSetDispatchQueue(session, nil)
                     })
                     cancellation.install(context)
-                    operation(disk, context)
+                    let submitted = cancellation.submit {
+                        operation(disk, context)
+                    }
 
+                    guard submitted else { return }
                     Task {
                         try? await Task.sleep(nanoseconds: timeoutNanoseconds)
                         DiskArbitrationCallbackRegistry.shared.resolve(context: context, event: .timeout)
@@ -166,6 +169,7 @@ final class DiskArbitrationOperationCancellation: @unchecked Sendable {
     private let registry: DiskArbitrationCallbackRegistry
     private var context: UnsafeMutableRawPointer?
     private var isCancelled = false
+    private var isSubmitted = false
 
     init(registry: DiskArbitrationCallbackRegistry = .shared) {
         self.registry = registry
@@ -188,6 +192,15 @@ final class DiskArbitrationOperationCancellation: @unchecked Sendable {
         }
         if let context = installedContext {
             registry.resolve(context: context, event: .cancelled)
+        }
+    }
+
+    func submit(_ operation: @Sendable () -> Void) -> Bool {
+        lock.withLock {
+            guard isCancelled == false, isSubmitted == false else { return false }
+            isSubmitted = true
+            operation()
+            return true
         }
     }
 }

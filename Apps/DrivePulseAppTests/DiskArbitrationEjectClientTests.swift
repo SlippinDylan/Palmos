@@ -213,8 +213,11 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
             let registry = DiskArbitrationCallbackRegistry()
             let context = registry.register(resume: { probe.record($0) }, cleanup: { probe.recordResourceCleanup() })
             let contextKey = UInt(bitPattern: context)
-            let ready = DispatchGroup()
-            let start = DispatchSemaphore(value: 0)
+            let contendersQueue = DispatchQueue(
+                label: "DiskArbitrationEjectClientTests.contenders",
+                qos: .userInitiated,
+                attributes: [.concurrent, .initiallyInactive]
+            )
             let finished = DispatchGroup()
             let contenders: [@Sendable () -> Void] = [
                 { registry.resolveCallback(context: UnsafeMutableRawPointer(bitPattern: contextKey), result: .success) },
@@ -223,22 +226,67 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
             ]
 
             for contender in contenders {
-                ready.enter()
                 finished.enter()
-                DispatchQueue.global().async {
-                    ready.leave()
-                    start.wait()
+                contendersQueue.async {
                     contender()
                     finished.leave()
                 }
             }
-            ready.wait()
-            for _ in contenders { start.signal() }
+            contendersQueue.activate()
             finished.wait()
 
             XCTAssertEqual(probe.results.count, 1)
             XCTAssertEqual(probe.resourceCleanupCount, 1)
             XCTAssertEqual(registry.registeredContextCount, 0)
+        }
+    }
+
+    func testCancellationBeforeSubmitPreventsDestructiveOperation() {
+        let probe = CompletionProbe()
+        let registry = DiskArbitrationCallbackRegistry()
+        let gate = DiskArbitrationOperationCancellation(registry: registry)
+        gate.cancel()
+        let context = registry.register { probe.record($0) }
+        gate.install(context)
+
+        let submitted = gate.submit { probe.recordSubmit() }
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(probe.submitCount, 0)
+        XCTAssertEqual(probe.results, [.cancelled])
+    }
+
+    func testInstallSubmitRaceNeverSubmitsAfterTerminalCancellation() {
+        for _ in 0..<100 {
+            let probe = CompletionProbe()
+            let registry = DiskArbitrationCallbackRegistry()
+            let gate = DiskArbitrationOperationCancellation(registry: registry)
+            let context = registry.register { probe.record($0) }
+            gate.install(context)
+            let contendersQueue = DispatchQueue(
+                label: "DiskArbitrationEjectClientTests.submissionContenders",
+                qos: .userInitiated,
+                attributes: [.concurrent, .initiallyInactive]
+            )
+            let finished = DispatchGroup()
+
+            finished.enter()
+            contendersQueue.async {
+                gate.cancel()
+                finished.leave()
+            }
+            finished.enter()
+            contendersQueue.async {
+                _ = gate.submit { probe.recordSubmit() }
+                finished.leave()
+            }
+            contendersQueue.activate()
+            finished.wait()
+
+            if probe.results == [.cancelled], probe.submitCount == 1 {
+                XCTAssertEqual(probe.timeline, ["submit", "cancelled"])
+            }
+            XCTAssertLessThanOrEqual(probe.submitCount, 1)
         }
     }
 
@@ -297,9 +345,14 @@ private final class CompletionProbe: @unchecked Sendable {
     private(set) var results: [DiskArbitrationOperationResult] = []
     private(set) var cleanedContextKeys: [UInt] = []
     private(set) var resourceCleanupCount = 0
+    private(set) var submitCount = 0
+    private(set) var timeline: [String] = []
 
     func record(_ result: DiskArbitrationOperationResult) {
-        lock.withLock { results.append(result) }
+        lock.withLock {
+            results.append(result)
+            if result == .cancelled { timeline.append("cancelled") }
+        }
     }
 
     func recordCleanup(_ key: UInt) {
@@ -308,6 +361,13 @@ private final class CompletionProbe: @unchecked Sendable {
 
     func recordResourceCleanup() {
         lock.withLock { resourceCleanupCount += 1 }
+    }
+
+    func recordSubmit() {
+        lock.withLock {
+            submitCount += 1
+            timeline.append("submit")
+        }
     }
 }
 
