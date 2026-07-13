@@ -99,6 +99,113 @@ final class OccupancyXPCMessageTests: XCTestCase {
         }
     }
 
+    func testDecodeRejectsOversizedDataBeforeDecoding() {
+        XCTAssertThrowsError(
+            try DrivePulseXPCMessages.decodeOccupancyRequest(
+                from: Data(repeating: 0x20, count: OccupancyXPCLimits.requestBytes + 1)
+            )
+        ) { error in
+            XCTAssertEqual(error as? DrivePulseXPCMessageError, .encodedMessageTooLarge)
+        }
+        XCTAssertThrowsError(
+            try DrivePulseXPCMessages.decodeOccupancyResponse(
+                from: Data(repeating: 0x20, count: OccupancyXPCLimits.responseBytes + 1)
+            )
+        ) { error in
+            XCTAssertEqual(error as? DrivePulseXPCMessageError, .encodedMessageTooLarge)
+        }
+    }
+
+    func testDecodeRejectsExcessHoldersAndInvalidNames() throws {
+        let excessiveHolders = OccupancyScanResponse(
+            workflowID: UUID(),
+            holders: (0...OccupancyXPCLimits.maxHolders).map { index in
+                .init(pid: Int32(index), executableName: "process", displayName: nil, type: "unknown")
+            },
+            isComplete: true
+        )
+        XCTAssertThrowsError(
+            try DrivePulseXPCMessages.decodeOccupancyResponse(
+                from: DrivePulseXPCMessages.encode(excessiveHolders)
+            )
+        ) { error in
+            XCTAssertEqual(error as? DrivePulseXPCMessageError, .invalidOccupancyMessage)
+        }
+
+        for holder in [
+            OccupancyHolderMessage(pid: 1, executableName: "", displayName: nil, type: "unknown"),
+            OccupancyHolderMessage(pid: 1, executableName: "process", displayName: "", type: "unknown"),
+            OccupancyHolderMessage(
+                pid: 1,
+                executableName: String(repeating: "x", count: OccupancyXPCLimits.maxNameUTF8Bytes + 1),
+                displayName: nil,
+                type: "unknown"
+            ),
+            OccupancyHolderMessage(
+                pid: 1,
+                executableName: "process",
+                displayName: String(repeating: "x", count: OccupancyXPCLimits.maxNameUTF8Bytes + 1),
+                type: "unknown"
+            )
+        ] {
+            let response = OccupancyScanResponse(workflowID: UUID(), holders: [holder], isComplete: true)
+            XCTAssertThrowsError(
+                try DrivePulseXPCMessages.decodeOccupancyResponse(
+                    from: DrivePulseXPCMessages.encode(response)
+                )
+            ) { error in
+                XCTAssertEqual(error as? DrivePulseXPCMessageError, .invalidOccupancyMessage)
+            }
+        }
+    }
+
+    func testDedupeWinnerAndEncodingAreIndependentOfInputOrder() throws {
+        let workflowID = UUID()
+        let candidates = [
+            OccupancyHolderMessage(pid: 9, executableName: "zeta", displayName: nil, type: "deviceNode"),
+            OccupancyHolderMessage(pid: 9, executableName: "beta", displayName: "Zeta", type: "deviceNode"),
+            OccupancyHolderMessage(pid: 9, executableName: "alpha", displayName: "Alpha", type: "deviceNode")
+        ]
+        let forward = OccupancyScanResponse(workflowID: workflowID, holders: candidates, isComplete: true)
+        let reverse = OccupancyScanResponse(
+            workflowID: workflowID,
+            holders: Array(candidates.reversed()),
+            isComplete: true
+        )
+
+        let forwardData = try DrivePulseXPCMessages.encodeOccupancyResponse(forward)
+        let reverseData = try DrivePulseXPCMessages.encodeOccupancyResponse(reverse)
+
+        XCTAssertEqual(forwardData, reverseData)
+        XCTAssertEqual(
+            try DrivePulseXPCMessages.decodeOccupancyResponse(from: forwardData).holders.first?.displayName,
+            "Alpha"
+        )
+    }
+
+    func testEncodeRejectsPathologicalHolderCountsAndNamesBeforeNormalization() {
+        let excessive = OccupancyScanResponse(
+            workflowID: UUID(),
+            holders: (0...OccupancyXPCLimits.maxInputHolders).map { index in
+                .init(pid: Int32(index), executableName: "p", displayName: nil, type: "unknown")
+            },
+            isComplete: true
+        )
+        XCTAssertThrowsError(try DrivePulseXPCMessages.encodeOccupancyResponse(excessive)) { error in
+            XCTAssertEqual(error as? DrivePulseXPCMessageError, .invalidOccupancyMessage)
+        }
+
+        let pathologicalName = String(repeating: "a", count: OccupancyXPCLimits.maxRawNameUTF8Bytes + 1)
+        let response = OccupancyScanResponse(
+            workflowID: UUID(),
+            holders: [.init(pid: 1, executableName: pathologicalName, displayName: nil, type: "unknown")],
+            isComplete: true
+        )
+        XCTAssertThrowsError(try DrivePulseXPCMessages.encodeOccupancyResponse(response)) { error in
+            XCTAssertEqual(error as? DrivePulseXPCMessageError, .invalidOccupancyMessage)
+        }
+    }
+
     func testProtocolSelectorsRemainAdditiveAndLegacyPayloadBytesRemainUnchanged() {
         XCTAssertEqual(
             NSStringFromSelector(#selector(DrivePulseSMARTXPCProtocol.readSMARTData(for:withReply:))),

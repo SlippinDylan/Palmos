@@ -44,6 +44,10 @@ enum OccupancyXPCLimits {
     static let maxHolders = 64
     static let maxCandidatePIDs = 4_096
     static let maxNameUTF8Bytes = 255
+    /// Four holder categories per bounded PID candidate limits normalization work.
+    static let maxInputHolders = maxCandidatePIDs * 4
+    /// Rejects pathological strings before grapheme-cluster traversal.
+    static let maxRawNameUTF8Bytes = 4 * 1024
 }
 
 struct XPCFeatureCapabilities: Equatable, Sendable {
@@ -63,6 +67,7 @@ enum DrivePulseXPCMessageError: Error, Equatable {
     case unsupportedSchemaVersion(Int)
     case processExitUnacknowledged
     case encodedMessageTooLarge
+    case invalidOccupancyMessage
 }
 
 enum DrivePulseXPCMessages {
@@ -112,16 +117,24 @@ enum DrivePulseXPCMessages {
     }
 
     static func decodeOccupancyRequest(from data: Data) throws -> OccupancyScanRequest {
-        try decode(OccupancyScanRequest.self, from: data)
+        guard data.count <= OccupancyXPCLimits.requestBytes else {
+            throw DrivePulseXPCMessageError.encodedMessageTooLarge
+        }
+        return try decode(OccupancyScanRequest.self, from: data)
     }
 
     static func encodeOccupancyResponse(_ response: OccupancyScanResponse) throws -> Data {
+        guard response.holders.count <= OccupancyXPCLimits.maxInputHolders else {
+            throw DrivePulseXPCMessageError.invalidOccupancyMessage
+        }
         let normalized = OccupancyScanResponse(
             workflowID: response.workflowID,
-            holders: normalizedHolders(response.holders),
+            holders: try normalizedHolders(response.holders),
             isComplete: response.isComplete
         )
-        let data = try encode(normalized)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(normalized)
         guard data.count <= OccupancyXPCLimits.responseBytes else {
             throw DrivePulseXPCMessageError.encodedMessageTooLarge
         }
@@ -129,7 +142,15 @@ enum DrivePulseXPCMessages {
     }
 
     static func decodeOccupancyResponse(from data: Data) throws -> OccupancyScanResponse {
-        try decode(OccupancyScanResponse.self, from: data)
+        guard data.count <= OccupancyXPCLimits.responseBytes else {
+            throw DrivePulseXPCMessageError.encodedMessageTooLarge
+        }
+        let response = try decode(OccupancyScanResponse.self, from: data)
+        guard response.holders.count <= OccupancyXPCLimits.maxHolders,
+              response.holders.allSatisfy(isValidDecodedHolder) else {
+            throw DrivePulseXPCMessageError.invalidOccupancyMessage
+        }
+        return response
     }
 
     /// The legacy contract returns the helper payload without an envelope.
@@ -137,9 +158,13 @@ enum DrivePulseXPCMessages {
 
     private static func normalizedHolders(
         _ holders: [OccupancyHolderMessage]
-    ) -> [OccupancyHolderMessage] {
+    ) throws -> [OccupancyHolderMessage] {
         var unique: [OccupancyHolderKey: OccupancyHolderMessage] = [:]
         for holder in holders {
+            guard isValidRawName(holder.executableName),
+                  holder.displayName.map(isValidRawName) ?? true else {
+                throw DrivePulseXPCMessageError.invalidOccupancyMessage
+            }
             let normalized = OccupancyHolderMessage(
                 pid: holder.pid,
                 executableName: truncatedName(holder.executableName),
@@ -147,7 +172,11 @@ enum DrivePulseXPCMessages {
                 type: holder.type
             )
             let key = OccupancyHolderKey(pid: holder.pid, type: holder.type)
-            if unique[key]?.displayName == nil || normalized.displayName != nil {
+            if let existing = unique[key] {
+                if isPreferredDedupeWinner(normalized, over: existing) {
+                    unique[key] = normalized
+                }
+            } else {
                 unique[key] = normalized
             }
         }
@@ -165,6 +194,33 @@ enum DrivePulseXPCMessages {
             byteCount += characterBytes
         }
         return result
+    }
+
+    private static func isValidRawName(_ name: String) -> Bool {
+        name.isEmpty == false && name.utf8.count <= OccupancyXPCLimits.maxRawNameUTF8Bytes
+    }
+
+    private static func isValidDecodedHolder(_ holder: OccupancyHolderMessage) -> Bool {
+        isValidDecodedName(holder.executableName)
+            && (holder.displayName.map(isValidDecodedName) ?? true)
+    }
+
+    private static func isValidDecodedName(_ name: String) -> Bool {
+        name.isEmpty == false && name.utf8.count <= OccupancyXPCLimits.maxNameUTF8Bytes
+    }
+
+    private static func isPreferredDedupeWinner(
+        _ candidate: OccupancyHolderMessage,
+        over existing: OccupancyHolderMessage
+    ) -> Bool {
+        switch (candidate.displayName, existing.displayName) {
+        case (.some, .none): return true
+        case (.none, .some): return false
+        case let (.some(candidateName), .some(existingName)) where candidateName != existingName:
+            return candidateName < existingName
+        default:
+            return candidate.executableName < existing.executableName
+        }
     }
 
     private static func holderSort(
