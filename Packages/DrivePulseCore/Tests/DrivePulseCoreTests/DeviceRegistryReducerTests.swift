@@ -8,7 +8,10 @@ final class DeviceRegistryReducerTests: XCTestCase {
         let snapshot = reducer.reduce(
             physicalBSDName: "disk4",
             containerBSDName: "disk5",
-            volumeBSDNames: ["disk5s1", "disk5s2"]
+            volumes: [
+                MountedVolume(bsdName: "disk5s1"),
+                MountedVolume(bsdName: "disk5s2")
+            ]
         )
 
         XCTAssertEqual(
