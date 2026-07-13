@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 final class HelperOperationCancellation: @unchecked Sendable {
@@ -46,12 +47,14 @@ struct HelperTopologyCommandRunner: Sendable {
         let stderrReader = BoundedTopologyPipeReader(stderr.fileHandleForReading, limit: Self.outputLimit)
         return try await withTaskCancellationHandler {
             try process.run()
+            try? stdout.fileHandleForWriting.close()
+            try? stderr.fileHandleForWriting.close()
             async let stdoutData = stdoutReader.read()
             async let stderrData = stderrReader.read()
             let monitor = Task.detached {
                 while processBox.isRunning {
                     if cancellation.isCancelled || ContinuousClock.now >= deadline {
-                        processBox.terminate()
+                        processBox.terminateWithEscalation()
                         return
                     }
                     try? await Task.sleep(for: .milliseconds(10))
@@ -61,6 +64,8 @@ struct HelperTopologyCommandRunner: Sendable {
             monitor.cancel()
             let output = await stdoutData
             _ = await stderrData
+            stdoutReader.close()
+            stderrReader.close()
 
             guard !cancellation.isCancelled, ContinuousClock.now < deadline else {
                 throw CancellationError()
@@ -70,7 +75,7 @@ struct HelperTopologyCommandRunner: Sendable {
             }
             return output
         } onCancel: {
-            processBox.terminate()
+            processBox.terminateWithEscalation()
         }
     }
 }
@@ -80,7 +85,16 @@ private final class RunningTopologyProcess: @unchecked Sendable {
     private let lock = NSLock()
     init(_ process: Process) { self.process = process }
     var isRunning: Bool { lock.withLock { process.isRunning } }
-    func terminate() { lock.withLock { if process.isRunning { process.terminate() } } }
+    func terminateWithEscalation() {
+        lock.withLock {
+            if process.isRunning { process.terminate() }
+        }
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(100)) { [self] in
+            lock.withLock {
+                if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL) }
+            }
+        }
+    }
     func waitForExit() async {
         await withCheckedContinuation { continuation in
             Thread.detachNewThread { [process] in
@@ -119,4 +133,5 @@ private final class BoundedTopologyPipeReader: @unchecked Sendable {
             }
         }
     }
+    func close() { try? fileHandle.close() }
 }

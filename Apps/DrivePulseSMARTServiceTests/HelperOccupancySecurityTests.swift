@@ -220,7 +220,7 @@ final class HelperOccupancySecurityTests: XCTestCase {
         _ = await first.value
     }
 
-    func testSameWorkflowNewGenerationSupersedesSlowTopologyWithoutOldCompletionClearingNew() async throws {
+    func testSameWorkflowNewGenerationCancelsWithoutStartingConcurrentWorker() async throws {
         let snapshot = ControlledSnapshotProvider()
         let endpoint = HelperOccupancyEndpoint(
             snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: snapshot.scope),
@@ -230,14 +230,17 @@ final class HelperOccupancySecurityTests: XCTestCase {
         let request = try occupancyRequest(workflowID)
         let old = Task { await endpoint.handle(request) }
         await snapshot.waitUntilFirstStarted()
-        let newer = Task { await endpoint.handle(request) }
-        let newResult = await newer.value
-        XCTAssertTrue(try XCTUnwrap(newResult.data).isEmpty == false)
+        let newResult = await endpoint.handle(request)
+        XCTAssertFalse(
+            try DrivePulseXPCMessages.decodeOccupancyResponse(from: XCTUnwrap(newResult.data)).isComplete
+        )
         let oldResult = await old.value
         let oldResponse = try DrivePulseXPCMessages.decodeOccupancyResponse(from: XCTUnwrap(oldResult.data))
         XCTAssertFalse(oldResponse.isComplete)
         let finalCount = await snapshot.callCountValue()
-        XCTAssertEqual(finalCount, 2)
+        let maximumWorkers = await snapshot.maximumActiveWorkers()
+        XCTAssertEqual(finalCount, 1)
+        XCTAssertEqual(maximumWorkers, 1)
     }
 
     func testEndpointReturnsWithinFullDeadlineEvenWhenSnapshotWorkerIgnoresCancellation() async throws {
@@ -272,6 +275,20 @@ final class HelperOccupancySecurityTests: XCTestCase {
         XCTAssertLessThan(start.duration(to: clock.now), .seconds(1))
     }
 
+    func testTopologyRunnerEscalatesToKillWhenChildIgnoresTerm() async throws {
+        let runner = HelperTopologyCommandRunner(executableURL: URL(fileURLWithPath: "/usr/bin/perl"))
+        let clock = ContinuousClock()
+        let start = clock.now
+        await XCTAssertThrowsErrorAsync {
+            _ = try await runner.run(
+                arguments: ["-e", "$SIG{TERM}='IGNORE'; sleep 10"],
+                deadline: clock.now.advanced(by: .milliseconds(60)),
+                cancellation: HelperOperationCancellation()
+            )
+        }
+        XCTAssertLessThan(start.duration(to: clock.now), .seconds(1))
+    }
+
     func testTopologyRunnerDrainsLargePipesWithoutBackpressureHang() async throws {
         let runner = HelperTopologyCommandRunner(executableURL: URL(fileURLWithPath: "/bin/sh"))
         let data = try await runner.run(
@@ -297,7 +314,45 @@ final class HelperOccupancySecurityTests: XCTestCase {
         let newer = await endpoint.handle(try occupancyRequest(workflowID))
         _ = await old.value
         XCTAssertNil(newer.error)
+        XCTAssertFalse(
+            try DrivePulseXPCMessages.decodeOccupancyResponse(from: XCTUnwrap(newer.data)).isComplete
+        )
         XCTAssertLessThan(start.duration(to: clock.now), .seconds(1))
+    }
+
+    func testDeadlineReplyKeepsSlotOwnedUntilNoncooperativeWorkerActuallyExits() async throws {
+        let snapshots = NoncooperativeSnapshotProvider()
+        let endpoint = HelperOccupancyEndpoint(
+            snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: snapshots.scope),
+            scanner: HelperOccupancyScanner(inspector: FixtureHelperProcessInspector(candidateCount: 0, holderPerPID: false)),
+            timeout: .milliseconds(40)
+        )
+        let workflowID = UUID()
+        let request = try occupancyRequest(workflowID)
+        let clock = ContinuousClock()
+        let start = clock.now
+        let first = await endpoint.handle(request)
+        XCTAssertLessThan(start.duration(to: clock.now), .milliseconds(250))
+        XCTAssertFalse(try DrivePulseXPCMessages.decodeOccupancyResponse(from: XCTUnwrap(first.data)).isComplete)
+
+        for _ in 0..<5 {
+            let repeated = await endpoint.handle(request)
+            XCTAssertFalse(try DrivePulseXPCMessages.decodeOccupancyResponse(from: XCTUnwrap(repeated.data)).isComplete)
+        }
+        let other = await endpoint.handle(try occupancyRequest(UUID()))
+        XCTAssertEqual(other.error?.code, HelperOccupancyError.helperBusy.rawValue)
+        let callsWhileDraining = await snapshots.callCountValue()
+        let maximumWorkers = await snapshots.maximumActiveWorkers()
+        XCTAssertEqual(callsWhileDraining, 1)
+        XCTAssertEqual(maximumWorkers, 1)
+
+        await snapshots.release()
+        await snapshots.waitUntilExited()
+        try await Task.sleep(for: .milliseconds(20))
+        let afterDrain = await endpoint.handle(request)
+        XCTAssertNil(afterDrain.error)
+        let callsAfterDrain = await snapshots.callCountValue()
+        XCTAssertEqual(callsAfterDrain, 2)
     }
 
     func testAuthoritativeSnapshotFailsClosedWhenRegistryIdentityDrifts() async throws {
@@ -349,8 +404,13 @@ private actor ControlledSnapshotProvider {
     private var calls = 0
     private var firstStarted = false
     private var firstReleased = false
+    private var activeWorkers = 0
+    private var maximumWorkers = 0
     func scope(_ name: String, _ deadline: ContinuousClock.Instant, _ cancellation: HelperOperationCancellation) async throws -> HelperOccupancyScope {
         calls += 1
+        activeWorkers += 1
+        maximumWorkers = max(maximumWorkers, activeWorkers)
+        defer { activeWorkers -= 1 }
         if calls == 1 {
             firstStarted = true
             while !cancellation.isCancelled && !firstReleased { await Task.yield() }
@@ -362,6 +422,7 @@ private actor ControlledSnapshotProvider {
     func waitUntilFirstStarted() async { while !firstStarted { await Task.yield() } }
     func releaseFirst() { firstReleased = true }
     func callCountValue() -> Int { calls }
+    func maximumActiveWorkers() -> Int { maximumWorkers }
 }
 
 private actor RegistryIdentitySequence {
@@ -383,6 +444,27 @@ private actor SupersedingProcessSnapshotProvider {
         return HelperOccupancyScope(deviceNodes: ["/dev/\(name)"], mountPaths: [])
     }
     func waitUntilFirstStarted() async { while !firstStarted { await Task.yield() } }
+}
+
+private actor NoncooperativeSnapshotProvider {
+    private var calls = 0
+    private var activeWorkers = 0
+    private var maximumWorkers = 0
+    private var released = false
+    private var exited = false
+    func scope(_ name: String, _ deadline: ContinuousClock.Instant, _ cancellation: HelperOperationCancellation) async throws -> HelperOccupancyScope {
+        calls += 1
+        activeWorkers += 1
+        maximumWorkers = max(maximumWorkers, activeWorkers)
+        while !released { await Task.yield() }
+        activeWorkers -= 1
+        exited = true
+        return HelperOccupancyScope(deviceNodes: ["/dev/\(name)"], mountPaths: [])
+    }
+    func release() { released = true }
+    func waitUntilExited() async { while !exited { await Task.yield() } }
+    func callCountValue() -> Int { calls }
+    func maximumActiveWorkers() -> Int { maximumWorkers }
 }
 
 private final class DiskutilFixtureQuery: @unchecked Sendable {

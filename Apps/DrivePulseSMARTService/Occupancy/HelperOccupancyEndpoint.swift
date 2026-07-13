@@ -38,13 +38,17 @@ actor HelperOccupancyEndpoint {
             return failure(.invalidRequest)
         }
 
-        if let active, active.workflowID != request.workflowID {
-            return failure(.helperBusy)
+        if let active {
+            guard active.workflowID == request.workflowID else {
+                return failure(.helperBusy)
+            }
+            nextGeneration &+= 1
+            active.cancellation.cancel()
+            return encode(.incomplete, workflowID: request.workflowID)
         }
 
         nextGeneration &+= 1
         let generation = nextGeneration
-        active?.cancellation.cancel()
         let cancellation = HelperOperationCancellation()
         active = ActiveRequest(
             generation: generation,
@@ -79,10 +83,17 @@ actor HelperOccupancyEndpoint {
                 return cancellation.isCancelled ? .incomplete : .failure(.scanFailed)
             }
         }
+        Task { [weak self] in
+            _ = await operation.value
+            await self?.operationDidFinish(generation: generation)
+        }
 
         let outcome = await race(operation: operation, deadline: deadline, cancellation: cancellation)
-        if active?.generation == generation { active = nil }
         return encode(outcome, workflowID: request.workflowID)
+    }
+
+    private func operationDidFinish(generation: UInt64) {
+        if active?.generation == generation { active = nil }
     }
 
     private func race(
@@ -95,12 +106,17 @@ actor HelperOccupancyEndpoint {
             Task {
                 gate.resolve(await operation.value)
             }
-            Task {
-                try? await ContinuousClock().sleep(until: deadline)
+            let timeoutTask = Task {
+                do {
+                    try await ContinuousClock().sleep(until: deadline)
+                } catch {
+                    return
+                }
                 cancellation.cancel()
                 operation.cancel()
                 gate.resolve(.incomplete)
             }
+            gate.track(timeoutTask: timeoutTask)
         }
     }
 
@@ -144,14 +160,25 @@ private enum EndpointOperationOutcome: Sendable {
 private final class EndpointRaceGate: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<EndpointOperationOutcome, Never>?
+    private var timeoutTask: Task<Void, Never>?
     init(_ continuation: CheckedContinuation<EndpointOperationOutcome, Never>) {
         self.continuation = continuation
     }
-    func resolve(_ outcome: EndpointOperationOutcome) {
-        let pending = lock.withLock { () -> CheckedContinuation<EndpointOperationOutcome, Never>? in
-            defer { continuation = nil }
-            return continuation
+    func track(timeoutTask: Task<Void, Never>) {
+        let shouldCancel = lock.withLock { () -> Bool in
+            guard continuation != nil else { return true }
+            self.timeoutTask = timeoutTask
+            return false
         }
+        if shouldCancel { timeoutTask.cancel() }
+    }
+    func resolve(_ outcome: EndpointOperationOutcome) {
+        let (pending, timeout) = lock.withLock { () -> (CheckedContinuation<EndpointOperationOutcome, Never>?, Task<Void, Never>?) in
+            defer { continuation = nil }
+            defer { timeoutTask = nil }
+            return (continuation, timeoutTask)
+        }
+        timeout?.cancel()
         pending?.resume(returning: outcome)
     }
 }
