@@ -697,13 +697,147 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(discovery.cancellationCount, 1)
     }
 
+    func testEjectRoutesSelectedIdentityAndTopologyGenerationToCoordinator() async throws {
+        let device = makeDevice(id: "disk21", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [[device]])
+        let resolver = RecordingEjectTargetResolver(device: device)
+        let ejecter = BlockingDiskEjecter()
+        let coordinator = makeEjectCoordinator(resolver: resolver, ejecter: ejecter)
+        let actionPerformer = StubSystemActionPerformer()
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            systemActions: actionPerformer,
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
+
+        discovery.emit([device])
+        await waitUntilStateDevices(controller, equals: [device])
+        controller.perform(action)
+
+        await ejecter.waitUntilNormalEjectStarts()
+        let requests = await resolver.resolveRequestsSnapshot()
+        XCTAssertEqual(
+            requests,
+            [.init(deviceID: device.id, displayName: device.displayName, topologyGeneration: 1)]
+        )
+        let performedActions = await actionPerformer.performedActionsSnapshot()
+        XCTAssertTrue(performedActions.isEmpty)
+        XCTAssertNil(controller.actionFeedback)
+
+        await ejecter.finishNormalEject()
+    }
+
+    func testObservedTopologyChangesAreForwardedDuringActiveEjectWorkflow() async throws {
+        let device = makeDevice(id: "disk21", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [[device]])
+        let resolver = RecordingEjectTargetResolver(device: device)
+        let ejecter = BlockingDiskEjecter()
+        let coordinator = makeEjectCoordinator(resolver: resolver, ejecter: ejecter)
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
+
+        controller.perform(action)
+        await ejecter.waitUntilNormalEjectStarts()
+        let revalidationsBeforeUpdate = await resolver.revalidationCountSnapshot()
+
+        discovery.emit([device])
+        await waitUntil { await resolver.revalidationCountSnapshot() > revalidationsBeforeUpdate }
+
+        await ejecter.finishNormalEject()
+    }
+
+    func testActiveEjectWorkflowDisablesActionsAfterSelectingAnotherDiskButKeepsThroughputSampling() async throws {
+        let firstDevice = makeDevice(id: "disk21", volumes: [])
+        let secondDevice = makeDevice(id: "disk42", volumes: [])
+        let resolver = RecordingEjectTargetResolver(device: firstDevice)
+        let ejecter = BlockingDiskEjecter()
+        let coordinator = makeEjectCoordinator(resolver: resolver, ejecter: ejecter)
+        let sampler = StubDiskSampler(samplesByBSDName: [
+            "disk42": [
+                DiskIOCounters(readBytes: 100, writeBytes: 200),
+                DiskIOCounters(readBytes: 400, writeBytes: 700)
+            ]
+        ])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(
+                devices: [firstDevice, secondDevice],
+                selectedDeviceID: firstDevice.id
+            ),
+            diskSampler: sampler,
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[firstDevice, secondDevice]]),
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
+
+        controller.perform(action)
+        await ejecter.waitUntilNormalEjectStarts()
+        controller.selectDevice(secondDevice.id)
+
+        XCTAssertTrue(controller.isPerformingSystemAction)
+        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 1))
+        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 2))
+        let metrics = try XCTUnwrap(controller.state.device(id: secondDevice.id)?.sessionMetrics)
+        XCTAssertEqual(metrics.currentReadBytesPerSecond, 300)
+        XCTAssertEqual(metrics.currentWriteBytesPerSecond, 500)
+
+        await ejecter.finishNormalEject()
+    }
+
+    func testBusyRecoveryDoesNotBecomeTransientActionFeedbackOrClearAfterFailureDuration() async throws {
+        let device = makeDevice(id: "disk21", volumes: [])
+        let resolver = RecordingEjectTargetResolver(device: device)
+        let failure = EjectFailure(
+            stage: .unmounting,
+            category: .busy,
+            rawStatus: nil,
+            systemMessage: "busy",
+            physicalBSDName: "disk21",
+            holders: []
+        )
+        let coordinator = makeEjectCoordinator(
+            resolver: resolver,
+            ejecter: ImmediateDiskEjecter(normalResult: .failure(failure)),
+            occupancyScanner: FixedOccupancyScanner()
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            ejectCoordinator: coordinator,
+            actionFailureFeedbackDuration: 0.01
+        )
+        let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
+
+        controller.perform(action)
+        await waitUntil {
+            if case .awaitingRecovery = coordinator.state { return true }
+            return false
+        }
+        try await Task.sleep(for: .milliseconds(50))
+
+        if case .awaitingRecovery = coordinator.state {
+            // Expected persistent recovery state.
+        } else {
+            XCTFail("Expected busy recovery to remain until an explicit intent.")
+        }
+        XCTAssertNil(controller.actionFeedback)
+    }
+
     func testPerformRunsActionAsynchronouslyAndPublishesFailureFeedback() async {
         let actionPerformer = StubSystemActionPerformer()
         let controller = DrivePulseAppController(
             systemActions: actionPerformer,
             deviceDiscovery: StubExternalDeviceDiscovery(results: [[makeDevice(id: "disk21", volumes: [])]])
         )
-        let action = SystemAction(kind: .eject, intent: .ejectPhysicalDevice(bsdName: "disk21"))
+        let action = SystemAction(
+            kind: .openInFinder,
+            intent: .revealInFinder(volumeBSDName: "disk21s1")
+        )
 
         controller.perform(action)
 
@@ -781,12 +915,12 @@ final class DrivePulseAppControllerTests: XCTestCase {
             deviceDiscovery: StubExternalDeviceDiscovery(results: [[makeDevice(id: "disk21", volumes: [])]])
         )
         let firstAction = SystemAction(
-            kind: .eject,
-            intent: .ejectPhysicalDevice(bsdName: "disk21")
-        )
-        let secondAction = SystemAction(
             kind: .openDiskUtility,
             intent: .openDiskUtility(bsdName: "disk21")
+        )
+        let secondAction = SystemAction(
+            kind: .openInFinder,
+            intent: .revealInFinder(volumeBSDName: "disk21s1")
         )
 
         controller.perform(firstAction)
@@ -1400,6 +1534,31 @@ final class DrivePulseAppControllerTests: XCTestCase {
         }
     }
 
+    private func waitUntil(_ predicate: @escaping () async -> Bool) async {
+        var iterations = 0
+        while await predicate() == false {
+            iterations += 1
+            if iterations > 10_000 {
+                XCTFail("waitUntil timed out after \(iterations) yields")
+                return
+            }
+            await Task.yield()
+        }
+    }
+
+    private func makeEjectCoordinator(
+        resolver: any EjectTargetResolving,
+        ejecter: any DiskEjecting,
+        occupancyScanner: any OccupancyScanning = FixedOccupancyScanner()
+    ) -> EjectCoordinator {
+        EjectCoordinator(
+            resolver: resolver,
+            quiescer: ImmediateDeviceIOQuiescer(),
+            ejecter: ejecter,
+            occupancyScanner: occupancyScanner
+        )
+    }
+
     private func waitUntilEventually(
         timeout: TimeInterval = 3.0,
         _ predicate: @escaping () -> Bool
@@ -1678,6 +1837,137 @@ private actor StubSystemActionPerformer: SystemActionPerforming {
 
     func performedActionsSnapshot() -> [SystemAction] {
         performedActions
+    }
+}
+
+private actor RecordingEjectTargetResolver: EjectTargetResolving {
+    struct ResolveRequest: Equatable {
+        let deviceID: DeviceID
+        let displayName: String
+        let topologyGeneration: Int
+    }
+
+    private let device: ExternalDevice
+    private var resolveRequests: [ResolveRequest] = []
+    private var revalidationCount = 0
+
+    init(device: ExternalDevice) {
+        self.device = device
+    }
+
+    func resolve(
+        deviceID: DeviceID,
+        displayName: String,
+        topologyGeneration: Int
+    ) async throws -> ResolvedEjectTarget {
+        resolveRequests.append(.init(
+            deviceID: deviceID,
+            displayName: displayName,
+            topologyGeneration: topologyGeneration
+        ))
+        return resolvedTarget(
+            deviceID: deviceID,
+            displayName: displayName,
+            topologyGeneration: topologyGeneration
+        )
+    }
+
+    func revalidate(_ target: EjectWorkflowTarget) async throws -> ResolvedEjectTarget {
+        revalidationCount += 1
+        return resolvedTarget(
+            deviceID: target.deviceID,
+            displayName: target.displayName,
+            topologyGeneration: target.topologyGeneration
+        )
+    }
+
+    func resolveRequestsSnapshot() -> [ResolveRequest] {
+        resolveRequests
+    }
+
+    func revalidationCountSnapshot() -> Int {
+        revalidationCount
+    }
+
+    private func resolvedTarget(
+        deviceID: DeviceID,
+        displayName: String,
+        topologyGeneration: Int
+    ) -> ResolvedEjectTarget {
+        ResolvedEjectTarget(
+            target: EjectWorkflowTarget(
+                deviceID: deviceID,
+                physicalBSDName: device.physicalStoreBSDName,
+                mediaRegistryEntryID: 42,
+                displayName: displayName,
+                topologyGeneration: topologyGeneration
+            ),
+            scope: OccupancyTargetScope(
+                physicalBSDName: device.physicalStoreBSDName,
+                deviceNodes: ["/dev/\(device.physicalStoreBSDName)"],
+                mountURLs: []
+            )
+        )
+    }
+}
+
+private struct ImmediateDeviceIOQuiescer: DeviceIOQuiescing {
+    func acquireBarrier(
+        for target: EjectWorkflowTarget,
+        timeout: Duration
+    ) async throws(DeviceIOQuiescenceError) -> any EjectBarrier {
+        ImmediateEjectBarrier()
+    }
+}
+
+private struct ImmediateEjectBarrier: EjectBarrier {
+    func waitUntilReady() async throws {}
+    func release() async {}
+}
+
+private actor BlockingDiskEjecter: DiskEjecting {
+    private var didStart = false
+    private var startContinuations: [CheckedContinuation<Void, Never>] = []
+    private var finishContinuation: CheckedContinuation<Void, Never>?
+
+    func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure> {
+        didStart = true
+        startContinuations.forEach { $0.resume() }
+        startContinuations.removeAll()
+        await withCheckedContinuation { finishContinuation = $0 }
+        return .success(())
+    }
+
+    func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
+        .success(())
+    }
+
+    func waitUntilNormalEjectStarts() async {
+        if didStart { return }
+        await withCheckedContinuation { startContinuations.append($0) }
+    }
+
+    func finishNormalEject() {
+        finishContinuation?.resume()
+        finishContinuation = nil
+    }
+}
+
+private struct ImmediateDiskEjecter: DiskEjecting {
+    let normalResult: Result<Void, EjectFailure>
+
+    func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure> {
+        normalResult
+    }
+
+    func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
+        .success(())
+    }
+}
+
+private struct FixedOccupancyScanner: OccupancyScanning {
+    func scan(workflowID: UUID, scope: OccupancyTargetScope) async -> OccupancyScanResult {
+        OccupancyScanResult(holders: [], isComplete: true)
     }
 }
 

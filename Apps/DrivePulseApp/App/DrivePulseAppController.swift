@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 import DrivePulseCore
@@ -35,6 +36,7 @@ final class DrivePulseAppController: ObservableObject {
 
     let settings: AppSettings
     let launchAtLoginController: LaunchAtLoginController
+    let ejectCoordinator: EjectCoordinator
 
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
     private var discoveryLoadTask: Task<Void, Never>?
@@ -46,6 +48,9 @@ final class DrivePulseAppController: ObservableObject {
     private var throughputSamplingTimer: Timer?
     private var actionFeedbackClearTask: Task<Void, Never>?
     private var quitTask: Task<Void, Never>?
+    private var ejectStateObservation: AnyCancellable?
+    private var isSystemActionInFlight = false
+    private var isEjectWorkflowActive = false
     private var lastDiskCountersByDeviceID: [DeviceID: DiskIOCounters] = [:]
     private var sessionMetricsReducersByDeviceID: [DeviceID: SessionMetricsReducer] = [:]
     private let deviceDiscovery: any ExternalDeviceDiscovering
@@ -76,6 +81,7 @@ final class DrivePulseAppController: ObservableObject {
         diskUtilAPFSProvider: (any DiskUtilAPFSProviding)? = nil,
         volumeCapacityRefresher: VolumeCapacityRefresher? = nil,
         deviceIOTracker: DeviceIOTracker = DeviceIOTracker(),
+        ejectCoordinator: EjectCoordinator? = nil,
         actionSuccessFeedbackDuration: TimeInterval = 1.2,
         actionFailureFeedbackDuration: TimeInterval = 2.8,
         quitFeedbackDuration: TimeInterval = 0.75,
@@ -89,7 +95,14 @@ final class DrivePulseAppController: ObservableObject {
         self.diskSampler = diskSampler
         self.deviceIOTracker = deviceIOTracker
         self.deviceIOQuiescer = DeviceIOQuiescer(tracker: deviceIOTracker)
-        self.smartService = smartService ?? SMARTServiceClient(deviceIOTracker: deviceIOTracker)
+        let defaultSMARTService = SMARTServiceClient(deviceIOTracker: deviceIOTracker)
+        self.smartService = smartService ?? defaultSMARTService
+        self.ejectCoordinator = ejectCoordinator ?? EjectCoordinator(
+            resolver: LiveEjectTargetResolver(),
+            quiescer: DeviceIOQuiescer(tracker: deviceIOTracker),
+            ejecter: DiskArbitrationEjectClient(),
+            occupancyScanner: OccupancyScanner(helperScanner: defaultSMARTService)
+        )
         self.helperInstaller = helperInstaller
         self.systemActions = systemActions
         self.systemProfilerProvider = systemProfilerProvider ?? LiveSystemProfilerProvider(
@@ -114,6 +127,9 @@ final class DrivePulseAppController: ObservableObject {
         }
         self.discoveryObservation = deviceDiscovery.observeDevices { [weak self] devices in
             self?.applyObservedDevices(devices)
+        }
+        self.ejectStateObservation = self.ejectCoordinator.$state.sink { [weak self] state in
+            self?.setEjectWorkflowActive(state.isActiveWorkflow)
         }
         startThroughputSampling()
 
@@ -227,11 +243,23 @@ final class DrivePulseAppController: ObservableObject {
             return
         }
 
+        if case .ejectPhysicalDevice = action.intent {
+            guard let device = state.selectedDevice else { return }
+            clearActionFeedback()
+            setEjectWorkflowActive(true)
+            ejectCoordinator.begin(
+                deviceID: device.id,
+                displayName: device.displayName,
+                topologyGeneration: discoveryWriteGeneration
+            )
+            return
+        }
+
         if action.dismissesMenuBarPanelOnDispatch {
             isMenuBarPanelPresented = false
         }
 
-        isPerformingSystemAction = true
+        setSystemActionInFlight(true)
         clearActionFeedback()
 
         if action.intent == .quit {
@@ -250,7 +278,7 @@ final class DrivePulseAppController: ObservableObject {
                     return
                 }
 
-                isPerformingSystemAction = false
+                setSystemActionInFlight(false)
                 quitHandler()
             }
             return
@@ -274,8 +302,28 @@ final class DrivePulseAppController: ObservableObject {
                 )
             }
 
-            isPerformingSystemAction = false
+            setSystemActionInFlight(false)
         }
+    }
+
+    func cancelEject() {
+        ejectCoordinator.cancel()
+    }
+
+    func retryEject() {
+        ejectCoordinator.retry()
+    }
+
+    func requestForceEject() {
+        ejectCoordinator.requestForce()
+    }
+
+    func confirmForceEject() {
+        ejectCoordinator.confirmForce()
+    }
+
+    func cancelForceConfirmation() {
+        ejectCoordinator.cancelForceConfirmation()
     }
 
     func refresh() {
@@ -289,6 +337,20 @@ final class DrivePulseAppController: ObservableObject {
     private func clearActionFeedback() {
         actionFeedbackClearTask?.cancel()
         actionFeedback = nil
+    }
+
+    private func setSystemActionInFlight(_ isInFlight: Bool) {
+        isSystemActionInFlight = isInFlight
+        updateActionControlState()
+    }
+
+    private func setEjectWorkflowActive(_ isActive: Bool) {
+        isEjectWorkflowActive = isActive
+        updateActionControlState()
+    }
+
+    private func updateActionControlState() {
+        isPerformingSystemAction = isSystemActionInFlight || isEjectWorkflowActive
     }
 
     private func presentActionFeedback(_ message: String, clearsAfter duration: TimeInterval) {
@@ -352,6 +414,7 @@ final class DrivePulseAppController: ObservableObject {
         systemProfilerEnrichmentTask = nil
         pendingSystemProfilerRefreshMode = nil
         discoveryWriteGeneration += 1
+        ejectCoordinator.deviceTopologyDidChange(generation: discoveryWriteGeneration)
         let generation = discoveryWriteGeneration
         let deviceDiscovery = deviceDiscovery
         let diskUtilAPFSProvider = diskUtilAPFSProvider
@@ -387,6 +450,7 @@ final class DrivePulseAppController: ObservableObject {
         observationEnrichmentTask?.cancel()
         apfsRetryTask?.cancel()
         discoveryWriteGeneration += 1
+        ejectCoordinator.deviceTopologyDidChange(generation: discoveryWriteGeneration)
         let generation = discoveryWriteGeneration
         let diskUtilAPFSProvider = diskUtilAPFSProvider
         let mergedDevices = mergeDevicesPreservingKnownContext(devices)
@@ -814,6 +878,17 @@ final class DrivePulseAppController: ObservableObject {
         lastDiskCountersByDeviceID = lastDiskCountersByDeviceID.filter { liveDeviceIDs.contains($0.key) }
         sessionMetricsReducersByDeviceID = sessionMetricsReducersByDeviceID.filter {
             liveDeviceIDs.contains($0.key)
+        }
+    }
+}
+
+private extension EjectWorkflowState {
+    var isActiveWorkflow: Bool {
+        switch self {
+        case .working, .awaitingRecovery, .awaitingForceConfirmation:
+            return true
+        case .idle, .succeeded, .disappeared, .failed:
+            return false
         }
     }
 }

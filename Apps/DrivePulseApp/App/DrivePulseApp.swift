@@ -3,8 +3,24 @@ import SwiftUI
 
 @main
 struct DrivePulseApp: App {
-    @StateObject private var controller = DrivePulseAppController()
+    @StateObject private var controller: DrivePulseAppController
     @StateObject private var settingsWindowActivator = SettingsWindowActivator()
+
+    init() {
+        let deviceIOTracker = DeviceIOTracker()
+        let smartService = SMARTServiceClient(deviceIOTracker: deviceIOTracker)
+        let ejectCoordinator = EjectCoordinator(
+            resolver: LiveEjectTargetResolver(),
+            quiescer: DeviceIOQuiescer(tracker: deviceIOTracker),
+            ejecter: DiskArbitrationEjectClient(),
+            occupancyScanner: OccupancyScanner(helperScanner: smartService)
+        )
+        _controller = StateObject(wrappedValue: DrivePulseAppController(
+            smartService: smartService,
+            deviceIOTracker: deviceIOTracker,
+            ejectCoordinator: ejectCoordinator
+        ))
+    }
 
     var body: some Scene {
         // Must be declared before `Settings` — it hosts the `openSettings()`
