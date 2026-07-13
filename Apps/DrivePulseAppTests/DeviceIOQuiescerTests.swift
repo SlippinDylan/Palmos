@@ -538,6 +538,35 @@ final class DeviceIOQuiescerTests: XCTestCase {
         XCTAssertLessThan(start.duration(to: .now), .seconds(2))
     }
 
+    func testSubprocessDiscardsStdoutFromNonzeroExit() async {
+        let data = await SubprocessRunner.run(
+            executable: "/bin/sh",
+            arguments: ["-c", "printf partial; exit 7"]
+        )
+        XCTAssertNil(data)
+    }
+
+    func testSubprocessDiscardsPartialStdoutWhenCancelledBySignal() async {
+        let task = Task {
+            await SubprocessRunner.run(
+                executable: "/bin/sh",
+                arguments: ["-c", "printf partial; exec /bin/sleep 10"]
+            )
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        task.cancel()
+        let data = await task.value
+        XCTAssertNil(data)
+    }
+
+    func testSubprocessReturnsStdoutOnlyForNormalZeroExit() async {
+        let data = await SubprocessRunner.run(
+            executable: "/usr/bin/printf",
+            arguments: ["complete"]
+        )
+        XCTAssertEqual(data, Data("complete".utf8))
+    }
+
     private func makeTarget(_ bsdName: String) -> EjectWorkflowTarget {
         EjectWorkflowTarget(
             deviceID: DeviceID(rawValue: bsdName),

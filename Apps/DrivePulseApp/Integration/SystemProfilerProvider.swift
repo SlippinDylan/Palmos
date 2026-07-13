@@ -63,6 +63,9 @@ enum SubprocessRunner {
                 group.wait()
                 let stdoutData = stdoutBox.get()
                 let stderrData = stderrBox.get()
+                let succeeded = processBox.isCancelled == false
+                    && process.terminationReason == .exit
+                    && process.terminationStatus == 0
                 if stdoutData.isEmpty,
                    stderrData.isEmpty == false,
                    processBox.isCancelled == false {
@@ -78,7 +81,9 @@ enum SubprocessRunner {
                         )
                     }
                 }
-                continuation.resume(returning: stdoutData.isEmpty ? nil : stdoutData)
+                continuation.resume(
+                    returning: succeeded && stdoutData.isEmpty == false ? stdoutData : nil
+                )
                 processBox.clear(process)
                 }
             }
