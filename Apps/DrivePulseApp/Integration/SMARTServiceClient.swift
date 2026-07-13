@@ -32,6 +32,9 @@ protocol SMARTCompletionXPCSession: Sendable {
 }
 
 protocol OccupancyXPCSession: Sendable {
+    func fetchHelperHandshake(
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    )
     func scanDiskOccupancy(
         requestData: Data,
         eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
@@ -47,7 +50,7 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
     private let readSMARTDataWithCompletionOperation: (@Sendable (Data) async throws -> Data)?
     private let scanDiskOccupancyOperation: (@Sendable (Data) async throws -> Data)?
     private let completionSession: (any SMARTCompletionXPCSession)?
-    private let occupancySession: (any OccupancyXPCSession)?
+    private let occupancySessionFactory: (@Sendable () -> any OccupancyXPCSession)?
     private let deviceIOTracker: DeviceIOTracker?
 
     func usesDeviceIOTracker(_ tracker: DeviceIOTracker) -> Bool {
@@ -61,7 +64,7 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
         readSMARTData: (@Sendable (Data) async throws -> Data)? = nil,
         readSMARTDataWithCompletion: (@Sendable (Data) async throws -> Data)? = nil,
         scanDiskOccupancy: (@Sendable (Data) async throws -> Data)? = nil,
-        occupancySession: (any OccupancyXPCSession)? = nil,
+        occupancySessionFactory: (@Sendable () -> any OccupancyXPCSession)? = nil,
         completionSession: (any SMARTCompletionXPCSession)? = nil,
         deviceIOTracker: DeviceIOTracker? = nil
     ) {
@@ -89,8 +92,10 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
             self.readSMARTDataWithCompletionOperation = nil
         }
         self.scanDiskOccupancyOperation = scanDiskOccupancy
-        self.occupancySession = scanDiskOccupancy == nil
-            ? occupancySession ?? LiveOccupancyXPCSession(helperMachServiceName: helperMachServiceName)
+        self.occupancySessionFactory = scanDiskOccupancy == nil
+            ? occupancySessionFactory ?? {
+                LiveOccupancyXPCSession(helperMachServiceName: helperMachServiceName)
+            }
             : nil
         self.deviceIOTracker = deviceIOTracker
     }
@@ -169,6 +174,14 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
     }
 
     func scan(workflowID: UUID, physicalBSDName: String) async throws -> OccupancyScanResult {
+        if let occupancySessionFactory {
+            return try await scan(
+                workflowID: workflowID,
+                physicalBSDName: physicalBSDName,
+                using: occupancySessionFactory()
+            )
+        }
+
         let handshakeData = try await fetchHelperHandshakeOperation()
         try Task.checkCancellation()
         let handshake = try decodeHandshake(from: handshakeData)
@@ -185,15 +198,59 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
             physicalDeviceBSDName: physicalBSDName
         ))
         try Task.checkCancellation()
-        let responseData: Data
-        if let occupancySession {
-            responseData = try await Self.scanDiskOccupancy(requestData, using: occupancySession)
-        } else if let scanDiskOccupancyOperation {
-            responseData = try await scanDiskOccupancyOperation(requestData)
-        } else {
+        guard let scanDiskOccupancyOperation else {
             throw SMARTServiceClientError.unsupportedOccupancyEndpoint
         }
+        let responseData = try await scanDiskOccupancyOperation(requestData)
         try Task.checkCancellation()
+        return try occupancyResult(from: responseData, workflowID: workflowID)
+    }
+
+    private func scan(
+        workflowID: UUID,
+        physicalBSDName: String,
+        using session: any OccupancyXPCSession
+    ) async throws -> OccupancyScanResult {
+        let cancellation = XPCSessionCancellation(session: session)
+        return try await withTaskCancellationHandler {
+            do {
+                let handshakeData = try await Self.receive(using: cancellation) { eventHandler in
+                    session.fetchHelperHandshake(eventHandler: eventHandler)
+                }
+                try Task.checkCancellation()
+                let handshake = try decodeHandshake(from: handshakeData)
+                let capabilities = XPCFeatureCapabilities.negotiated(
+                    helperContractMinor: handshake.contractMinor
+                )
+                guard evaluateHandshake(handshake) != .updateRequired,
+                      capabilities.occupancyScanning else {
+                    session.invalidate()
+                    return OccupancyScanResult(holders: [], isComplete: false)
+                }
+
+                let requestData = try DrivePulseXPCMessages.encodeOccupancyRequest(.init(
+                    workflowID: workflowID,
+                    physicalDeviceBSDName: physicalBSDName
+                ))
+                try Task.checkCancellation()
+                let responseData = try await Self.receive(using: cancellation) { eventHandler in
+                    session.scanDiskOccupancy(requestData: requestData, eventHandler: eventHandler)
+                }
+                try Task.checkCancellation()
+                return try occupancyResult(from: responseData, workflowID: workflowID)
+            } catch {
+                if Task.isCancelled == false { session.invalidate() }
+                throw error
+            }
+        } onCancel: {
+            cancellation.cancel()
+        }
+    }
+
+    private func occupancyResult(
+        from responseData: Data,
+        workflowID: UUID
+    ) throws -> OccupancyScanResult {
         let response = try DrivePulseXPCMessages.decodeOccupancyResponse(from: responseData)
         guard response.workflowID == workflowID else {
             throw SMARTServiceClientError.mismatchedOccupancyWorkflow
@@ -256,30 +313,25 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
         }
     }
 
-    private static func scanDiskOccupancy(
-        _ requestData: Data,
-        using session: any OccupancyXPCSession
+    private static func receive(
+        using cancellation: XPCSessionCancellation,
+        operation: (@escaping @Sendable (SMARTXPCSessionEvent) -> Void) -> Void
     ) async throws -> Data {
-        let cancellation = XPCSessionCancellation(session: session)
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                let gate = XPCReplyGate(continuation: continuation)
-                let didStart = cancellation.start(gate: gate) {
-                    session.scanDiskOccupancy(requestData: requestData) { event in
-                        switch event {
-                        case let .reply(data): gate.resume(returning: data)
-                        case let .failure(error): gate.resume(throwing: error)
-                        case .interrupted:
-                            gate.resume(throwing: SMARTServiceClientError.connectionInterrupted)
-                        case .invalidated:
-                            gate.resume(throwing: SMARTServiceClientError.connectionInvalidated)
-                        }
+        try await withCheckedThrowingContinuation { continuation in
+            let gate = XPCReplyGate(continuation: continuation)
+            let didStart = cancellation.start(gate: gate) {
+                operation { event in
+                    switch event {
+                    case let .reply(data): gate.resume(returning: data)
+                    case let .failure(error): gate.resume(throwing: error)
+                    case .interrupted:
+                        gate.resume(throwing: SMARTServiceClientError.connectionInterrupted)
+                    case .invalidated:
+                        gate.resume(throwing: SMARTServiceClientError.connectionInvalidated)
                     }
                 }
-                if didStart == false { gate.resume(throwing: CancellationError()) }
             }
-        } onCancel: {
-            cancellation.cancel()
+            if didStart == false { gate.resume(throwing: CancellationError()) }
         }
     }
 
@@ -426,20 +478,37 @@ private final class LiveOccupancyXPCSession: OccupancyXPCSession, @unchecked Sen
         self.helperMachServiceName = helperMachServiceName
     }
 
+    func fetchHelperHandshake(
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        let connection = connection(for: eventHandler)
+        let proxy = connection.remoteObjectProxyWithErrorHandler { [weak self] error in
+            eventHandler(.failure(error))
+            self?.finish(connection)
+        }
+        guard let proxy = proxy as? DrivePulseSMARTXPCProtocol else {
+            eventHandler(.failure(SMARTServiceClientError.invalidRemoteProxy))
+            finish(connection)
+            return
+        }
+        proxy.fetchHelperHandshake { [weak self] data, error in
+            if let error {
+                eventHandler(.failure(error))
+                self?.finish(connection)
+            } else if let data {
+                eventHandler(.reply(data))
+            } else {
+                eventHandler(.failure(SMARTServiceClientError.missingReplyData))
+                self?.finish(connection)
+            }
+        }
+    }
+
     func scanDiskOccupancy(
         requestData: Data,
         eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
     ) {
-        let connection = NSXPCConnection(
-            machServiceName: helperMachServiceName,
-            options: .privileged
-        )
-        lock.withLock { self.connection = connection }
-        connection.interruptionHandler = { eventHandler(.interrupted) }
-        connection.invalidationHandler = { eventHandler(.invalidated) }
-        connection.remoteObjectInterface = NSXPCInterface(with: DrivePulseSMARTXPCProtocol.self)
-        connection.resume()
-
+        let connection = connection(for: eventHandler)
         let proxy = connection.remoteObjectProxyWithErrorHandler { [weak self] error in
             eventHandler(.failure(error))
             self?.finish(connection)
@@ -475,6 +544,28 @@ private final class LiveOccupancyXPCSession: OccupancyXPCSession, @unchecked Sen
             if self.connection === connection { self.connection = nil }
         }
         connection.invalidate()
+    }
+
+    private func connection(
+        for eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) -> NSXPCConnection {
+        lock.withLock {
+            if let connection {
+                connection.interruptionHandler = { eventHandler(.interrupted) }
+                connection.invalidationHandler = { eventHandler(.invalidated) }
+                return connection
+            }
+            let connection = NSXPCConnection(
+                machServiceName: helperMachServiceName,
+                options: .privileged
+            )
+            connection.interruptionHandler = { eventHandler(.interrupted) }
+            connection.invalidationHandler = { eventHandler(.invalidated) }
+            connection.remoteObjectInterface = NSXPCInterface(with: DrivePulseSMARTXPCProtocol.self)
+            connection.resume()
+            self.connection = connection
+            return connection
+        }
     }
 }
 
@@ -560,7 +651,7 @@ private final class XPCSessionCancellation: @unchecked Sendable {
             return self.gate
         }
         guard shouldCancel else { return }
-        session.invalidate()
         gate?.resume(throwing: CancellationError())
+        session.invalidate()
     }
 }

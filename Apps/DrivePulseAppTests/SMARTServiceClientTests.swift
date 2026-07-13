@@ -13,23 +13,17 @@ private final class LockedCounter: @unchecked Sendable {
 
 final class SMARTServiceClientTests: XCTestCase {
     func testCancellingOccupancyXPCInvalidatesSessionAndIgnoresLateReply() async throws {
-        let handshake = try DrivePulseXPCMessages.encode(
-            HelperHandshake(
-                helperVersion: "1.4.0",
-                contractMajor: XPCContractVersion.currentMajor,
-                contractMinor: XPCContractVersion.currentMinor
-            )
-        )
         let workflowID = UUID()
-        let session = ControlledOccupancyXPCSession()
+        let session = ControlledOccupancyXPCSession(synchronouslyInvalidates: true)
         let client = SMARTServiceClient(
-            fetchHelperHandshake: { handshake },
-            occupancySession: session
+            occupancySessionFactory: { session }
         )
         let task = Task {
             try await client.scan(workflowID: workflowID, physicalBSDName: "disk4")
         }
-        await session.waitUntilStarted()
+        try await session.waitUntilHandshakeStarted()
+        session.sendHandshake(.reply(try currentHandshakeData()))
+        try await session.waitUntilStarted()
 
         task.cancel()
         do {
@@ -49,6 +43,71 @@ final class SMARTServiceClientTests: XCTestCase {
         ))))
         await Task.yield()
         XCTAssertEqual(session.invalidationCount, 1)
+    }
+
+    func testCancellingPendingOccupancyHandshakeInvalidatesAndNeverStartsScan() async throws {
+        let session = ControlledOccupancyXPCSession(synchronouslyInvalidates: true)
+        let client = SMARTServiceClient(occupancySessionFactory: { session })
+        let task = Task { try await client.scan(workflowID: UUID(), physicalBSDName: "disk4") }
+        try await session.waitUntilHandshakeStarted()
+
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Cancelled handshake should throw CancellationError")
+        } catch is CancellationError {
+            // Expected.
+        }
+        XCTAssertEqual(session.invalidationCount, 1)
+        XCTAssertEqual(session.scanCount, 0)
+
+        session.sendHandshake(.reply(try currentHandshakeData()))
+        await Task.yield()
+        XCTAssertEqual(session.scanCount, 0)
+    }
+
+    func testOverlappingOccupancyScansOwnIndependentSessions() async throws {
+        let sessionA = ControlledOccupancyXPCSession()
+        let sessionB = ControlledOccupancyXPCSession()
+        let factory = ControlledOccupancySessionFactory(sessions: [sessionA, sessionB])
+        let client = SMARTServiceClient(occupancySessionFactory: factory.makeSession)
+        let workflowA = UUID()
+        let workflowB = UUID()
+        let taskA = Task { try await client.scan(workflowID: workflowA, physicalBSDName: "disk4") }
+        try await sessionA.waitUntilHandshakeStarted()
+        let taskB = Task { try await client.scan(workflowID: workflowB, physicalBSDName: "disk5") }
+        try await sessionB.waitUntilHandshakeStarted()
+        let handshake = try currentHandshakeData()
+        sessionA.sendHandshake(.reply(handshake))
+        sessionB.sendHandshake(.reply(handshake))
+        try await sessionA.waitUntilStarted()
+        try await sessionB.waitUntilStarted()
+
+        taskA.cancel()
+        do {
+            _ = try await taskA.value
+            XCTFail("Cancelled request A should throw CancellationError")
+        } catch is CancellationError {
+            // Expected.
+        }
+        XCTAssertEqual(sessionA.invalidationCount, 1)
+        XCTAssertEqual(sessionB.invalidationCount, 0)
+
+        sessionB.send(.reply(try DrivePulseXPCMessages.encodeOccupancyResponse(.init(
+            workflowID: workflowB,
+            holders: [],
+            isComplete: true
+        ))))
+        let resultB = try await taskB.value
+        XCTAssertEqual(resultB, OccupancyScanResult(holders: [], isComplete: true))
+
+        sessionA.send(.reply(try DrivePulseXPCMessages.encodeOccupancyResponse(.init(
+            workflowID: workflowA,
+            holders: [.init(pid: 99, executableName: "late", displayName: nil, type: "unknown")],
+            isComplete: true
+        ))))
+        await Task.yield()
+        XCTAssertEqual(sessionB.invalidationCount, 0)
     }
 
     func testOccupancyScanRejectsResponseForAnotherWorkflow() async throws {
@@ -80,6 +139,14 @@ final class SMARTServiceClientTests: XCTestCase {
                 "The SMART helper returned an occupancy result for another workflow."
             )
         }
+    }
+
+    private func currentHandshakeData() throws -> Data {
+        try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.4.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.currentMinor
+        ))
     }
 
     func testOccupancyScanDegradesHonestlyWithoutCallingUnsupportedOldHelperEndpoint() async throws {
@@ -343,11 +410,28 @@ final class SMARTServiceClientTests: XCTestCase {
 
 private final class ControlledOccupancyXPCSession: OccupancyXPCSession, @unchecked Sendable {
     private let lock = NSLock()
+    private var handshakeHandler: (@Sendable (SMARTXPCSessionEvent) -> Void)?
     private var eventHandler: (@Sendable (SMARTXPCSessionEvent) -> Void)?
+    private var handshakeStarted = false
     private var started = false
     private var invalidations = 0
+    private let synchronouslyInvalidates: Bool
 
     var invalidationCount: Int { lock.withLock { invalidations } }
+    var scanCount: Int { lock.withLock { started ? 1 : 0 } }
+
+    init(synchronouslyInvalidates: Bool = false) {
+        self.synchronouslyInvalidates = synchronouslyInvalidates
+    }
+
+    func fetchHelperHandshake(
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        lock.withLock {
+            handshakeStarted = true
+            handshakeHandler = eventHandler
+        }
+    }
 
     func scanDiskOccupancy(
         requestData: Data,
@@ -360,16 +444,53 @@ private final class ControlledOccupancyXPCSession: OccupancyXPCSession, @uncheck
     }
 
     func invalidate() {
-        lock.withLock { invalidations += 1 }
+        let handler = lock.withLock {
+            invalidations += 1
+            return eventHandler ?? handshakeHandler
+        }
+        if synchronouslyInvalidates { handler?(.invalidated) }
     }
 
-    func waitUntilStarted() async {
-        while lock.withLock({ started == false }) { await Task.yield() }
+    func waitUntilHandshakeStarted() async throws {
+        try await waitUntil { self.handshakeStarted }
+    }
+
+    func waitUntilStarted() async throws {
+        try await waitUntil { self.started }
     }
 
     func send(_ event: SMARTXPCSessionEvent) {
         lock.withLock { eventHandler }?(event)
     }
+
+    func sendHandshake(_ event: SMARTXPCSessionEvent) {
+        lock.withLock { handshakeHandler }?(event)
+    }
+
+    private func waitUntil(_ condition: @escaping () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while lock.withLock({ condition() == false }) {
+            guard ContinuousClock.now < deadline else { throw OccupancySessionTestError.timedOut }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+    }
+}
+
+private final class ControlledOccupancySessionFactory: @unchecked Sendable {
+    private let lock = NSLock()
+    private var sessions: [ControlledOccupancyXPCSession]
+
+    init(sessions: [ControlledOccupancyXPCSession]) {
+        self.sessions = sessions
+    }
+
+    func makeSession() -> any OccupancyXPCSession {
+        lock.withLock { sessions.removeFirst() }
+    }
+}
+
+private enum OccupancySessionTestError: Error {
+    case timedOut
 }
 
 @MainActor
