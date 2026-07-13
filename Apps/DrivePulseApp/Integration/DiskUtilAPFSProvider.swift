@@ -19,6 +19,10 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
     private let deviceIOTracker: DeviceIOTracker?
     private let physicalBSDNameResolver: @Sendable (String) -> String?
 
+    func usesDeviceIOTracker(_ tracker: DeviceIOTracker) -> Bool {
+        deviceIOTracker === tracker
+    }
+
     init(
         commandRunner: @escaping @Sendable (String, [String]) async -> Data? = LiveDiskUtilAPFSProvider.runSubprocess,
         deviceIOTracker: DeviceIOTracker? = nil,
@@ -108,10 +112,7 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
     }
 
     private func fetchContainerInfoByBSDName() async -> [String: APFSContainerInfo]? {
-        guard let data = await commandRunner(
-            "/usr/sbin/diskutil",
-            ["apfs", "list", "-plist"]
-        ) else {
+        guard let data = await runGlobalCommand(arguments: ["apfs", "list", "-plist"]) else {
             NSLog("[DiskUtilAPFSProvider] diskutil apfs list returned no data")
             return nil
         }
@@ -341,12 +342,21 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
         } catch {
             return nil
         }
-        defer {
-            if let token, let deviceIOTracker {
-                Task { await deviceIOTracker.finish(token) }
-            }
+        let data = await commandRunner("/usr/sbin/diskutil", arguments)
+        if let token, let deviceIOTracker { await deviceIOTracker.finish(token) }
+        return data
+    }
+
+    private func runGlobalCommand(arguments: [String]) async -> Data? {
+        let token: DeviceIOTracker.Token?
+        do {
+            token = try await deviceIOTracker?.beginGlobalOperation(kind: .diskutil)
+        } catch {
+            return nil
         }
-        return await commandRunner("/usr/sbin/diskutil", arguments)
+        let data = await commandRunner("/usr/sbin/diskutil", arguments)
+        if let token, let deviceIOTracker { await deviceIOTracker.finish(token) }
+        return data
     }
 
     private static func defaultPhysicalBSDName(for bsdName: String) -> String? {

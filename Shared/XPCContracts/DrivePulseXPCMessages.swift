@@ -20,6 +20,19 @@ struct SMARTReadCompletionResponse: Codable, Equatable, Sendable {
     let processDidExit: Bool
 }
 
+struct XPCFeatureCapabilities: Equatable, Sendable {
+    let completionAwareSMART: Bool
+    let occupancyScanning: Bool
+
+    static func negotiated(helperContractMinor: Int) -> Self {
+        let supportsMinorFour = helperContractMinor >= XPCContractVersion.completionAwareSMARTMinor
+        return Self(
+            completionAwareSMART: supportsMinorFour,
+            occupancyScanning: supportsMinorFour
+        )
+    }
+}
+
 enum DrivePulseXPCMessageError: Error, Equatable {
     case unsupportedSchemaVersion(Int)
     case processExitUnacknowledged
@@ -62,4 +75,7 @@ enum DrivePulseXPCMessages {
         }
         return response
     }
+
+    /// The legacy contract returns the helper payload without an envelope.
+    static func legacySMARTReply(payload: Data) -> Data { payload }
 }

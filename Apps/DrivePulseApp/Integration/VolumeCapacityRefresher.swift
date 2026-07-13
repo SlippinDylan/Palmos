@@ -14,9 +14,18 @@ final class VolumeCapacityRefresher {
     private var mountPoints: [String: String] = [:]  // bsdName → mountPoint
     private var physicalBSDNames: [String: String] = [:]
     private let deviceIOTracker: DeviceIOTracker?
+    private let capacityReader: (String, String) -> CapacityUpdate?
 
-    init(deviceIOTracker: DeviceIOTracker? = nil) {
+    func usesDeviceIOTracker(_ tracker: DeviceIOTracker) -> Bool {
+        deviceIOTracker === tracker
+    }
+
+    init(
+        deviceIOTracker: DeviceIOTracker? = nil,
+        capacityReader: ((String, String) -> CapacityUpdate?)? = nil
+    ) {
         self.deviceIOTracker = deviceIOTracker
+        self.capacityReader = capacityReader ?? Self.readCapacity
     }
 
     func start(mountPoints: [String: String], physicalBSDNames: [String: String] = [:]) {
@@ -34,29 +43,41 @@ final class VolumeCapacityRefresher {
         timer = nil
     }
 
-    func updateMountPoints(_ mountPoints: [String: String]) {
+    func updateMountPoints(
+        _ mountPoints: [String: String],
+        physicalBSDNames: [String: String] = [:]
+    ) {
         self.mountPoints = mountPoints
+        self.physicalBSDNames = physicalBSDNames
     }
 
     private func refresh() async {
         var updates: [CapacityUpdate] = []
         for (bsdName, mountPoint) in mountPoints {
-            let token: DeviceIOTracker.Token?
+            var capacityToken: DeviceIOTracker.Token?
+            var metadataToken: DeviceIOTracker.Token?
             if let deviceIOTracker {
                 guard let physicalBSDName = physicalBSDNames[bsdName] else { continue }
                 do {
-                    token = try await deviceIOTracker.beginTargetOperation(
+                    capacityToken = try await deviceIOTracker.beginTargetOperation(
                         physicalBSDName: physicalBSDName,
                         kind: .capacity
                     )
+                    metadataToken = try await deviceIOTracker.beginTargetOperation(
+                        physicalBSDName: physicalBSDName,
+                        kind: .metadata
+                    )
                 } catch {
+                    if let capacityToken { await deviceIOTracker.finish(capacityToken) }
                     continue
                 }
             } else {
-                token = nil
+                capacityToken = nil
+                metadataToken = nil
             }
-            let update = readCapacity(bsdName: bsdName, at: mountPoint)
-            if let token { await deviceIOTracker?.finish(token) }
+            let update = capacityReader(bsdName, mountPoint)
+            if let metadataToken { await deviceIOTracker?.finish(metadataToken) }
+            if let capacityToken { await deviceIOTracker?.finish(capacityToken) }
             guard let update else { continue }
             updates.append(update)
         }
@@ -64,7 +85,7 @@ final class VolumeCapacityRefresher {
         onUpdate?(updates)
     }
 
-    private func readCapacity(bsdName: String, at mountPoint: String) -> CapacityUpdate? {
+    private static func readCapacity(bsdName: String, at mountPoint: String) -> CapacityUpdate? {
         let url = URL(fileURLWithPath: mountPoint)
         let keys: Set<URLResourceKey> = [
             .volumeTotalCapacityKey,

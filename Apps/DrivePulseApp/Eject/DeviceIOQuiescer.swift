@@ -1,7 +1,7 @@
 import Foundation
 
 actor DeviceIOTracker {
-    enum Kind: Sendable {
+    enum Kind: Hashable, Sendable {
         case smart, capacity, metadata, diskutil, systemProfiler
     }
 
@@ -42,6 +42,12 @@ actor DeviceIOTracker {
 
     func finish(_ token: Token) {
         operations.removeValue(forKey: token)
+    }
+
+    func inFlightKinds(for physicalBSDName: String) -> Set<Kind> {
+        Set(operations.values.compactMap { operation in
+            operation.physicalBSDName == physicalBSDName ? operation.kind : nil
+        })
     }
 
     fileprivate func installBarrier(for physicalBSDName: String) {

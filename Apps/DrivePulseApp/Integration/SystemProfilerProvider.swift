@@ -36,6 +36,7 @@ enum SubprocessRunner {
 
                 do {
                     try process.run()
+                    processBox.processDidStart(process)
                 } catch {
                     continuation.resume(returning: nil)
                     return
@@ -88,9 +89,14 @@ enum SubprocessRunner {
 private final class ProcessBox: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
+    private var wasCancelled = false
 
     func set(_ process: Process) {
-        lock.withLock { self.process = process }
+        let shouldTerminate = lock.withLock {
+            self.process = process
+            return wasCancelled
+        }
+        if shouldTerminate, process.isRunning { process.terminate() }
     }
 
     func clear(_ process: Process) {
@@ -99,8 +105,14 @@ private final class ProcessBox: @unchecked Sendable {
         }
     }
 
+    func processDidStart(_ process: Process) {
+        let shouldTerminate = lock.withLock { wasCancelled && self.process === process }
+        if shouldTerminate, process.isRunning { process.terminate() }
+    }
+
     func terminate() {
         lock.withLock {
+            wasCancelled = true
             if process?.isRunning == true { process?.terminate() }
         }
     }
@@ -137,6 +149,10 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
     private let requestCoordinator = LatestRequestCoordinator()
     private let dataTypeRunner: @Sendable (String) async -> Data?
     private let deviceIOTracker: DeviceIOTracker?
+
+    func usesDeviceIOTracker(_ tracker: DeviceIOTracker) -> Bool {
+        deviceIOTracker === tracker
+    }
 
     init(
         dataTypeRunner: @escaping @Sendable (String) async -> Data? = LiveSystemProfilerProvider.runSystemProfiler,
@@ -204,12 +220,11 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
         } catch {
             return nil
         }
-        defer {
-            if let token, let deviceIOTracker {
-                Task { await deviceIOTracker.finish(token) }
-            }
+        let data = await dataTypeRunner(dataType)
+        if let token, let deviceIOTracker {
+            await deviceIOTracker.finish(token)
         }
-        guard let data = await dataTypeRunner(dataType) else {
+        guard let data else {
             NSLog("[SystemProfilerProvider] system_profiler returned no data for %@", dataType)
             return nil
         }

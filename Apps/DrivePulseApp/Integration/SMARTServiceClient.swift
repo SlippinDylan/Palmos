@@ -25,6 +25,10 @@ final class SMARTServiceClient: SMARTServiceProviding {
     private let readSMARTDataWithCompletionOperation: (@Sendable (Data) async throws -> Data)?
     private let deviceIOTracker: DeviceIOTracker?
 
+    func usesDeviceIOTracker(_ tracker: DeviceIOTracker) -> Bool {
+        deviceIOTracker === tracker
+    }
+
     init(
         helperMachServiceName: String = "com.drivepulse.smartservice",
         isHelperInstalled: (@Sendable () -> Bool)? = nil,
@@ -103,7 +107,9 @@ final class SMARTServiceClient: SMARTServiceProviding {
                 kind: .smart
             )
             let payload: Data
-            if handshake.contractMinor >= XPCContractVersion.completionAwareSMARTMinor,
+            if XPCFeatureCapabilities.negotiated(
+                helperContractMinor: handshake.contractMinor
+            ).completionAwareSMART,
                let readSMARTDataWithCompletionOperation {
                 let responseData = try await readSMARTDataWithCompletionOperation(requestData)
                 let response = try DrivePulseXPCMessages.decodeAcknowledgedSMARTReadCompletionResponse(
@@ -123,20 +129,22 @@ final class SMARTServiceClient: SMARTServiceProviding {
     }
 
     private static func fetchHelperHandshake(helperMachServiceName: String) async throws -> Data {
-        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, continuation in
+        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, gate in
             proxy.fetchHelperHandshake { data, error in
-                connection.invalidate()
                 if let error {
-                    continuation.resume(throwing: error)
+                    gate.resume(throwing: error)
+                    connection.invalidate()
                     return
                 }
 
                 guard let data else {
-                    continuation.resume(throwing: SMARTServiceClientError.missingReplyData)
+                    gate.resume(throwing: SMARTServiceClientError.missingReplyData)
+                    connection.invalidate()
                     return
                 }
 
-                continuation.resume(returning: data)
+                gate.resume(returning: data)
+                connection.invalidate()
             }
         }
     }
@@ -145,20 +153,22 @@ final class SMARTServiceClient: SMARTServiceProviding {
         _ requestData: Data,
         helperMachServiceName: String
     ) async throws -> Data {
-        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, continuation in
+        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, gate in
             proxy.readSMARTData(for: requestData) { data, error in
-                connection.invalidate()
                 if let error {
-                    continuation.resume(throwing: error)
+                    gate.resume(throwing: error)
+                    connection.invalidate()
                     return
                 }
 
                 guard let data else {
-                    continuation.resume(throwing: SMARTServiceClientError.missingReplyData)
+                    gate.resume(throwing: SMARTServiceClientError.missingReplyData)
+                    connection.invalidate()
                     return
                 }
 
-                continuation.resume(returning: data)
+                gate.resume(returning: data)
+                connection.invalidate()
             }
         }
     }
@@ -167,18 +177,20 @@ final class SMARTServiceClient: SMARTServiceProviding {
         _ requestData: Data,
         helperMachServiceName: String
     ) async throws -> Data {
-        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, continuation in
+        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, gate in
             proxy.readSMARTDataWithCompletion(for: requestData) { data, error in
-                connection.invalidate()
                 if let error {
-                    continuation.resume(throwing: error)
+                    gate.resume(throwing: error)
+                    connection.invalidate()
                     return
                 }
                 guard let data else {
-                    continuation.resume(throwing: SMARTServiceClientError.missingReplyData)
+                    gate.resume(throwing: SMARTServiceClientError.missingReplyData)
+                    connection.invalidate()
                     return
                 }
-                continuation.resume(returning: data)
+                gate.resume(returning: data)
+                connection.invalidate()
             }
         }
     }
@@ -188,7 +200,7 @@ final class SMARTServiceClient: SMARTServiceProviding {
         _ operation: @escaping (
             DrivePulseSMARTXPCProtocol,
             NSXPCConnection,
-            CheckedContinuation<Data, Error>
+            XPCReplyGate
         ) -> Void
     ) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
@@ -196,21 +208,28 @@ final class SMARTServiceClient: SMARTServiceProviding {
                 machServiceName: helperMachServiceName,
                 options: .privileged
             )
+            let gate = XPCReplyGate(continuation: continuation)
+            connection.interruptionHandler = {
+                gate.resume(throwing: SMARTServiceClientError.connectionInterrupted)
+            }
+            connection.invalidationHandler = {
+                gate.resume(throwing: SMARTServiceClientError.connectionInvalidated)
+            }
             connection.remoteObjectInterface = NSXPCInterface(with: DrivePulseSMARTXPCProtocol.self)
             connection.resume()
 
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                gate.resume(throwing: error)
                 connection.invalidate()
-                continuation.resume(throwing: error)
             }
 
             guard let proxy = proxy as? DrivePulseSMARTXPCProtocol else {
+                gate.resume(throwing: SMARTServiceClientError.invalidRemoteProxy)
                 connection.invalidate()
-                continuation.resume(throwing: SMARTServiceClientError.invalidRemoteProxy)
                 return
             }
 
-            operation(proxy, connection, continuation)
+            operation(proxy, connection, gate)
         }
     }
 
@@ -259,6 +278,8 @@ final class SMARTServiceClient: SMARTServiceProviding {
 private enum SMARTServiceClientError: LocalizedError {
     case invalidRemoteProxy
     case missingReplyData
+    case connectionInterrupted
+    case connectionInvalidated
 
     var errorDescription: String? {
         switch self {
@@ -266,6 +287,38 @@ private enum SMARTServiceClientError: LocalizedError {
             return "Failed to create the SMART helper XPC proxy."
         case .missingReplyData:
             return "The SMART helper returned an empty response."
+        case .connectionInterrupted:
+            return "The SMART helper connection was interrupted."
+        case .connectionInvalidated:
+            return "The SMART helper connection was invalidated before completion."
         }
+    }
+}
+
+final class XPCReplyGate: @unchecked Sendable {
+    let continuation: CheckedContinuation<Data, Error>
+    private let lock = NSLock()
+    private var didResume = false
+
+    init(continuation: CheckedContinuation<Data, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(returning data: Data) {
+        resume(.success(data))
+    }
+
+    func resume(throwing error: Error) {
+        resume(.failure(error))
+    }
+
+    private func resume(_ result: Result<Data, Error>) {
+        let shouldResume = lock.withLock {
+            guard didResume == false else { return false }
+            didResume = true
+            return true
+        }
+        guard shouldResume else { return }
+        continuation.resume(with: result)
     }
 }

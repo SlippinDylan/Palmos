@@ -34,7 +34,7 @@ final class DrivePulseSMARTService: NSObject, DrivePulseSMARTXPCProtocol {
                 transportHint: transportHint
             )
 
-            reply(payload, nil)
+            reply(DrivePulseXPCMessages.legacySMARTReply(payload: payload), nil)
         } catch {
             reply(nil, error as NSError)
         }

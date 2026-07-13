@@ -56,6 +56,8 @@ final class DrivePulseAppController: ObservableObject {
     private let systemProfilerProvider: any SystemProfilerProviding
     private let diskUtilAPFSProvider: any DiskUtilAPFSProviding
     private let volumeCapacityRefresher: VolumeCapacityRefresher
+    let deviceIOTracker: DeviceIOTracker
+    let deviceIOQuiescer: DeviceIOQuiescer
     private let actionSuccessFeedbackDuration: TimeInterval
     private let actionFailureFeedbackDuration: TimeInterval
     private let quitFeedbackDuration: TimeInterval
@@ -66,13 +68,14 @@ final class DrivePulseAppController: ObservableObject {
         settings: AppSettings = AppSettings(),
         launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController(),
         systemActions: any SystemActionPerforming = SystemActions(),
-        smartService: any SMARTServiceProviding = SMARTServiceClient(),
+        smartService: (any SMARTServiceProviding)? = nil,
         helperInstaller: any HelperInstalling = HelperInstaller(),
         diskSampler: any DiskSampling = IOKitDiskSampler(),
         deviceDiscovery: any ExternalDeviceDiscovering = LiveExternalDeviceDiscovery(),
-        systemProfilerProvider: any SystemProfilerProviding = LiveSystemProfilerProvider(),
-        diskUtilAPFSProvider: any DiskUtilAPFSProviding = LiveDiskUtilAPFSProvider(),
-        volumeCapacityRefresher: VolumeCapacityRefresher = VolumeCapacityRefresher(),
+        systemProfilerProvider: (any SystemProfilerProviding)? = nil,
+        diskUtilAPFSProvider: (any DiskUtilAPFSProviding)? = nil,
+        volumeCapacityRefresher: VolumeCapacityRefresher? = nil,
+        deviceIOTracker: DeviceIOTracker = DeviceIOTracker(),
         actionSuccessFeedbackDuration: TimeInterval = 1.2,
         actionFailureFeedbackDuration: TimeInterval = 2.8,
         quitFeedbackDuration: TimeInterval = 0.75,
@@ -84,12 +87,20 @@ final class DrivePulseAppController: ObservableObject {
         self.launchAtLoginController = launchAtLoginController
         self.deviceDiscovery = deviceDiscovery
         self.diskSampler = diskSampler
-        self.smartService = smartService
+        self.deviceIOTracker = deviceIOTracker
+        self.deviceIOQuiescer = DeviceIOQuiescer(tracker: deviceIOTracker)
+        self.smartService = smartService ?? SMARTServiceClient(deviceIOTracker: deviceIOTracker)
         self.helperInstaller = helperInstaller
         self.systemActions = systemActions
-        self.systemProfilerProvider = systemProfilerProvider
-        self.diskUtilAPFSProvider = diskUtilAPFSProvider
-        self.volumeCapacityRefresher = volumeCapacityRefresher
+        self.systemProfilerProvider = systemProfilerProvider ?? LiveSystemProfilerProvider(
+            deviceIOTracker: deviceIOTracker
+        )
+        self.diskUtilAPFSProvider = diskUtilAPFSProvider ?? LiveDiskUtilAPFSProvider(
+            deviceIOTracker: deviceIOTracker
+        )
+        self.volumeCapacityRefresher = volumeCapacityRefresher ?? VolumeCapacityRefresher(
+            deviceIOTracker: deviceIOTracker
+        )
         self.actionSuccessFeedbackDuration = actionSuccessFeedbackDuration
         self.actionFailureFeedbackDuration = actionFailureFeedbackDuration
         self.quitFeedbackDuration = quitFeedbackDuration
@@ -98,7 +109,7 @@ final class DrivePulseAppController: ObservableObject {
             devices: [],
             selectedDeviceID: nil
         )
-        volumeCapacityRefresher.onUpdate = { [weak self] updates in
+        self.volumeCapacityRefresher.onUpdate = { [weak self] updates in
             Task { @MainActor [weak self] in self?.applyCapacityUpdates(updates) }
         }
         self.discoveryObservation = deviceDiscovery.observeDevices { [weak self] devices in
@@ -668,18 +679,23 @@ final class DrivePulseAppController: ObservableObject {
 
     private func updateCapacityRefresher(from devices: [ExternalDevice]) {
         var mountPoints: [String: String] = [:]
+        var physicalBSDNames: [String: String] = [:]
         for device in devices {
             guard let volumes = device.apfsContainerDetails?.volumes else { continue }
             for volume in volumes {
                 if let mountPoint = volume.mountPoint, !mountPoint.isEmpty {
                     mountPoints[volume.bsdName] = mountPoint
+                    physicalBSDNames[volume.bsdName] = device.physicalStoreBSDName
                 }
             }
         }
         if mountPoints.isEmpty {
             volumeCapacityRefresher.stop()
         } else {
-            volumeCapacityRefresher.start(mountPoints: mountPoints)
+            volumeCapacityRefresher.start(
+                mountPoints: mountPoints,
+                physicalBSDNames: physicalBSDNames
+            )
         }
     }
 
