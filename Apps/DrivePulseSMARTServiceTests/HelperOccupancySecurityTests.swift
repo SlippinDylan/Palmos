@@ -106,7 +106,7 @@ final class HelperOccupancySecurityTests: XCTestCase {
         await inspector.waitUntilStarted()
 
         await XCTAssertThrowsErrorAsync {
-            try await scanner.scan(workflowID: UUID(), scope: scope)
+            _ = try await scanner.scan(workflowID: UUID(), scope: scope)
         }
 
         let replacement = Task { try await scanner.scan(workflowID: firstID, scope: scope) }
@@ -171,11 +171,10 @@ final class HelperOccupancySecurityTests: XCTestCase {
 
     func testEndpointRejectsOversizedBytesBeforeDecodeAndMapsBoundedError() async {
         let endpoint = HelperOccupancyEndpoint(
-            validator: HelperOccupancyRequestValidator(mediaLookup: { _ in
+            snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: { _, _, _ in
                 XCTFail("Oversized request must not reach validation")
-                return nil
+                throw HelperOccupancyError.targetUnavailable
             }),
-            resolver: HelperDiskTopologyResolver(load: { _ in nil }),
             scanner: HelperOccupancyScanner(inspector: FixtureHelperProcessInspector(candidateCount: 0, holderPerPID: false))
         )
         let result = await endpoint.handle(Data(repeating: 0, count: OccupancyXPCLimits.requestBytes + 1))
@@ -188,11 +187,8 @@ final class HelperOccupancySecurityTests: XCTestCase {
     func testEndpointEncodesBoundedOccupancyResponse() async throws {
         let workflowID = UUID()
         let endpoint = HelperOccupancyEndpoint(
-            validator: HelperOccupancyRequestValidator(mediaLookup: { _ in
-                HelperDiskMedia(whole: true, external: true, ejectable: true)
-            }),
-            resolver: HelperDiskTopologyResolver(load: { name in
-                HelperDiskTopology(physicalBSDName: name, deviceNodes: ["/dev/\(name)"], mountPaths: [])
+            snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: { name, _, _ in
+                HelperOccupancyScope(deviceNodes: ["/dev/\(name)"], mountPaths: [])
             }),
             scanner: HelperOccupancyScanner(inspector: FixtureHelperProcessInspector(candidateCount: 1, holderPerPID: true))
         )
@@ -204,6 +200,124 @@ final class HelperOccupancySecurityTests: XCTestCase {
         let data = try XCTUnwrap(result.data)
         XCTAssertLessThanOrEqual(data.count, OccupancyXPCLimits.responseBytes)
         XCTAssertEqual(try DrivePulseXPCMessages.decodeOccupancyResponse(from: data).workflowID, workflowID)
+    }
+
+    func testEndpointRejectsDifferentWorkflowBeforeSnapshot() async throws {
+        let snapshot = ControlledSnapshotProvider()
+        let endpoint = HelperOccupancyEndpoint(
+            snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: snapshot.scope),
+            scanner: HelperOccupancyScanner(inspector: FixtureHelperProcessInspector(candidateCount: 0, holderPerPID: false))
+        )
+        let firstID = UUID()
+        let firstRequest = try occupancyRequest(firstID)
+        let first = Task { await endpoint.handle(firstRequest) }
+        await snapshot.waitUntilFirstStarted()
+        let other = await endpoint.handle(try occupancyRequest(UUID()))
+        XCTAssertEqual(other.error?.code, HelperOccupancyError.helperBusy.rawValue)
+        let countAfterBusy = await snapshot.callCountValue()
+        XCTAssertEqual(countAfterBusy, 1)
+        await snapshot.releaseFirst()
+        _ = await first.value
+    }
+
+    func testSameWorkflowNewGenerationSupersedesSlowTopologyWithoutOldCompletionClearingNew() async throws {
+        let snapshot = ControlledSnapshotProvider()
+        let endpoint = HelperOccupancyEndpoint(
+            snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: snapshot.scope),
+            scanner: HelperOccupancyScanner(inspector: FixtureHelperProcessInspector(candidateCount: 0, holderPerPID: false))
+        )
+        let workflowID = UUID()
+        let request = try occupancyRequest(workflowID)
+        let old = Task { await endpoint.handle(request) }
+        await snapshot.waitUntilFirstStarted()
+        let newer = Task { await endpoint.handle(request) }
+        let newResult = await newer.value
+        XCTAssertTrue(try XCTUnwrap(newResult.data).isEmpty == false)
+        let oldResult = await old.value
+        let oldResponse = try DrivePulseXPCMessages.decodeOccupancyResponse(from: XCTUnwrap(oldResult.data))
+        XCTAssertFalse(oldResponse.isComplete)
+        let finalCount = await snapshot.callCountValue()
+        XCTAssertEqual(finalCount, 2)
+    }
+
+    func testEndpointReturnsWithinFullDeadlineEvenWhenSnapshotWorkerIgnoresCancellation() async throws {
+        let endpoint = HelperOccupancyEndpoint(
+            snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: { _, _, _ in
+                try await Task.sleep(for: .seconds(2))
+                return HelperOccupancyScope(deviceNodes: [], mountPaths: [])
+            }),
+            scanner: HelperOccupancyScanner(inspector: FixtureHelperProcessInspector(candidateCount: 0, holderPerPID: false)),
+            timeout: .milliseconds(50)
+        )
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = await endpoint.handle(try occupancyRequest(UUID()))
+        XCTAssertLessThan(start.duration(to: clock.now), .milliseconds(300))
+        let response = try DrivePulseXPCMessages.decodeOccupancyResponse(from: XCTUnwrap(result.data))
+        XCTAssertFalse(response.isComplete)
+    }
+
+    func testTopologyRunnerTerminatesHangingProcessAtDeadline() async throws {
+        let runner = HelperTopologyCommandRunner(executableURL: URL(fileURLWithPath: "/bin/sleep"))
+        let cancellation = HelperOperationCancellation()
+        let clock = ContinuousClock()
+        let start = clock.now
+        await XCTAssertThrowsErrorAsync {
+            _ = try await runner.run(
+                arguments: ["10"],
+                deadline: clock.now.advanced(by: .milliseconds(80)),
+                cancellation: cancellation
+            )
+        }
+        XCTAssertLessThan(start.duration(to: clock.now), .seconds(1))
+    }
+
+    func testTopologyRunnerDrainsLargePipesWithoutBackpressureHang() async throws {
+        let runner = HelperTopologyCommandRunner(executableURL: URL(fileURLWithPath: "/bin/sh"))
+        let data = try await runner.run(
+            arguments: ["-c", "head -c 3000000 /dev/zero; head -c 3000000 /dev/zero >&2"],
+            deadline: ContinuousClock.now.advanced(by: .seconds(2)),
+            cancellation: HelperOperationCancellation()
+        )
+        XCTAssertTrue(data.isEmpty)
+    }
+
+    func testSameWorkflowSupersedeTerminatesTopologyProcess() async throws {
+        let snapshots = SupersedingProcessSnapshotProvider()
+        let endpoint = HelperOccupancyEndpoint(
+            snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: snapshots.scope),
+            scanner: HelperOccupancyScanner(inspector: FixtureHelperProcessInspector(candidateCount: 0, holderPerPID: false))
+        )
+        let workflowID = UUID()
+        let request = try occupancyRequest(workflowID)
+        let old = Task { await endpoint.handle(request) }
+        await snapshots.waitUntilFirstStarted()
+        let clock = ContinuousClock()
+        let start = clock.now
+        let newer = await endpoint.handle(try occupancyRequest(workflowID))
+        _ = await old.value
+        XCTAssertNil(newer.error)
+        XCTAssertLessThan(start.duration(to: clock.now), .seconds(1))
+    }
+
+    func testAuthoritativeSnapshotFailsClosedWhenRegistryIdentityDrifts() async throws {
+        let identities = RegistryIdentitySequence([10, 11])
+        let inspector = FixtureHelperProcessInspector(candidateCount: 1, holderPerPID: true)
+        let provider = HelperAuthoritativeSnapshotProvider.validating(
+            registryIdentity: { _ in await identities.next() },
+            media: { _ in HelperDiskMedia(whole: true, external: true, ejectable: true) },
+            topology: { name, _, _ in
+                HelperDiskTopology(physicalBSDName: name, deviceNodes: ["/dev/\(name)"], mountPaths: [])
+            }
+        )
+        let endpoint = HelperOccupancyEndpoint(
+            snapshotProvider: provider,
+            scanner: HelperOccupancyScanner(inspector: inspector)
+        )
+        let result = await endpoint.handle(try occupancyRequest(UUID()))
+        XCTAssertEqual(result.error?.code, HelperOccupancyError.unsafeTarget.rawValue)
+        let inspectedCount = await inspector.inspectedCount
+        XCTAssertEqual(inspectedCount, 0)
     }
 
     func testClientAuthorizationRemainsAtXPCDelegateBoundary() throws {
@@ -223,6 +337,52 @@ final class HelperOccupancySecurityTests: XCTestCase {
         XCTAssertFalse(endpointSource.contains("setCodeSigningRequirement"))
         XCTAssertFalse(endpointSource.contains("SMAuthorizedClients"))
     }
+}
+
+private func occupancyRequest(_ workflowID: UUID, disk: String = "disk4") throws -> Data {
+    try DrivePulseXPCMessages.encodeOccupancyRequest(
+        OccupancyScanRequest(workflowID: workflowID, physicalDeviceBSDName: disk)
+    )
+}
+
+private actor ControlledSnapshotProvider {
+    private var calls = 0
+    private var firstStarted = false
+    private var firstReleased = false
+    func scope(_ name: String, _ deadline: ContinuousClock.Instant, _ cancellation: HelperOperationCancellation) async throws -> HelperOccupancyScope {
+        calls += 1
+        if calls == 1 {
+            firstStarted = true
+            while !cancellation.isCancelled && !firstReleased { await Task.yield() }
+            if cancellation.isCancelled { throw CancellationError() }
+            return HelperOccupancyScope(deviceNodes: ["/dev/\(name)"], mountPaths: [])
+        }
+        return HelperOccupancyScope(deviceNodes: ["/dev/\(name)"], mountPaths: [])
+    }
+    func waitUntilFirstStarted() async { while !firstStarted { await Task.yield() } }
+    func releaseFirst() { firstReleased = true }
+    func callCountValue() -> Int { calls }
+}
+
+private actor RegistryIdentitySequence {
+    private var values: [UInt64]
+    init(_ values: [UInt64]) { self.values = values }
+    func next() -> UInt64? { values.isEmpty ? nil : values.removeFirst() }
+}
+
+private actor SupersedingProcessSnapshotProvider {
+    private var calls = 0
+    private var firstStarted = false
+    private let runner = HelperTopologyCommandRunner(executableURL: URL(fileURLWithPath: "/bin/sleep"))
+    func scope(_ name: String, _ deadline: ContinuousClock.Instant, _ cancellation: HelperOperationCancellation) async throws -> HelperOccupancyScope {
+        calls += 1
+        if calls == 1 {
+            firstStarted = true
+            _ = try await runner.run(arguments: ["10"], deadline: deadline, cancellation: cancellation)
+        }
+        return HelperOccupancyScope(deviceNodes: ["/dev/\(name)"], mountPaths: [])
+    }
+    func waitUntilFirstStarted() async { while !firstStarted { await Task.yield() } }
 }
 
 private final class DiskutilFixtureQuery: @unchecked Sendable {

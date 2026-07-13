@@ -26,7 +26,7 @@ struct HelperOccupancyRequestValidator: Sendable {
     typealias MediaLookup = @Sendable (String) async throws -> HelperDiskMedia?
     private let mediaLookup: MediaLookup
 
-    init(mediaLookup: @escaping MediaLookup = LiveHelperDiskTopologySource.media) {
+    init(mediaLookup: @escaping MediaLookup) {
         self.mediaLookup = mediaLookup
     }
 
@@ -42,13 +42,17 @@ struct HelperOccupancyRequestValidator: Sendable {
         }
     }
 
+    static func validate(_ media: HelperDiskMedia) throws {
+        guard media.whole, media.external, media.ejectable else {
+            throw HelperOccupancyError.unsafeTarget
+        }
+    }
+
     func validate(_ request: OccupancyScanRequest) async throws {
         try Self.validateBSDName(request.physicalDeviceBSDName)
         guard let media = try await mediaLookup(request.physicalDeviceBSDName) else {
             throw HelperOccupancyError.targetUnavailable
         }
-        guard media.whole, media.external, media.ejectable else {
-            throw HelperOccupancyError.unsafeTarget
-        }
+        try Self.validate(media)
     }
 }

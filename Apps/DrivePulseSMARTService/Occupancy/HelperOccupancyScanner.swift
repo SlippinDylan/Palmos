@@ -36,6 +36,20 @@ actor HelperOccupancyScanner {
     }
 
     func scan(workflowID: UUID, scope: HelperOccupancyScope) async throws -> OccupancyScanResponse {
+        try await scan(
+            workflowID: workflowID,
+            scope: scope,
+            deadline: ContinuousClock.now.advanced(by: timeout),
+            externalCancellation: HelperOperationCancellation()
+        )
+    }
+
+    func scan(
+        workflowID: UUID,
+        scope: HelperOccupancyScope,
+        deadline: ContinuousClock.Instant,
+        externalCancellation: HelperOperationCancellation
+    ) async throws -> OccupancyScanResponse {
         if let active {
             guard active.workflowID == workflowID else { throw HelperOccupancyError.helperBusy }
             active.cancellation.cancel()
@@ -44,23 +58,22 @@ actor HelperOccupancyScanner {
         active = ActiveScan(workflowID: workflowID, cancellation: cancellation)
         defer { if active?.cancellation === cancellation { active = nil } }
 
-        let deadline = ContinuousClock.now.advanced(by: timeout)
         let returnedCandidates = try await inspector.candidatePIDs(limit: OccupancyXPCLimits.maxCandidatePIDs)
-        guard !cancellation.isCancelled, ContinuousClock.now < deadline else {
+        guard Self.shouldContinue(cancellation, externalCancellation, deadline) else {
             return OccupancyScanResponse(workflowID: workflowID, holders: [], isComplete: false)
         }
         let candidates = Array(returnedCandidates.prefix(OccupancyXPCLimits.maxCandidatePIDs))
         var holders: [OccupancyHolderMessage] = []
         var complete = returnedCandidates.count < OccupancyXPCLimits.maxCandidatePIDs
         for pid in candidates {
-            guard !cancellation.isCancelled, ContinuousClock.now < deadline else {
+            guard Self.shouldContinue(cancellation, externalCancellation, deadline) else {
                 return OccupancyScanResponse(workflowID: workflowID, holders: [], isComplete: false)
             }
             do {
                 let snapshot = try await inspector.inspect(pid: pid, scope: scope) {
-                    !cancellation.isCancelled && ContinuousClock.now < deadline
+                    Self.shouldContinue(cancellation, externalCancellation, deadline)
                 }
-                guard !cancellation.isCancelled, ContinuousClock.now < deadline else {
+                guard Self.shouldContinue(cancellation, externalCancellation, deadline) else {
                     return OccupancyScanResponse(workflowID: workflowID, holders: [], isComplete: false)
                 }
                 complete = complete && snapshot.isComplete
@@ -74,6 +87,17 @@ actor HelperOccupancyScanner {
             OccupancyScanResponse(workflowID: workflowID, holders: holders, isComplete: complete)
         )
         return try DrivePulseXPCMessages.decodeOccupancyResponse(from: encoded)
+    }
+
+    nonisolated private static func shouldContinue(
+        _ cancellation: HelperScanCancellation,
+        _ externalCancellation: HelperOperationCancellation,
+        _ deadline: ContinuousClock.Instant
+    ) -> Bool {
+        !Task.isCancelled
+            && !cancellation.isCancelled
+            && !externalCancellation.isCancelled
+            && ContinuousClock.now < deadline
     }
 }
 
