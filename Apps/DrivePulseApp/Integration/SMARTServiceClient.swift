@@ -31,12 +31,13 @@ protocol SMARTCompletionXPCSession: Sendable {
     )
 }
 
-final class SMARTServiceClient: SMARTServiceProviding {
+final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
     private let helperMachServiceName: String
     private let isHelperInstalledOperation: @Sendable () -> Bool
     private let fetchHelperHandshakeOperation: @Sendable () async throws -> Data
     private let readSMARTDataOperation: @Sendable (Data) async throws -> Data
     private let readSMARTDataWithCompletionOperation: (@Sendable (Data) async throws -> Data)?
+    private let scanDiskOccupancyOperation: @Sendable (Data) async throws -> Data
     private let completionSession: (any SMARTCompletionXPCSession)?
     private let deviceIOTracker: DeviceIOTracker?
 
@@ -50,6 +51,7 @@ final class SMARTServiceClient: SMARTServiceProviding {
         fetchHelperHandshake: (@Sendable () async throws -> Data)? = nil,
         readSMARTData: (@Sendable (Data) async throws -> Data)? = nil,
         readSMARTDataWithCompletion: (@Sendable (Data) async throws -> Data)? = nil,
+        scanDiskOccupancy: (@Sendable (Data) async throws -> Data)? = nil,
         completionSession: (any SMARTCompletionXPCSession)? = nil,
         deviceIOTracker: DeviceIOTracker? = nil
     ) {
@@ -75,6 +77,12 @@ final class SMARTServiceClient: SMARTServiceProviding {
             self.readSMARTDataWithCompletionOperation = readSMARTDataWithCompletion
         } else {
             self.readSMARTDataWithCompletionOperation = nil
+        }
+        self.scanDiskOccupancyOperation = scanDiskOccupancy ?? { requestData in
+            try await Self.scanDiskOccupancy(
+                requestData,
+                helperMachServiceName: helperMachServiceName
+            )
         }
         self.deviceIOTracker = deviceIOTracker
     }
@@ -152,6 +160,39 @@ final class SMARTServiceClient: SMARTServiceProviding {
         }
     }
 
+    func scan(workflowID: UUID, physicalBSDName: String) async throws -> OccupancyScanResult {
+        let handshakeData = try await fetchHelperHandshakeOperation()
+        let handshake = try decodeHandshake(from: handshakeData)
+        let capabilities = XPCFeatureCapabilities.negotiated(
+            helperContractMinor: handshake.contractMinor
+        )
+        guard evaluateHandshake(handshake) != .updateRequired,
+              capabilities.occupancyScanning else {
+            return OccupancyScanResult(holders: [], isComplete: false)
+        }
+
+        let requestData = try DrivePulseXPCMessages.encodeOccupancyRequest(.init(
+            workflowID: workflowID,
+            physicalDeviceBSDName: physicalBSDName
+        ))
+        let responseData = try await scanDiskOccupancyOperation(requestData)
+        let response = try DrivePulseXPCMessages.decodeOccupancyResponse(from: responseData)
+        guard response.workflowID == workflowID else {
+            throw SMARTServiceClientError.mismatchedOccupancyWorkflow
+        }
+        return OccupancyScanResult(
+            holders: response.holders.map { holder in
+                OccupancyHolder(
+                    pid: holder.pid,
+                    executableName: holder.executableName,
+                    displayName: holder.displayName,
+                    type: OccupancyType(rawValue: holder.type) ?? .unknown
+                )
+            },
+            isComplete: response.isComplete
+        )
+    }
+
     private static func fetchHelperHandshake(helperMachServiceName: String) async throws -> Data {
         try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, gate in
             proxy.fetchHelperHandshake { data, error in
@@ -192,6 +233,29 @@ final class SMARTServiceClient: SMARTServiceProviding {
                 }
 
                 gate.resume(returning: data)
+                connection.invalidate()
+            }
+        }
+    }
+
+    private static func scanDiskOccupancy(
+        _ requestData: Data,
+        helperMachServiceName: String
+    ) async throws -> Data {
+        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, gate in
+            guard proxy.scanDiskOccupancy != nil else {
+                gate.resume(throwing: SMARTServiceClientError.unsupportedOccupancyEndpoint)
+                connection.invalidate()
+                return
+            }
+            proxy.scanDiskOccupancy?(for: requestData) { data, error in
+                if let error {
+                    gate.resume(throwing: error)
+                } else if let data {
+                    gate.resume(returning: data)
+                } else {
+                    gate.resume(throwing: SMARTServiceClientError.missingReplyData)
+                }
                 connection.invalidate()
             }
         }
@@ -336,6 +400,8 @@ private enum SMARTServiceClientError: LocalizedError {
     case missingReplyData
     case connectionInterrupted
     case connectionInvalidated
+    case unsupportedOccupancyEndpoint
+    case mismatchedOccupancyWorkflow
 
     var errorDescription: String? {
         switch self {
@@ -347,6 +413,10 @@ private enum SMARTServiceClientError: LocalizedError {
             return "The SMART helper connection was interrupted."
         case .connectionInvalidated:
             return "The SMART helper connection was invalidated before completion."
+        case .unsupportedOccupancyEndpoint:
+            return "The SMART helper does not support disk occupancy scans."
+        case .mismatchedOccupancyWorkflow:
+            return "The SMART helper returned an occupancy result for another workflow."
         }
     }
 }

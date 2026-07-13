@@ -3,7 +3,74 @@ import XCTest
 import DrivePulseCore
 import SwiftUI
 
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int { lock.withLock { count } }
+    func increment() { lock.withLock { count += 1 } }
+}
+
 final class SMARTServiceClientTests: XCTestCase {
+    func testOccupancyScanDegradesHonestlyWithoutCallingUnsupportedOldHelperEndpoint() async throws {
+        let handshake = try DrivePulseXPCMessages.encode(
+            HelperHandshake(helperVersion: "1.3.0", contractMajor: 1, contractMinor: 3)
+        )
+        let scanCallCount = LockedCounter()
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            scanDiskOccupancy: { _ in
+                scanCallCount.increment()
+                return Data()
+            }
+        )
+
+        let result = try await client.scan(workflowID: UUID(), physicalBSDName: "disk4")
+
+        XCTAssertEqual(result, .init(holders: [], isComplete: false))
+        XCTAssertEqual(scanCallCount.value, 0)
+    }
+
+    func testOccupancyScanUsesCapabilityAndMapsBoundedResponse() async throws {
+        let handshake = try DrivePulseXPCMessages.encode(
+            HelperHandshake(
+                helperVersion: "1.4.0",
+                contractMajor: XPCContractVersion.currentMajor,
+                contractMinor: XPCContractVersion.currentMinor
+            )
+        )
+        let workflowID = UUID()
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            scanDiskOccupancy: { requestData in
+                let request = try DrivePulseXPCMessages.decodeOccupancyRequest(from: requestData)
+                XCTAssertEqual(request, .init(workflowID: workflowID, physicalDeviceBSDName: "disk4"))
+                return try DrivePulseXPCMessages.encodeOccupancyResponse(.init(
+                    workflowID: workflowID,
+                    holders: [.init(
+                        pid: 17,
+                        executableName: "terminal",
+                        displayName: "Terminal",
+                        type: OccupancyType.workingDirectory.rawValue
+                    )],
+                    isComplete: true
+                ))
+            }
+        )
+
+        let result = try await client.scan(workflowID: workflowID, physicalBSDName: "disk4")
+
+        XCTAssertEqual(result, .init(
+            holders: [.init(
+                pid: 17,
+                executableName: "terminal",
+                displayName: "Terminal",
+                type: .workingDirectory
+            )],
+            isComplete: true
+        ))
+    }
+
     func testCompatibilityFromEncodedHandshakeUsesSerializedContractFields() throws {
         let client = SMARTServiceClient()
         let payload = HelperHandshake(
