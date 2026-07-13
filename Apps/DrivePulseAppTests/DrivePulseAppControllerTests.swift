@@ -1117,7 +1117,9 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let initialAPFSListInvocationCount = await runner.apfsListInvocationCount()
         XCTAssertEqual(initialAPFSListInvocationCount, 1)
 
-        await provider.refresh(physicalBSDNames: ["disk21"])
+        await provider.refresh(targets: [
+            .init(physicalBSDName: "disk21", containerBSDName: "disk21s2")
+        ])
         let refreshed = await provider.containerInfo(forContainerBSDName: "disk21s2")
 
         XCTAssertEqual(refreshed?.capacityInUseBytes, 250)
@@ -1130,13 +1132,17 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let runner = OverlappingDiskUtilCommandRunner()
         let provider = LiveDiskUtilAPFSProvider(commandRunner: runner.run)
         let firstRefresh = Task {
-            await provider.refresh(physicalBSDNames: ["disk21"])
+            await provider.refresh(targets: [
+                .init(physicalBSDName: "disk21", containerBSDName: "disk21s2")
+            ])
         }
 
         await runner.waitUntilAPFSListInvocationCount(is: 1)
 
         let secondRefresh = Task {
-            await provider.refresh(physicalBSDNames: ["disk21"])
+            await provider.refresh(targets: [
+                .init(physicalBSDName: "disk21", containerBSDName: "disk21s2")
+            ])
         }
 
         await runner.waitUntilAPFSListInvocationCount(is: 2)

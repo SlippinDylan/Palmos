@@ -312,15 +312,15 @@ final class DeviceIOQuiescerTests: XCTestCase {
         let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
             for: makeTarget("disk4"), timeout: .seconds(1)
         )
-        await provider.refresh(physicalBSDNames: ["disk4"])
+        await provider.refresh(targets: [.init(physicalBSDName: "disk4", containerBSDName: "disk10")])
         XCTAssertEqual(calls.value, 0)
-        await provider.refresh(physicalBSDNames: ["disk5"])
+        await provider.refresh(targets: [.init(physicalBSDName: "disk5", containerBSDName: "disk11")])
         XCTAssertEqual(calls.value, 1)
-        XCTAssertEqual(arguments.values, [["apfs", "list", "-plist", "disk5"]])
+        XCTAssertEqual(arguments.values, [["apfs", "list", "-plist", "disk11"]])
         await barrier.release()
-        await provider.refresh(physicalBSDNames: ["disk4"])
+        await provider.refresh(targets: [.init(physicalBSDName: "disk4", containerBSDName: "disk10")])
         XCTAssertEqual(calls.value, 2)
-        XCTAssertEqual(arguments.values.last, ["apfs", "list", "-plist", "disk4"])
+        XCTAssertEqual(arguments.values.last, ["apfs", "list", "-plist", "disk10"])
 
         let drained = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
             for: makeTarget("disk4"), timeout: .milliseconds(100)
@@ -340,7 +340,7 @@ final class DeviceIOQuiescerTests: XCTestCase {
             deviceIOTracker: tracker
         )
         let refresh = Task {
-            await provider.refresh(physicalBSDNames: ["disk4"])
+            await provider.refresh(targets: [.init(physicalBSDName: "disk4", containerBSDName: "disk10")])
         }
         while await gate.waiterCount == 0 { await Task.yield() }
 
@@ -361,7 +361,7 @@ final class DeviceIOQuiescerTests: XCTestCase {
             arguments.append(commandArguments)
             let physicalBSDName = commandArguments.last
             let containers: [[String: Any]]
-            if physicalBSDName == "disk4" {
+            if physicalBSDName == "disk10" {
                 containers = [
                     ["ContainerReference": "disk10", "CapacityCeiling": 100, "Volumes": []]
                 ]
@@ -376,16 +376,66 @@ final class DeviceIOQuiescerTests: XCTestCase {
             )
         })
 
-        await provider.refresh(physicalBSDNames: ["disk5", "disk4"])
+        await provider.refresh(targets: [
+            .init(physicalBSDName: "disk5", containerBSDName: "disk11"),
+            .init(physicalBSDName: "disk4", containerBSDName: "disk10")
+        ])
 
         XCTAssertEqual(arguments.values, [
-            ["apfs", "list", "-plist", "disk4"],
-            ["apfs", "list", "-plist", "disk5"]
+            ["apfs", "list", "-plist", "disk10"],
+            ["apfs", "list", "-plist", "disk11"]
         ])
         let disk10 = await provider.containerInfo(forContainerBSDName: "disk10")
         let disk11 = await provider.containerInfo(forContainerBSDName: "disk11")
         XCTAssertEqual(disk10?.totalCapacityBytes, 100)
         XCTAssertEqual(disk11?.totalCapacityBytes, 200)
+    }
+
+    func testDiskutilResolvesContainerWithScopedInfoBeforeAPFSList() async throws {
+        let arguments = LockedArray<[String]>()
+        let info = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "DeviceIdentifier": "disk4s2",
+                "Content": "Apple_APFS",
+                "APFSContainerReference": "disk10"
+            ], format: .xml, options: 0
+        )
+        let topology = try PropertyListSerialization.data(
+            fromPropertyList: ["Containers": []], format: .xml, options: 0
+        )
+        let provider = LiveDiskUtilAPFSProvider(commandRunner: { _, commandArguments in
+            arguments.append(commandArguments)
+            return commandArguments.first == "info" ? info : topology
+        })
+
+        await provider.refresh(targets: [
+            .init(physicalBSDName: "disk4s2", containerBSDName: nil)
+        ])
+
+        XCTAssertEqual(arguments.values, [
+            ["info", "-plist", "disk4s2"],
+            ["apfs", "list", "-plist", "disk10"]
+        ])
+    }
+
+    func testDiskutilNonAPFSOrMismatchedInfoFailsClosedWithoutAPFSList() async throws {
+        for infoValues: [String: Any] in [
+            ["DeviceIdentifier": "disk4s2", "Content": "Microsoft Basic Data"],
+            ["DeviceIdentifier": "disk9s2", "Content": "Apple_APFS", "APFSContainerReference": "disk10"]
+        ] {
+            let arguments = LockedArray<[String]>()
+            let info = try PropertyListSerialization.data(
+                fromPropertyList: infoValues, format: .xml, options: 0
+            )
+            let provider = LiveDiskUtilAPFSProvider(commandRunner: { _, commandArguments in
+                arguments.append(commandArguments)
+                return info
+            })
+            await provider.refresh(targets: [
+                .init(physicalBSDName: "disk4s2", containerBSDName: nil)
+            ])
+            XCTAssertEqual(arguments.values, [["info", "-plist", "disk4s2"]])
+        }
     }
 
     func testEverySystemProfilerSpawnIsGloballyDrained() async throws {

@@ -362,9 +362,12 @@ final class DrivePulseAppController: ObservableObject {
             // Show basic device list immediately; NVMe/TB/APFS enrichment follows
             self.applyDiscoveredDevices(mergedDevices, generation: generation)
             self.scheduleSystemProfilerEnrichment(.fetchIfNeeded)
-            await diskUtilAPFSProvider.refresh(
-                physicalBSDNames: Set(mergedDevices.map(\.physicalStoreBSDName))
-            )
+            await diskUtilAPFSProvider.refresh(targets: mergedDevices.map {
+                APFSTopologyTarget(
+                    physicalBSDName: $0.physicalStoreBSDName,
+                    containerBSDName: $0.apfsContainerBSDName
+                )
+            })
             guard !Task.isCancelled else { return }
             let apfsEnriched = await self.enrichDevicesWithAPFS(
                 mergedDevices,
@@ -395,9 +398,12 @@ final class DrivePulseAppController: ObservableObject {
         scheduleSystemProfilerEnrichment(.refresh)
         observationEnrichmentTask = Task { [weak self] in
             guard let self else { return }
-            await diskUtilAPFSProvider.refresh(
-                physicalBSDNames: Set(mergedDevices.map(\.physicalStoreBSDName))
-            )
+            await diskUtilAPFSProvider.refresh(targets: mergedDevices.map {
+                APFSTopologyTarget(
+                    physicalBSDName: $0.physicalStoreBSDName,
+                    containerBSDName: $0.apfsContainerBSDName
+                )
+            })
             guard !Task.isCancelled else { return }
             let apfsEnriched = await self.enrichDevicesWithAPFS(
                 mergedDevices,
@@ -451,9 +457,12 @@ final class DrivePulseAppController: ObservableObject {
                 }
 
                 guard generation == self.discoveryWriteGeneration, !Task.isCancelled else { return }
-                await diskUtilAPFSProvider.refresh(
-                    physicalBSDNames: Set(self.state.devices.map(\.physicalStoreBSDName))
-                )
+                await diskUtilAPFSProvider.refresh(targets: self.state.devices.map {
+                    APFSTopologyTarget(
+                        physicalBSDName: $0.physicalStoreBSDName,
+                        containerBSDName: $0.apfsContainerBSDName
+                    )
+                })
                 guard generation == self.discoveryWriteGeneration, !Task.isCancelled else { return }
 
                 let enrichedDevices = await self.enrichDevicesWithAPFS(

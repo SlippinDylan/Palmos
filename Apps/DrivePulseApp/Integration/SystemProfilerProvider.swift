@@ -63,7 +63,9 @@ enum SubprocessRunner {
                 group.wait()
                 let stdoutData = stdoutBox.get()
                 let stderrData = stderrBox.get()
-                if stdoutData.isEmpty, stderrData.isEmpty == false {
+                if stdoutData.isEmpty,
+                   stderrData.isEmpty == false,
+                   processBox.isCancelled == false {
                     let stderrMessage = String(data: stderrData, encoding: .utf8)?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     if let stderrMessage, stderrMessage.isEmpty == false {
@@ -90,6 +92,8 @@ private final class ProcessBox: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
     private var wasCancelled = false
+
+    var isCancelled: Bool { lock.withLock { wasCancelled } }
 
     func set(_ process: Process) {
         let shouldTerminate = lock.withLock {
