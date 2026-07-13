@@ -828,6 +828,176 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertNil(controller.actionFeedback)
     }
 
+    func testAppCompositionSharesTrackerAcrossEjectAndDrivePulseOwnedIO() async throws {
+        let disk4 = makeDevice(id: "disk4", volumes: ["disk4s1"])
+        let disk5 = makeDevice(id: "disk5", volumes: [])
+        let tracker = DeviceIOTracker()
+        let probe = AppCompositionIOProbe()
+        let handshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.0.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.currentMinor
+        ))
+        let smartService = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            readSMARTData: { data in
+                await probe.recordSMARTRead()
+                return Data("{}".utf8)
+            },
+            scanDiskOccupancy: { requestData in
+                let request = try DrivePulseXPCMessages.decodeOccupancyRequest(from: requestData)
+                await probe.recordOccupancyScan()
+                return try DrivePulseXPCMessages.encodeOccupancyResponse(.init(
+                    workflowID: request.workflowID,
+                    holders: [],
+                    isComplete: true
+                ))
+            },
+            deviceIOTracker: tracker
+        )
+        let systemProfiler = LiveSystemProfilerProvider(
+            dataTypeRunner: { dataType in
+                await probe.recordSystemProfiler(dataType)
+                return nil
+            },
+            deviceIOTracker: tracker
+        )
+        let diskUtil = LiveDiskUtilAPFSProvider(
+            commandRunner: { _, arguments in
+                await probe.recordDiskUtil(arguments)
+                return nil
+            },
+            deviceIOTracker: tracker,
+            physicalBSDNameResolver: { $0 }
+        )
+        let capacityProbe = LockedCapacityProbe()
+        let capacityRefresher = VolumeCapacityRefresher(
+            deviceIOTracker: tracker,
+            capacityReader: { bsdName, _ in
+                capacityProbe.record(bsdName)
+                return .init(
+                    bsdName: bsdName,
+                    totalBytes: 100,
+                    availableBytes: 40,
+                    consumedBytes: 60
+                )
+            }
+        )
+        let resolver = RecordingEjectTargetResolver(device: disk4)
+        let busyFailure = EjectFailure(
+            stage: .unmounting,
+            category: .busy,
+            rawStatus: nil,
+            systemMessage: "busy",
+            physicalBSDName: "disk4",
+            holders: []
+        )
+        let ejecter = BlockingDiskEjecter(result: .failure(busyFailure))
+        let sampler = StubDiskSampler(samplesByBSDName: [
+            "disk5": [
+                DiskIOCounters(readBytes: 10, writeBytes: 20),
+                DiskIOCounters(readBytes: 110, writeBytes: 220)
+            ]
+        ])
+        let controller = DrivePulseApp.makeController(
+            state: DrivePulseAppState(devices: [disk4, disk5], selectedDeviceID: disk4.id),
+            deviceIOTracker: tracker,
+            smartService: smartService,
+            diskSampler: sampler,
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[disk4, disk5]]),
+            systemProfilerProvider: systemProfiler,
+            diskUtilAPFSProvider: diskUtil,
+            volumeCapacityRefresher: capacityRefresher,
+            ejectTargetResolver: resolver,
+            diskEjecter: ejecter,
+            appOccupancyScanner: EmptyAppOccupancyScanner()
+        )
+
+        XCTAssertTrue(smartService.usesDeviceIOTracker(tracker))
+        XCTAssertTrue(systemProfiler.usesDeviceIOTracker(tracker))
+        XCTAssertTrue(diskUtil.usesDeviceIOTracker(tracker))
+        XCTAssertTrue(capacityRefresher.usesDeviceIOTracker(tracker))
+        XCTAssertTrue(controller.deviceIOQuiescer.tracker === tracker)
+
+        let ejectAction = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+        controller.perform(ejectAction)
+        await ejecter.waitUntilNormalEjectStarts()
+
+        _ = await smartService.refreshSMART(for: disk4)
+        await diskUtil.refresh(targets: [
+            APFSTopologyTarget(physicalBSDName: "disk4", containerBSDName: nil)
+        ])
+        await systemProfiler.refresh()
+        capacityRefresher.start(
+            mountPoints: ["disk4s1": "/Volumes/Test"],
+            physicalBSDNames: ["disk4s1": "disk4"]
+        )
+        await Task.yield()
+
+        let pausedSMARTReadCount = await probe.smartReadCount()
+        let pausedSystemProfilerCallCount = await probe.systemProfilerCallCount()
+        let pausedDisk4DiskUtilCallCount = await probe.diskUtilCallCount(for: "disk4")
+        XCTAssertEqual(pausedSMARTReadCount, 0)
+        XCTAssertEqual(pausedSystemProfilerCallCount, 0)
+        XCTAssertEqual(pausedDisk4DiskUtilCallCount, 0)
+        XCTAssertEqual(capacityProbe.count(for: "disk4s1"), 0)
+
+        await diskUtil.refresh(targets: [
+            APFSTopologyTarget(physicalBSDName: "disk5", containerBSDName: nil)
+        ])
+        let disk5DiskUtilCallCount = await probe.diskUtilCallCount(for: "disk5")
+        XCTAssertGreaterThan(disk5DiskUtilCallCount, 0)
+
+        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 1))
+        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 2))
+        let disk5Metrics = try XCTUnwrap(controller.state.device(id: disk5.id)?.sessionMetrics)
+        XCTAssertEqual(disk5Metrics.currentReadBytesPerSecond, 100)
+        XCTAssertEqual(disk5Metrics.currentWriteBytesPerSecond, 200)
+
+        await ejecter.finishNormalEject()
+        await waitUntil { await probe.occupancyScanCount() == 1 }
+        controller.cancelEject()
+        await waitUntil { controller.ejectCoordinator.state == .idle }
+
+        _ = await smartService.refreshSMART(for: disk4)
+        await diskUtil.refresh(targets: [
+            APFSTopologyTarget(physicalBSDName: "disk4", containerBSDName: nil)
+        ])
+        await systemProfiler.refresh()
+        capacityRefresher.updateMountPoints(
+            ["disk4s1": "/Volumes/Test"],
+            physicalBSDNames: ["disk4s1": "disk4"]
+        )
+        capacityRefresher.start(
+            mountPoints: ["disk4s1": "/Volumes/Test"],
+            physicalBSDNames: ["disk4s1": "disk4"]
+        )
+        await waitUntil { capacityProbe.count(for: "disk4s1") > 0 }
+        capacityRefresher.stop()
+
+        let resumedSMARTReadCount = await probe.smartReadCount()
+        let resumedSystemProfilerCallCount = await probe.systemProfilerCallCount()
+        let resumedDisk4DiskUtilCallCount = await probe.diskUtilCallCount(for: "disk4")
+        XCTAssertEqual(resumedSMARTReadCount, 1)
+        XCTAssertEqual(resumedSystemProfilerCallCount, 3)
+        XCTAssertGreaterThan(resumedDisk4DiskUtilCallCount, 0)
+
+        let leakCheckBarrier = try await controller.deviceIOQuiescer.acquireBarrier(
+            for: EjectWorkflowTarget(
+                deviceID: disk4.id,
+                physicalBSDName: "disk4",
+                mediaRegistryEntryID: 42,
+                displayName: disk4.displayName,
+                topologyGeneration: 0
+            ),
+            timeout: Duration.milliseconds(100)
+        )
+        try await leakCheckBarrier.waitUntilReady()
+        await leakCheckBarrier.release()
+    }
+
     func testPerformRunsActionAsynchronouslyAndPublishesFailureFeedback() async {
         let actionPerformer = StubSystemActionPerformer()
         let controller = DrivePulseAppController(
@@ -1926,16 +2096,21 @@ private struct ImmediateEjectBarrier: EjectBarrier {
 }
 
 private actor BlockingDiskEjecter: DiskEjecting {
+    private let result: Result<Void, EjectFailure>
     private var didStart = false
     private var startContinuations: [CheckedContinuation<Void, Never>] = []
     private var finishContinuation: CheckedContinuation<Void, Never>?
+
+    init(result: Result<Void, EjectFailure> = .success(())) {
+        self.result = result
+    }
 
     func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure> {
         didStart = true
         startContinuations.forEach { $0.resume() }
         startContinuations.removeAll()
         await withCheckedContinuation { finishContinuation = $0 }
-        return .success(())
+        return result
     }
 
     func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
@@ -1950,6 +2125,47 @@ private actor BlockingDiskEjecter: DiskEjecting {
     func finishNormalEject() {
         finishContinuation?.resume()
         finishContinuation = nil
+    }
+}
+
+private struct EmptyAppOccupancyScanner: AppOccupancyScanning {
+    func scan(scope: OccupancyTargetScope, deadline: ContinuousClock.Instant) async -> OccupancyScanResult {
+        OccupancyScanResult(holders: [], isComplete: false)
+    }
+}
+
+private actor AppCompositionIOProbe {
+    private var smartReads = 0
+    private var occupancyScans = 0
+    private var systemProfilerDataTypes: [String] = []
+    private var diskUtilArguments: [[String]] = []
+
+    func recordSMARTRead() { smartReads += 1 }
+    func recordOccupancyScan() { occupancyScans += 1 }
+    func recordSystemProfiler(_ dataType: String) { systemProfilerDataTypes.append(dataType) }
+    func recordDiskUtil(_ arguments: [String]) { diskUtilArguments.append(arguments) }
+    func smartReadCount() -> Int { smartReads }
+    func occupancyScanCount() -> Int { occupancyScans }
+    func systemProfilerCallCount() -> Int { systemProfilerDataTypes.count }
+    func diskUtilCallCount(for bsdName: String) -> Int {
+        diskUtilArguments.filter { $0.contains(bsdName) }.count
+    }
+}
+
+private final class LockedCapacityProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var counts: [String: Int] = [:]
+
+    func record(_ bsdName: String) {
+        lock.lock()
+        counts[bsdName, default: 0] += 1
+        lock.unlock()
+    }
+
+    func count(for bsdName: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return counts[bsdName, default: 0]
     }
 }
 

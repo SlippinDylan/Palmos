@@ -96,12 +96,15 @@ final class DrivePulseAppController: ObservableObject {
         self.deviceIOTracker = deviceIOTracker
         self.deviceIOQuiescer = DeviceIOQuiescer(tracker: deviceIOTracker)
         let defaultSMARTService = SMARTServiceClient(deviceIOTracker: deviceIOTracker)
-        self.smartService = smartService ?? defaultSMARTService
+        let resolvedSMARTService = smartService ?? defaultSMARTService
+        let resolvedOccupancyHelper = (resolvedSMARTService as? any HelperOccupancyScanning)
+            ?? defaultSMARTService
+        self.smartService = resolvedSMARTService
         self.ejectCoordinator = ejectCoordinator ?? EjectCoordinator(
             resolver: LiveEjectTargetResolver(),
             quiescer: DeviceIOQuiescer(tracker: deviceIOTracker),
             ejecter: DiskArbitrationEjectClient(),
-            occupancyScanner: OccupancyScanner(helperScanner: defaultSMARTService)
+            occupancyScanner: OccupancyScanner(helperScanner: resolvedOccupancyHelper)
         )
         self.helperInstaller = helperInstaller
         self.systemActions = systemActions

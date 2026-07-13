@@ -7,19 +7,53 @@ struct DrivePulseApp: App {
     @StateObject private var settingsWindowActivator = SettingsWindowActivator()
 
     init() {
-        let deviceIOTracker = DeviceIOTracker()
-        let smartService = SMARTServiceClient(deviceIOTracker: deviceIOTracker)
-        let ejectCoordinator = EjectCoordinator(
-            resolver: LiveEjectTargetResolver(),
-            quiescer: DeviceIOQuiescer(tracker: deviceIOTracker),
-            ejecter: DiskArbitrationEjectClient(),
-            occupancyScanner: OccupancyScanner(helperScanner: smartService)
+        _controller = StateObject(wrappedValue: Self.makeController())
+    }
+
+    @MainActor
+    static func makeController(
+        state: DrivePulseAppState? = nil,
+        deviceIOTracker: DeviceIOTracker = DeviceIOTracker(),
+        smartService: SMARTServiceClient? = nil,
+        diskSampler: any DiskSampling = IOKitDiskSampler(),
+        deviceDiscovery: any ExternalDeviceDiscovering = LiveExternalDeviceDiscovery(),
+        systemProfilerProvider: (any SystemProfilerProviding)? = nil,
+        diskUtilAPFSProvider: (any DiskUtilAPFSProviding)? = nil,
+        volumeCapacityRefresher: VolumeCapacityRefresher? = nil,
+        ejectTargetResolver: any EjectTargetResolving = LiveEjectTargetResolver(),
+        diskEjecter: any DiskEjecting = DiskArbitrationEjectClient(),
+        appOccupancyScanner: any AppOccupancyScanning = AppOccupancyScanner()
+    ) -> DrivePulseAppController {
+        let smartService = smartService ?? SMARTServiceClient(deviceIOTracker: deviceIOTracker)
+        let systemProfilerProvider = systemProfilerProvider ?? LiveSystemProfilerProvider(
+            deviceIOTracker: deviceIOTracker
         )
-        _controller = StateObject(wrappedValue: DrivePulseAppController(
+        let diskUtilAPFSProvider = diskUtilAPFSProvider ?? LiveDiskUtilAPFSProvider(
+            deviceIOTracker: deviceIOTracker
+        )
+        let volumeCapacityRefresher = volumeCapacityRefresher ?? VolumeCapacityRefresher(
+            deviceIOTracker: deviceIOTracker
+        )
+        let ejectCoordinator = EjectCoordinator(
+            resolver: ejectTargetResolver,
+            quiescer: DeviceIOQuiescer(tracker: deviceIOTracker),
+            ejecter: diskEjecter,
+            occupancyScanner: OccupancyScanner(
+                appScanner: appOccupancyScanner,
+                helperScanner: smartService
+            )
+        )
+        return DrivePulseAppController(
+            state: state,
             smartService: smartService,
+            diskSampler: diskSampler,
+            deviceDiscovery: deviceDiscovery,
+            systemProfilerProvider: systemProfilerProvider,
+            diskUtilAPFSProvider: diskUtilAPFSProvider,
+            volumeCapacityRefresher: volumeCapacityRefresher,
             deviceIOTracker: deviceIOTracker,
             ejectCoordinator: ejectCoordinator
-        ))
+        )
     }
 
     var body: some Scene {
