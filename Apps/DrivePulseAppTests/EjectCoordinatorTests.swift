@@ -40,6 +40,40 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(normalBSDNames, [])
     }
 
+    func testTopologyAdvanceDuringResolveSelfValidatesLatestGenerationAndContinues() async throws {
+        let resolveGate = AsyncGate()
+        let fixture = Fixture(resolveGate: resolveGate)
+        await fixture.resolver.setRevalidations([.success(fixture.resolved(scopePath: "/Volumes/Latest"))])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.events.snapshot()).contains("resolve") }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        await resolveGate.open()
+
+        try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
+        let normalCalls = await fixture.ejecter.normalCalls()
+        let revalidationCalls = await fixture.resolver.revalidationCalls()
+        XCTAssertEqual(normalCalls, ["disk4"])
+        XCTAssertEqual(revalidationCalls.count, 1)
+    }
+
+    func testReassignmentDuringBarrierAcquisitionEndsNeutrallyWithoutEject() async throws {
+        let acquireGate = AsyncGate()
+        let fixture = Fixture(quiescerAcquireGate: acquireGate)
+        await fixture.resolver.setRevalidations([.failure(EjectTargetResolutionError.targetChanged)])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.events.snapshot()).contains("acquire") }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        await acquireGate.open()
+
+        try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
+        let normalCalls = await fixture.ejecter.normalCalls()
+        let forceCalls = await fixture.ejecter.forceCalls()
+        XCTAssertEqual(normalCalls, [])
+        XCTAssertEqual(forceCalls, [])
+    }
+
     func testBusyFailureKeepsBarrierScansAndPersistsRecovery() async throws {
         let holder = OccupancyHolder(pid: 42, executableName: "Finder", displayName: nil, type: .openFileOrDirectory)
         let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))], holders: [holder])
@@ -577,7 +611,9 @@ private final class Fixture {
         normalGate: AsyncGate? = nil,
         forceGate: AsyncGate? = nil,
         scanGate: AsyncGate? = nil,
-        releaseGate: AsyncGate? = nil
+        releaseGate: AsyncGate? = nil,
+        resolveGate: AsyncGate? = nil,
+        quiescerAcquireGate: AsyncGate? = nil
     ) {
         let target = self.target
         let scope = OccupancyTargetScope(
@@ -585,14 +621,23 @@ private final class Fixture {
             deviceNodes: ["/dev/disk4"],
             mountURLs: [URL(fileURLWithPath: "/Volumes/T7")]
         )
-        resolver = ResolverSpy(resolved: .init(target: target, scope: scope), events: events)
+        resolver = ResolverSpy(
+            resolved: .init(target: target, scope: scope),
+            resolveGate: resolveGate,
+            events: events
+        )
         barrier = BarrierSpy(
             waitError: barrierError,
             waitGate: barrierWaitGate,
             releaseGate: releaseGate,
             events: events
         )
-        quiescer = QuiescerSpy(barrier: barrier, error: quiescerError, events: events)
+        quiescer = QuiescerSpy(
+            barrier: barrier,
+            error: quiescerError,
+            acquireGate: quiescerAcquireGate,
+            events: events
+        )
         ejecter = EjecterSpy(
             normalResults: normalResults,
             forceResults: forceResults,
@@ -638,14 +683,16 @@ private actor EventLog {
 
 private actor ResolverSpy: EjectTargetResolving {
     private let resolved: ResolvedEjectTarget
+    private let resolveGate: AsyncGate?
     private let events: EventLog
     private var revalidations: [Result<ResolvedEjectTarget, Error>] = []
     private var revalidationGates: [AsyncGate] = []
     private(set) var resolveDeviceIDs: [DeviceID] = []
     private(set) var revalidatedTargets: [EjectWorkflowTarget] = []
 
-    init(resolved: ResolvedEjectTarget, events: EventLog) {
+    init(resolved: ResolvedEjectTarget, resolveGate: AsyncGate?, events: EventLog) {
         self.resolved = resolved
+        self.resolveGate = resolveGate
         self.events = events
     }
 
@@ -657,6 +704,7 @@ private actor ResolverSpy: EjectTargetResolving {
     func resolve(deviceID: DeviceID, displayName: String, topologyGeneration: Int) async throws -> ResolvedEjectTarget {
         resolveDeviceIDs.append(deviceID)
         await events.append("resolve")
+        await resolveGate?.wait()
         return resolved
     }
 
@@ -707,11 +755,18 @@ private actor BarrierSpy: EjectBarrier {
 private actor QuiescerSpy: DeviceIOQuiescing {
     private let barrier: BarrierSpy
     private let error: DeviceIOQuiescenceError?
+    private let acquireGate: AsyncGate?
     private let events: EventLog
 
-    init(barrier: BarrierSpy, error: DeviceIOQuiescenceError?, events: EventLog) {
+    init(
+        barrier: BarrierSpy,
+        error: DeviceIOQuiescenceError?,
+        acquireGate: AsyncGate?,
+        events: EventLog
+    ) {
         self.barrier = barrier
         self.error = error
+        self.acquireGate = acquireGate
         self.events = events
     }
 
@@ -720,6 +775,7 @@ private actor QuiescerSpy: DeviceIOQuiescing {
         timeout: Duration
     ) async throws(DeviceIOQuiescenceError) -> any EjectBarrier {
         await events.append("acquire")
+        await acquireGate?.wait()
         if let error { throw error }
         return barrier
     }

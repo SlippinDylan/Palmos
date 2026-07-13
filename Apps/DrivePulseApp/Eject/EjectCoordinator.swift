@@ -212,9 +212,18 @@ final class EjectCoordinator: ObservableObject {
         while isCurrent(workflow.id) {
             let generation = latestTopologyGeneration ?? workflow.target.topologyGeneration
             if (validatedTopologyGeneration ?? Int.min) < generation {
-                await topologyValidationTask?.value
+                if let topologyValidationTask {
+                    await topologyValidationTask.value
+                    guard isCurrent(workflow.id) else { return nil }
+                    continue
+                }
+
+                let refreshed = try await resolver.revalidate(workflow.target)
                 guard isCurrent(workflow.id) else { return nil }
-                continue
+                guard latestTopologyGeneration == generation else { continue }
+                validatedTopologyGeneration = generation
+                workflow.refreshScope(refreshed.scope, generation: generation)
+                return refreshed
             }
 
             let refreshed = try await resolver.revalidate(workflow.target)
