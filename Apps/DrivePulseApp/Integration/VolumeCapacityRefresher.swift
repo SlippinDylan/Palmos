@@ -12,14 +12,21 @@ final class VolumeCapacityRefresher {
     var onUpdate: (([CapacityUpdate]) -> Void)?
     private var timer: Timer?
     private var mountPoints: [String: String] = [:]  // bsdName → mountPoint
+    private var physicalBSDNames: [String: String] = [:]
+    private let deviceIOTracker: DeviceIOTracker?
 
-    func start(mountPoints: [String: String]) {
+    init(deviceIOTracker: DeviceIOTracker? = nil) {
+        self.deviceIOTracker = deviceIOTracker
+    }
+
+    func start(mountPoints: [String: String], physicalBSDNames: [String: String] = [:]) {
         self.mountPoints = mountPoints
+        self.physicalBSDNames = physicalBSDNames
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.refresh() }
+            Task { @MainActor [weak self] in await self?.refresh() }
         }
-        refresh()
+        Task { await refresh() }
     }
 
     func stop() {
@@ -31,10 +38,26 @@ final class VolumeCapacityRefresher {
         self.mountPoints = mountPoints
     }
 
-    private func refresh() {
+    private func refresh() async {
         var updates: [CapacityUpdate] = []
         for (bsdName, mountPoint) in mountPoints {
-            guard let update = readCapacity(bsdName: bsdName, at: mountPoint) else { continue }
+            let token: DeviceIOTracker.Token?
+            if let deviceIOTracker {
+                guard let physicalBSDName = physicalBSDNames[bsdName] else { continue }
+                do {
+                    token = try await deviceIOTracker.beginTargetOperation(
+                        physicalBSDName: physicalBSDName,
+                        kind: .capacity
+                    )
+                } catch {
+                    continue
+                }
+            } else {
+                token = nil
+            }
+            let update = readCapacity(bsdName: bsdName, at: mountPoint)
+            if let token { await deviceIOTracker?.finish(token) }
+            guard let update else { continue }
             updates.append(update)
         }
         guard !updates.isEmpty else { return }

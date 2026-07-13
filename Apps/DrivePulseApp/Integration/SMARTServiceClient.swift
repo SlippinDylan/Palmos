@@ -22,12 +22,16 @@ final class SMARTServiceClient: SMARTServiceProviding {
     private let isHelperInstalledOperation: @Sendable () -> Bool
     private let fetchHelperHandshakeOperation: @Sendable () async throws -> Data
     private let readSMARTDataOperation: @Sendable (Data) async throws -> Data
+    private let readSMARTDataWithCompletionOperation: (@Sendable (Data) async throws -> Data)?
+    private let deviceIOTracker: DeviceIOTracker?
 
     init(
         helperMachServiceName: String = "com.drivepulse.smartservice",
         isHelperInstalled: (@Sendable () -> Bool)? = nil,
         fetchHelperHandshake: (@Sendable () async throws -> Data)? = nil,
-        readSMARTData: (@Sendable (Data) async throws -> Data)? = nil
+        readSMARTData: (@Sendable (Data) async throws -> Data)? = nil,
+        readSMARTDataWithCompletion: (@Sendable (Data) async throws -> Data)? = nil,
+        deviceIOTracker: DeviceIOTracker? = nil
     ) {
         self.helperMachServiceName = helperMachServiceName
         self.isHelperInstalledOperation = isHelperInstalled ?? {
@@ -42,6 +46,19 @@ final class SMARTServiceClient: SMARTServiceProviding {
                 helperMachServiceName: helperMachServiceName
             )
         }
+        if let readSMARTDataWithCompletion {
+            self.readSMARTDataWithCompletionOperation = readSMARTDataWithCompletion
+        } else if readSMARTData == nil {
+            self.readSMARTDataWithCompletionOperation = { requestData in
+                try await Self.readSMARTDataWithCompletion(
+                    requestData,
+                    helperMachServiceName: helperMachServiceName
+                )
+            }
+        } else {
+            self.readSMARTDataWithCompletionOperation = nil
+        }
+        self.deviceIOTracker = deviceIOTracker
     }
 
     func evaluateHandshake(_ handshake: HelperHandshake) -> XPCCompatibilityResult {
@@ -68,7 +85,8 @@ final class SMARTServiceClient: SMARTServiceProviding {
     func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
         do {
             let handshakeData = try await fetchHelperHandshakeOperation()
-            let compatibility = try evaluateHandshake(from: handshakeData)
+            let handshake = try decodeHandshake(from: handshakeData)
+            let compatibility = evaluateHandshake(handshake)
 
             guard compatibility != .updateRequired else {
                 return .updateRequired
@@ -80,7 +98,23 @@ final class SMARTServiceClient: SMARTServiceProviding {
                 deviceModel: device.displayName
             )
             let requestData = try encodeReadRequest(request)
-            let payload = try await readSMARTDataOperation(requestData)
+            let token = try await deviceIOTracker?.beginTargetOperation(
+                physicalBSDName: device.physicalStoreBSDName,
+                kind: .smart
+            )
+            let payload: Data
+            if handshake.contractMinor >= XPCContractVersion.completionAwareSMARTMinor,
+               let readSMARTDataWithCompletionOperation {
+                let responseData = try await readSMARTDataWithCompletionOperation(requestData)
+                let response = try DrivePulseXPCMessages.decodeAcknowledgedSMARTReadCompletionResponse(
+                    from: responseData
+                )
+                payload = response.payload
+                if let token { await deviceIOTracker?.finish(token) }
+            } else {
+                payload = try await readSMARTDataOperation(requestData)
+                if let token { await deviceIOTracker?.finish(token) }
+            }
             let smartData = try SmartDataParser.parse(jsonData: payload)
             return .available(smartData, compatibility: compatibility)
         } catch {
@@ -124,6 +158,26 @@ final class SMARTServiceClient: SMARTServiceProviding {
                     return
                 }
 
+                continuation.resume(returning: data)
+            }
+        }
+    }
+
+    private static func readSMARTDataWithCompletion(
+        _ requestData: Data,
+        helperMachServiceName: String
+    ) async throws -> Data {
+        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, continuation in
+            proxy.readSMARTDataWithCompletion(for: requestData) { data, error in
+                connection.invalidate()
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let data else {
+                    continuation.resume(throwing: SMARTServiceClientError.missingReplyData)
+                    return
+                }
                 continuation.resume(returning: data)
             }
         }

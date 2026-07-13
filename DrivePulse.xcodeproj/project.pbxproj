@@ -71,6 +71,8 @@
 		100000000000000000000042 /* DiskArbitrationErrorClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000042 /* DiskArbitrationErrorClassifier.swift */; };
 		100000000000000000000045 /* DiskArbitrationEjectClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000044 /* DiskArbitrationEjectClientTests.swift */; };
 		100000000000000000000046 /* DiskArbitrationEjectClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000045 /* DiskArbitrationEjectClient.swift */; };
+		100000000000000000000047 /* DeviceIOQuiescer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000046 /* DeviceIOQuiescer.swift */; };
+		100000000000000000000048 /* DeviceIOQuiescerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000047 /* DeviceIOQuiescerTests.swift */; };
 		100000000000000000000043 /* unix-ebusy-status.json in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000043 /* unix-ebusy-status.json */; };
 		E268DE9D187C136F974A3F7E /* MenuBarExtraAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 322662F17F85D329F8C03472 /* MenuBarExtraAccess */; };
 /* End PBXBuildFile section */
@@ -175,6 +177,8 @@
 		200000000000000000000043 /* unix-ebusy-status.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Fixtures/DiskArbitration/unix-ebusy-status.json; sourceTree = "<group>"; };
 		200000000000000000000044 /* DiskArbitrationEjectClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskArbitrationEjectClientTests.swift; sourceTree = "<group>"; };
 		200000000000000000000045 /* DiskArbitrationEjectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskArbitrationEjectClient.swift; sourceTree = "<group>"; };
+		200000000000000000000046 /* DeviceIOQuiescer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIOQuiescer.swift; sourceTree = "<group>"; };
+		200000000000000000000047 /* DeviceIOQuiescerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIOQuiescerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -248,6 +252,7 @@
 			children = (
 				200000000000000000000042 /* DiskArbitrationErrorClassifier.swift */,
 				200000000000000000000045 /* DiskArbitrationEjectClient.swift */,
+				200000000000000000000046 /* DeviceIOQuiescer.swift */,
 				20000000000000000000003E /* EjectModels.swift */,
 				200000000000000000000040 /* EjectTargetResolver.swift */,
 			);
@@ -315,6 +320,7 @@
 				20000000000000000000003F /* EjectTargetResolverTests.swift */,
 				200000000000000000000041 /* DiskArbitrationErrorClassifierTests.swift */,
 				200000000000000000000044 /* DiskArbitrationEjectClientTests.swift */,
+				200000000000000000000047 /* DeviceIOQuiescerTests.swift */,
 				200000000000000000000043 /* unix-ebusy-status.json */,
 				200000000000000000000022 /* Task7HelperPackagingTests.swift */,
 				200000000000000000000011 /* Task6SettingsAndActionsTests.swift */,
@@ -611,6 +617,7 @@
 				100000000000000000000040 /* EjectTargetResolver.swift in Sources */,
 				100000000000000000000042 /* DiskArbitrationErrorClassifier.swift in Sources */,
 				100000000000000000000046 /* DiskArbitrationEjectClient.swift in Sources */,
+				100000000000000000000047 /* DeviceIOQuiescer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -630,6 +637,7 @@
 				10000000000000000000003F /* EjectTargetResolverTests.swift in Sources */,
 				100000000000000000000041 /* DiskArbitrationErrorClassifierTests.swift in Sources */,
 				100000000000000000000045 /* DiskArbitrationEjectClientTests.swift in Sources */,
+				100000000000000000000048 /* DeviceIOQuiescerTests.swift in Sources */,
 				100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */,
 				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
 				10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */,

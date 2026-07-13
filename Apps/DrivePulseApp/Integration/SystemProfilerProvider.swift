@@ -21,9 +21,12 @@ private final class DataBox: @unchecked Sendable {
 
 enum SubprocessRunner {
     static func run(executable: String, arguments: [String]) async -> Data? {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
+        let processBox = ProcessBox()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .utility).async {
                 let process = Process()
+                processBox.set(process)
                 let stdoutPipe = Pipe()
                 let stderrPipe = Pipe()
                 process.executableURL = URL(fileURLWithPath: executable)
@@ -73,7 +76,32 @@ enum SubprocessRunner {
                     }
                 }
                 continuation.resume(returning: stdoutData.isEmpty ? nil : stdoutData)
+                processBox.clear(process)
+                }
             }
+        } onCancel: {
+            processBox.terminate()
+        }
+    }
+}
+
+private final class ProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+
+    func set(_ process: Process) {
+        lock.withLock { self.process = process }
+    }
+
+    func clear(_ process: Process) {
+        lock.withLock {
+            if self.process === process { self.process = nil }
+        }
+    }
+
+    func terminate() {
+        lock.withLock {
+            if process?.isRunning == true { process?.terminate() }
         }
     }
 }
@@ -108,11 +136,14 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
     private let cacheBox = SystemProfilerCacheBox()
     private let requestCoordinator = LatestRequestCoordinator()
     private let dataTypeRunner: @Sendable (String) async -> Data?
+    private let deviceIOTracker: DeviceIOTracker?
 
     init(
-        dataTypeRunner: @escaping @Sendable (String) async -> Data? = LiveSystemProfilerProvider.runSystemProfiler
+        dataTypeRunner: @escaping @Sendable (String) async -> Data? = LiveSystemProfilerProvider.runSystemProfiler,
+        deviceIOTracker: DeviceIOTracker? = nil
     ) {
         self.dataTypeRunner = dataTypeRunner
+        self.deviceIOTracker = deviceIOTracker
     }
 
     func fetchIfNeeded() async {
@@ -167,6 +198,17 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
     }
 
     private func fetchJSON(for dataType: String) async -> [String: Any]? {
+        let token: DeviceIOTracker.Token?
+        do {
+            token = try await deviceIOTracker?.beginGlobalOperation(kind: .systemProfiler)
+        } catch {
+            return nil
+        }
+        defer {
+            if let token, let deviceIOTracker {
+                Task { await deviceIOTracker.finish(token) }
+            }
+        }
         guard let data = await dataTypeRunner(dataType) else {
             NSLog("[SystemProfilerProvider] system_profiler returned no data for %@", dataType)
             return nil

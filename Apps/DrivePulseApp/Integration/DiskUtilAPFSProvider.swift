@@ -16,11 +16,17 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
     private let cacheBox = DiskUtilAPFSCacheBox()
     private let requestCoordinator = LatestRequestCoordinator()
     private let commandRunner: @Sendable (String, [String]) async -> Data?
+    private let deviceIOTracker: DeviceIOTracker?
+    private let physicalBSDNameResolver: @Sendable (String) -> String?
 
     init(
-        commandRunner: @escaping @Sendable (String, [String]) async -> Data? = LiveDiskUtilAPFSProvider.runSubprocess
+        commandRunner: @escaping @Sendable (String, [String]) async -> Data? = LiveDiskUtilAPFSProvider.runSubprocess,
+        deviceIOTracker: DeviceIOTracker? = nil,
+        physicalBSDNameResolver: @escaping @Sendable (String) -> String? = LiveDiskUtilAPFSProvider.defaultPhysicalBSDName
     ) {
         self.commandRunner = commandRunner
+        self.deviceIOTracker = deviceIOTracker
+        self.physicalBSDNameResolver = physicalBSDNameResolver
     }
 
     func refresh() async {
@@ -39,7 +45,10 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
     }
 
     func physicalPartitions(forDiskBSDName bsdName: String) async -> [PhysicalPartitionInfo] {
-        guard let data = await commandRunner("/usr/sbin/diskutil", ["list", "-plist", bsdName]) else {
+        guard let data = await runTargetCommand(
+            physicalBSDName: bsdName,
+            arguments: ["list", "-plist", bsdName]
+        ) else {
             NSLog("[DiskUtilAPFSProvider] diskutil list returned no data for %@", bsdName)
             return []
         }
@@ -227,10 +236,11 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
     }
 
     private func fetchSupplementalVolumeDetails(forBSDName bsdName: String) async -> APFSVolumeDetails? {
-        guard let data = await commandRunner(
-            "/usr/sbin/diskutil",
-            ["info", "-plist", "/dev/\(bsdName)"]
-        ) else {
+        guard let physicalBSDName = physicalBSDNameResolver(bsdName),
+              let data = await runTargetCommand(
+                physicalBSDName: physicalBSDName,
+                arguments: ["info", "-plist", "/dev/\(bsdName)"]
+              ) else {
             NSLog("[DiskUtilAPFSProvider] diskutil info returned no data for %@", bsdName)
             return nil
         }
@@ -319,6 +329,31 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
 
     private static func runSubprocess(executable: String, arguments: [String]) async -> Data? {
         await SubprocessRunner.run(executable: executable, arguments: arguments)
+    }
+
+    private func runTargetCommand(physicalBSDName: String, arguments: [String]) async -> Data? {
+        let token: DeviceIOTracker.Token?
+        do {
+            token = try await deviceIOTracker?.beginTargetOperation(
+                physicalBSDName: physicalBSDName,
+                kind: .diskutil
+            )
+        } catch {
+            return nil
+        }
+        defer {
+            if let token, let deviceIOTracker {
+                Task { await deviceIOTracker.finish(token) }
+            }
+        }
+        return await commandRunner("/usr/sbin/diskutil", arguments)
+    }
+
+    private static func defaultPhysicalBSDName(for bsdName: String) -> String? {
+        guard let match = bsdName.range(of: #"^disk\d+"#, options: .regularExpression) else {
+            return nil
+        }
+        return String(bsdName[match])
     }
 }
 
