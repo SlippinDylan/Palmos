@@ -1117,7 +1117,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let initialAPFSListInvocationCount = await runner.apfsListInvocationCount()
         XCTAssertEqual(initialAPFSListInvocationCount, 1)
 
-        await provider.refresh()
+        await provider.refresh(physicalBSDNames: ["disk21"])
         let refreshed = await provider.containerInfo(forContainerBSDName: "disk21s2")
 
         XCTAssertEqual(refreshed?.capacityInUseBytes, 250)
@@ -1130,13 +1130,13 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let runner = OverlappingDiskUtilCommandRunner()
         let provider = LiveDiskUtilAPFSProvider(commandRunner: runner.run)
         let firstRefresh = Task {
-            await provider.refresh()
+            await provider.refresh(physicalBSDNames: ["disk21"])
         }
 
         await runner.waitUntilAPFSListInvocationCount(is: 1)
 
         let secondRefresh = Task {
-            await provider.refresh()
+            await provider.refresh(physicalBSDNames: ["disk21"])
         }
 
         await runner.waitUntilAPFSListInvocationCount(is: 2)
@@ -2077,7 +2077,7 @@ private actor StubDiskUtilCommandRunner {
     }
 
     func run(_ executable: String, _ arguments: [String]) async -> Data? {
-        if arguments == ["apfs", "list", "-plist"] {
+        if arguments.count == 4, Array(arguments.prefix(3)) == ["apfs", "list", "-plist"] {
             apfsListInvocationCountValue += 1
         }
 
@@ -2091,6 +2091,15 @@ private actor StubDiskUtilCommandRunner {
         if var routedOutputs = outputsByArguments[arguments], routedOutputs.isEmpty == false {
             let output = routedOutputs.removeFirst()
             outputsByArguments[arguments] = routedOutputs
+            return output
+        }
+
+        if arguments.count == 4,
+           Array(arguments.prefix(3)) == ["apfs", "list", "-plist"],
+           var routedOutputs = outputsByArguments[["apfs", "list", "-plist"]],
+           routedOutputs.isEmpty == false {
+            let output = routedOutputs.removeFirst()
+            outputsByArguments[["apfs", "list", "-plist"]] = routedOutputs
             return output
         }
 
@@ -2204,7 +2213,8 @@ private actor OverlappingDiskUtilCommandRunner {
     private var continuations: [Int: CheckedContinuation<Data?, Never>] = [:]
 
     func run(_ executable: String, _ arguments: [String]) async -> Data? {
-        guard arguments == ["apfs", "list", "-plist"] else {
+        guard arguments.count == 4,
+              Array(arguments.prefix(3)) == ["apfs", "list", "-plist"] else {
             return nil
         }
 

@@ -55,7 +55,9 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
     }
 
     func containerInfo(forContainerBSDName bsdName: String) async -> APFSContainerInfo? {
-        let containerInfoByBSDName = await cachedContainerInfoByBSDName()
+        let containerInfoByBSDName = await cachedContainerInfoByBSDName(
+            requestedBSDName: bsdName
+        )
         return containerInfoByBSDName?[bsdName]
     }
 
@@ -105,14 +107,19 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
 
     // MARK: - Private helpers
 
-    private func cachedContainerInfoByBSDName() async -> [String: APFSContainerInfo]? {
+    private func cachedContainerInfoByBSDName(
+        requestedBSDName: String
+    ) async -> [String: APFSContainerInfo]? {
         if let cached = cacheBox.get() {
             return cached
         }
 
         let generation = await requestCoordinator.beginRequest()
+        guard let physicalBSDName = physicalBSDNameResolver(requestedBSDName) else {
+            return nil
+        }
         guard let containerInfoByBSDName = await fetchContainerInfoByBSDName(
-            physicalBSDNames: []
+            physicalBSDNames: [physicalBSDName]
         ) else {
             return nil
         }
@@ -127,29 +134,33 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
     private func fetchContainerInfoByBSDName(
         physicalBSDNames: Set<String>
     ) async -> [String: APFSContainerInfo]? {
-        guard let data = await runAPFSListCommand(physicalBSDNames: physicalBSDNames) else {
-            NSLog("[DiskUtilAPFSProvider] diskutil apfs list returned no data")
+        guard physicalBSDNames.isEmpty == false else {
             return nil
-        }
-
-        guard let plist = try? PropertyListSerialization.propertyList(
-            from: data, options: [], format: nil
-        ) as? [String: Any] else {
-            NSLog("[DiskUtilAPFSProvider] Failed to parse diskutil apfs list plist")
-            return nil
-        }
-
-        guard let containers = plist["Containers"] as? [[String: Any]] else {
-            return [:]
         }
 
         var containerInfoByBSDName: [String: APFSContainerInfo] = [:]
-        for container in containers {
-            guard let bsdName = container["ContainerReference"] as? String,
-                  bsdName.isEmpty == false else {
+        for physicalBSDName in physicalBSDNames.sorted() {
+            guard let data = await runAPFSListCommand(physicalBSDName: physicalBSDName) else {
                 continue
             }
-            containerInfoByBSDName[bsdName] = await buildContainerInfo(from: container, bsdName: bsdName)
+            guard let plist = try? PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil
+            ) as? [String: Any] else {
+                NSLog("[DiskUtilAPFSProvider] Failed to parse diskutil apfs list plist for %@", physicalBSDName)
+                continue
+            }
+            let containers = plist["Containers"] as? [[String: Any]] ?? []
+            for container in containers {
+                guard let bsdName = container["ContainerReference"] as? String,
+                      bsdName.isEmpty == false,
+                      containerInfoByBSDName[bsdName] == nil else {
+                    continue
+                }
+                containerInfoByBSDName[bsdName] = await buildContainerInfo(
+                    from: container,
+                    bsdName: bsdName
+                )
+            }
         }
         return containerInfoByBSDName
     }
@@ -362,25 +373,11 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
         return data
     }
 
-    private func runAPFSListCommand(physicalBSDNames: Set<String>) async -> Data? {
-        let tokens: [DeviceIOTracker.Token]
-        do {
-            if let deviceIOTracker {
-                tokens = try await deviceIOTracker.beginTargetOperations(
-                    physicalBSDNames: physicalBSDNames,
-                    kind: .diskutil
-                )
-            } else {
-                tokens = []
-            }
-        } catch {
-            return nil
-        }
-        let data = await commandRunner("/usr/sbin/diskutil", ["apfs", "list", "-plist"])
-        if let deviceIOTracker {
-            for token in tokens { await deviceIOTracker.finish(token) }
-        }
-        return data
+    private func runAPFSListCommand(physicalBSDName: String) async -> Data? {
+        await runTargetCommand(
+            physicalBSDName: physicalBSDName,
+            arguments: ["apfs", "list", "-plist", physicalBSDName]
+        )
     }
 
     private static func defaultPhysicalBSDName(for bsdName: String) -> String? {
