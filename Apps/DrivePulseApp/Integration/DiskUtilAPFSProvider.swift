@@ -405,14 +405,10 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
             return nil
         }
 
-        let containerBSDName: String?
-        if let authoritativeContainer = target.containerBSDName {
-            containerBSDName = authoritativeContainer
-        } else {
-            containerBSDName = await resolveContainerBSDName(
-                forPhysicalBSDName: target.physicalBSDName
-            )
-        }
+        let containerBSDName = await resolveContainerBSDName(
+            forPhysicalBSDName: target.physicalBSDName,
+            expectedContainerBSDName: target.containerBSDName
+        )
         guard let containerBSDName else {
             if let token, let deviceIOTracker { await deviceIOTracker.finish(token) }
             return nil
@@ -425,7 +421,10 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
         return data
     }
 
-    private func resolveContainerBSDName(forPhysicalBSDName physicalBSDName: String) async -> String? {
+    private func resolveContainerBSDName(
+        forPhysicalBSDName physicalBSDName: String,
+        expectedContainerBSDName: String?
+    ) async -> String? {
         guard let data = await commandRunner(
             "/usr/sbin/diskutil",
             ["info", "-plist", physicalBSDName]
@@ -435,7 +434,11 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
         plist["DeviceIdentifier"] as? String == physicalBSDName,
         plist["Content"] as? String == "Apple_APFS",
         let containerBSDName = plist["APFSContainerReference"] as? String,
-        containerBSDName.range(of: #"^disk\d+$"#, options: .regularExpression) != nil else {
+        containerBSDName.range(of: #"^disk\d+(s\d+)*$"#, options: .regularExpression) != nil else {
+            return nil
+        }
+        if let expectedContainerBSDName,
+           expectedContainerBSDName != containerBSDName {
             return nil
         }
         return containerBSDName

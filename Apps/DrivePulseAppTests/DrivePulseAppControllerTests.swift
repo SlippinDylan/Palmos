@@ -2083,6 +2083,15 @@ private actor StubDiskUtilCommandRunner {
     }
 
     func run(_ executable: String, _ arguments: [String]) async -> Data? {
+        if arguments == ["info", "-plist", "disk21"] {
+            return try? PropertyListSerialization.data(
+                fromPropertyList: [
+                    "DeviceIdentifier": "disk21",
+                    "Content": "Apple_APFS",
+                    "APFSContainerReference": "disk21s2"
+                ], format: .xml, options: 0
+            )
+        }
         if arguments.count == 4, Array(arguments.prefix(3)) == ["apfs", "list", "-plist"] {
             apfsListInvocationCountValue += 1
         }
@@ -2219,6 +2228,15 @@ private actor OverlappingDiskUtilCommandRunner {
     private var continuations: [Int: CheckedContinuation<Data?, Never>] = [:]
 
     func run(_ executable: String, _ arguments: [String]) async -> Data? {
+        if arguments == ["info", "-plist", "disk21"] {
+            return try? PropertyListSerialization.data(
+                fromPropertyList: [
+                    "DeviceIdentifier": "disk21",
+                    "Content": "Apple_APFS",
+                    "APFSContainerReference": "disk21s2"
+                ], format: .xml, options: 0
+            )
+        }
         guard arguments.count == 4,
               Array(arguments.prefix(3)) == ["apfs", "list", "-plist"] else {
             return nil
