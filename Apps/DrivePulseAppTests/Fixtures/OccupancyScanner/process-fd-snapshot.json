@@ -1,0 +1,6 @@
+[
+  {"pid":501,"executableName":"Finder","displayName":"Finder","openPaths":["/Volumes/Data/report.txt"],"workingDirectory":null,"deviceNodes":[]},
+  {"pid":502,"executableName":"zsh","displayName":"Terminal","openPaths":[],"workingDirectory":"/Volumes/Data/work","deviceNodes":[]},
+  {"pid":503,"executableName":"worker","displayName":null,"openPaths":[],"workingDirectory":null,"deviceNodes":["/dev/rdisk4"]},
+  {"pid":504,"executableName":"unrelated","displayName":null,"openPaths":["/Volumes/Database/file"],"workingDirectory":null,"deviceNodes":["/dev/disk40"]}
+]
