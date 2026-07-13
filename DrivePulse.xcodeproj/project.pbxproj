@@ -98,6 +98,8 @@
 		100000000000000000000060 /* HelperAuthoritativeSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000057 /* HelperAuthoritativeSnapshot.swift */; };
 		100000000000000000000061 /* OccupancyScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000058 /* OccupancyScannerTests.swift */; };
 		100000000000000000000062 /* OccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000059 /* OccupancyScanner.swift */; };
+		100000000000000000000063 /* EjectCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005A /* EjectCoordinatorTests.swift */; };
+		100000000000000000000064 /* EjectCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005B /* EjectCoordinator.swift */; };
 		E268DE9D187C136F974A3F7E /* MenuBarExtraAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 322662F17F85D329F8C03472 /* MenuBarExtraAccess */; };
 /* End PBXBuildFile section */
 
@@ -218,6 +220,8 @@
 		200000000000000000000057 /* HelperAuthoritativeSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperAuthoritativeSnapshot.swift; sourceTree = "<group>"; };
 		200000000000000000000058 /* OccupancyScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OccupancyScannerTests.swift; sourceTree = "<group>"; };
 		200000000000000000000059 /* OccupancyScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OccupancyScanner.swift; sourceTree = "<group>"; };
+		20000000000000000000005A /* EjectCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectCoordinatorTests.swift; sourceTree = "<group>"; };
+		20000000000000000000005B /* EjectCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -305,6 +309,7 @@
 				200000000000000000000046 /* DeviceIOQuiescer.swift */,
 				20000000000000000000004A /* AppOccupancyScanner.swift */,
 				200000000000000000000059 /* OccupancyScanner.swift */,
+				20000000000000000000005B /* EjectCoordinator.swift */,
 				20000000000000000000003E /* EjectModels.swift */,
 				200000000000000000000040 /* EjectTargetResolver.swift */,
 			);
@@ -376,6 +381,7 @@
 				200000000000000000000048 /* AppOccupancyScannerTests.swift */,
 				20000000000000000000004C /* OccupancyXPCMessageTests.swift */,
 				200000000000000000000058 /* OccupancyScannerTests.swift */,
+				20000000000000000000005A /* EjectCoordinatorTests.swift */,
 				200000000000000000000049 /* process-fd-snapshot.json */,
 				200000000000000000000043 /* unix-ebusy-status.json */,
 				200000000000000000000022 /* Task7HelperPackagingTests.swift */,
@@ -724,6 +730,7 @@
 				100000000000000000000047 /* DeviceIOQuiescer.swift in Sources */,
 				10000000000000000000004B /* AppOccupancyScanner.swift in Sources */,
 				100000000000000000000062 /* OccupancyScanner.swift in Sources */,
+				100000000000000000000064 /* EjectCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -747,6 +754,7 @@
 				100000000000000000000049 /* AppOccupancyScannerTests.swift in Sources */,
 				10000000000000000000004D /* OccupancyXPCMessageTests.swift in Sources */,
 				100000000000000000000061 /* OccupancyScannerTests.swift in Sources */,
+				100000000000000000000063 /* EjectCoordinatorTests.swift in Sources */,
 				100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */,
 				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
 				10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */,
