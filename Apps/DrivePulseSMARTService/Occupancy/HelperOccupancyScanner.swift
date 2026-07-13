@@ -45,9 +45,13 @@ actor HelperOccupancyScanner {
         defer { if active?.cancellation === cancellation { active = nil } }
 
         let deadline = ContinuousClock.now.advanced(by: timeout)
-        let candidates = try await inspector.candidatePIDs(limit: OccupancyXPCLimits.maxCandidatePIDs)
+        let returnedCandidates = try await inspector.candidatePIDs(limit: OccupancyXPCLimits.maxCandidatePIDs)
+        guard !cancellation.isCancelled, ContinuousClock.now < deadline else {
+            return OccupancyScanResponse(workflowID: workflowID, holders: [], isComplete: false)
+        }
+        let candidates = Array(returnedCandidates.prefix(OccupancyXPCLimits.maxCandidatePIDs))
         var holders: [OccupancyHolderMessage] = []
-        var complete = candidates.count < OccupancyXPCLimits.maxCandidatePIDs
+        var complete = returnedCandidates.count < OccupancyXPCLimits.maxCandidatePIDs
         for pid in candidates {
             guard !cancellation.isCancelled, ContinuousClock.now < deadline else {
                 return OccupancyScanResponse(workflowID: workflowID, holders: [], isComplete: false)
@@ -56,7 +60,7 @@ actor HelperOccupancyScanner {
                 let snapshot = try await inspector.inspect(pid: pid, scope: scope) {
                     !cancellation.isCancelled && ContinuousClock.now < deadline
                 }
-                guard !cancellation.isCancelled else {
+                guard !cancellation.isCancelled, ContinuousClock.now < deadline else {
                     return OccupancyScanResponse(workflowID: workflowID, holders: [], isComplete: false)
                 }
                 complete = complete && snapshot.isComplete

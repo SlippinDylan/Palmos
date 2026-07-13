@@ -3,54 +3,25 @@ import Foundation
 
 final class DrivePulseSMARTService: NSObject, DrivePulseSMARTXPCProtocol {
     private let runner: SmartctlRunner
-    private let occupancyValidator: HelperOccupancyRequestValidator
-    private let topologyResolver: HelperDiskTopologyResolver
-    private let occupancyScanner: HelperOccupancyScanner
+    private let occupancyEndpoint: HelperOccupancyEndpoint
 
     init(
         runner: SmartctlRunner = SmartctlRunner(),
-        occupancyValidator: HelperOccupancyRequestValidator = HelperOccupancyRequestValidator(),
-        topologyResolver: HelperDiskTopologyResolver = HelperDiskTopologyResolver(),
-        occupancyScanner: HelperOccupancyScanner = HelperOccupancyScanner()
+        occupancyEndpoint: HelperOccupancyEndpoint = HelperOccupancyEndpoint()
     ) {
         self.runner = runner
-        self.occupancyValidator = occupancyValidator
-        self.topologyResolver = topologyResolver
-        self.occupancyScanner = occupancyScanner
+        self.occupancyEndpoint = occupancyEndpoint
     }
 
     func scanDiskOccupancy(
         for requestData: Data,
         withReply reply: @escaping (Data?, NSError?) -> Void
     ) {
-        do {
-            try HelperOccupancyRequestValidator.validateRequestBytes(requestData)
-            let request = try DrivePulseXPCMessages.decodeOccupancyRequest(from: requestData)
-            let replyBox = XPCReplyBox(reply)
-            let validator = occupancyValidator
-            let resolver = topologyResolver
-            let scanner = occupancyScanner
-            Task {
-                do {
-                    try await validator.validate(request)
-                    let scope = try await resolver.resolve(
-                        wholeBSDName: request.physicalDeviceBSDName
-                    )
-                    let response = try await scanner.scan(
-                        workflowID: request.workflowID,
-                        scope: scope
-                    )
-                    replyBox.call(try DrivePulseXPCMessages.encodeOccupancyResponse(response), nil)
-                } catch let error as HelperOccupancyError {
-                    replyBox.call(nil, error.nsError)
-                } catch {
-                    replyBox.call(nil, HelperOccupancyError.scanFailed.nsError)
-                }
-            }
-        } catch let error as HelperOccupancyError {
-            reply(nil, error.nsError)
-        } catch {
-            reply(nil, HelperOccupancyError.invalidRequest.nsError)
+        let replyBox = XPCReplyBox(reply)
+        let endpoint = occupancyEndpoint
+        Task {
+            let result = await endpoint.handle(requestData)
+            replyBox.call(result.data, result.error)
         }
     }
 

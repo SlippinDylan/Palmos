@@ -11,3 +11,5 @@ OTHER_LDFLAGS = $(inherited) -sectcreate __TEXT __launchd_plist $(HELPER_LAUNCHD
 PRODUCT_NAME = $(PRODUCT_BUNDLE_IDENTIFIER)
 SKIP_INSTALL = YES
 SWIFT_EMIT_LOC_STRINGS = YES
+// Bare `xcodebuild -target` places local package modules under the package build root.
+SWIFT_INCLUDE_PATHS = $(inherited) $(PROJECT_DIR)/Packages/DrivePulseCore/build/$(CONFIGURATION)

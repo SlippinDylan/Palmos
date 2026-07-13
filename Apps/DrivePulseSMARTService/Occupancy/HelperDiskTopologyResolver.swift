@@ -38,8 +38,10 @@ struct HelperDiskTopologyResolver: Sendable {
 }
 
 enum LiveHelperDiskTopologySource {
+    typealias DiskutilQuery = @Sendable ([String]) throws -> [String: Any]?
+
     static func media(_ bsdName: String) async throws -> HelperDiskMedia? {
-        guard let info = try diskutil(arguments: ["info", "-plist", bsdName]) else { return nil }
+        guard let info = try diskutil(["info", "-plist", bsdName]) else { return nil }
         return HelperDiskMedia(
             whole: info["Whole"] as? Bool == true,
             external: info["Internal"] as? Bool == false,
@@ -48,22 +50,67 @@ enum LiveHelperDiskTopologySource {
     }
 
     static func topology(_ bsdName: String) async throws -> HelperDiskTopology? {
-        guard let list = try diskutil(arguments: ["list", "-plist", bsdName]) else { return nil }
-        var names = Set<String>()
-        var mounts = Set<String>()
-        collectStrings(in: list, key: "DeviceIdentifier", into: &names)
-        collectStrings(in: list, key: "MountPoint", into: &mounts)
+        try await topology(bsdName, query: diskutil)
+    }
 
-        if let apfs = try diskutil(arguments: ["apfs", "list", "-plist", bsdName]) {
-            collectStrings(in: apfs, key: "DeviceIdentifier", into: &names)
-            collectStrings(in: apfs, key: "MountPoint", into: &mounts)
+    static func topology(
+        _ bsdName: String,
+        query: DiskutilQuery
+    ) async throws -> HelperDiskTopology? {
+        guard let list = try query(["list", "-plist", bsdName]) else { return nil }
+        guard let disks = list["AllDisksAndPartitions"] as? [[String: Any]],
+              let physicalDisk = disks.first(where: { $0["DeviceIdentifier"] as? String == bsdName }) else {
+            return nil
         }
-        guard names.contains(bsdName) else { return nil }
-        let nodes = Set(names.flatMap { ["/dev/\($0)", "/dev/r\($0)"] })
+        var physicalNames = Set<String>()
+        var mounts = Set<String>()
+        collectStrings(in: physicalDisk, key: "DeviceIdentifier", into: &physicalNames)
+        collectStrings(in: physicalDisk, key: "MountPoint", into: &mounts)
+        guard physicalNames.contains(bsdName),
+              physicalNames.allSatisfy({ $0 == bsdName || isPartition($0, of: bsdName) }) else {
+            return nil
+        }
+
+        var trustedNames = physicalNames
+        let partitionNames = physicalNames.filter { $0 != bsdName }
+        var containerNames = Set<String>()
+        for partitionName in partitionNames {
+            guard let info = try query(["info", "-plist", partitionName]) else { continue }
+            if let container = info["APFSContainerReference"] as? String,
+               container.range(of: #"^disk[0-9]+$"#, options: .regularExpression) != nil {
+                containerNames.insert(container)
+            }
+        }
+
+        for containerName in containerNames {
+            guard let apfs = try query(["apfs", "list", "-plist", containerName]),
+                  let container = exactContainer(named: containerName, in: apfs) else {
+                return nil
+            }
+            var stores = Set<String>()
+            collectStrings(in: container["PhysicalStores"] as Any, key: "DeviceIdentifier", into: &stores)
+            guard stores.isEmpty == false, stores.isSubset(of: physicalNames) else { return nil }
+
+            trustedNames.insert(containerName)
+            if let volumes = container["Volumes"] as? [[String: Any]] {
+                for volume in volumes {
+                    guard let volumeName = volume["DeviceIdentifier"] as? String,
+                          isPartition(volumeName, of: containerName) else {
+                        return nil
+                    }
+                    trustedNames.insert(volumeName)
+                    if let mount = volume["MountPoint"] as? String, mount.isEmpty == false {
+                        mounts.insert(mount)
+                    }
+                }
+            }
+        }
+
+        let nodes = Set(trustedNames.flatMap { ["/dev/\($0)", "/dev/r\($0)"] })
         return HelperDiskTopology(physicalBSDName: bsdName, deviceNodes: nodes, mountPaths: mounts)
     }
 
-    private static func diskutil(arguments: [String]) throws -> [String: Any]? {
+    private static func diskutil(_ arguments: [String]) throws -> [String: Any]? {
         let process = Process()
         let output = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
@@ -78,6 +125,18 @@ enum LiveHelperDiskTopologySource {
             options: [],
             format: nil
         ) as? [String: Any]
+    }
+
+    private static func exactContainer(named name: String, in plist: [String: Any]) -> [String: Any]? {
+        guard let containers = plist["Containers"] as? [[String: Any]] else { return nil }
+        return containers.first { $0["ContainerReference"] as? String == name }
+    }
+
+    private static func isPartition(_ candidate: String, of whole: String) -> Bool {
+        let prefix = "\(whole)s"
+        guard candidate.hasPrefix(prefix) else { return false }
+        let suffix = candidate.dropFirst(prefix.count)
+        return suffix.isEmpty == false && suffix.allSatisfy(\.isNumber)
     }
 
     private static func collectStrings(in value: Any, key: String, into result: inout Set<String>) {
