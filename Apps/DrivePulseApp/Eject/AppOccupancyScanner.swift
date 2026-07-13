@@ -9,6 +9,40 @@ struct ProcessOccupancySnapshot: Codable, Equatable, Sendable {
     let openPaths: [String]
     let workingDirectory: String?
     let deviceNodes: [String]
+    let isComplete: Bool
+
+    init(
+        pid: Int32,
+        executableName: String,
+        displayName: String?,
+        openPaths: [String],
+        workingDirectory: String?,
+        deviceNodes: [String],
+        isComplete: Bool = true
+    ) {
+        self.pid = pid
+        self.executableName = executableName
+        self.displayName = displayName
+        self.openPaths = openPaths
+        self.workingDirectory = workingDirectory
+        self.deviceNodes = deviceNodes
+        self.isComplete = isComplete
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pid, executableName, displayName, openPaths, workingDirectory, deviceNodes, isComplete
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        pid = try container.decode(Int32.self, forKey: .pid)
+        executableName = try container.decode(String.self, forKey: .executableName)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        openPaths = try container.decode([String].self, forKey: .openPaths)
+        workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
+        deviceNodes = try container.decode([String].self, forKey: .deviceNodes)
+        isComplete = try container.decodeIfPresent(Bool.self, forKey: .isComplete) ?? true
+    }
 }
 
 protocol ProcessInspecting: Sendable {
@@ -32,13 +66,26 @@ struct AppOccupancyScanner: AppOccupancyScanning {
     private static let holderLimit = 64
 
     private let inspector: any ProcessInspecting
-    private let clock = ContinuousClock()
-
     init(inspector: any ProcessInspecting = LiveProcessInspector()) {
         self.inspector = inspector
     }
 
     func scan(scope: OccupancyTargetScope, deadline: ContinuousClock.Instant) async -> OccupancyScanResult {
+        let cancellation = ScanCancellation()
+        return await withTaskCancellationHandler {
+            await Task.detached(priority: .userInitiated) {
+                scanSynchronously(scope: scope, deadline: deadline, cancellation: cancellation)
+            }.value
+        } onCancel: {
+            cancellation.cancel()
+        }
+    }
+
+    private func scanSynchronously(
+        scope: OccupancyTargetScope,
+        deadline: ContinuousClock.Instant,
+        cancellation: ScanCancellation
+    ) -> OccupancyScanResult {
         let candidatePIDs: [Int32]
         do {
             candidatePIDs = try inspector.candidatePIDs(limit: Self.candidateLimit)
@@ -50,14 +97,15 @@ struct AppOccupancyScanner: AppOccupancyScanning {
         var isComplete = candidatePIDs.count < Self.candidateLimit
 
         for (index, pid) in candidatePIDs.enumerated() {
-            guard shouldContinue(until: deadline) else {
+            guard shouldContinue(until: deadline, cancellation: cancellation) else {
                 isComplete = false
                 break
             }
 
             do {
-                let snapshot = try inspect(pid: pid, deadline: deadline)
+                let snapshot = try inspect(pid: pid, deadline: deadline, cancellation: cancellation)
                 holders.append(contentsOf: classify(snapshot, in: scope))
+                isComplete = isComplete && snapshot.isComplete
                 if holders.count >= Self.holderLimit, index < candidatePIDs.index(before: candidatePIDs.endIndex) {
                     isComplete = false
                     break
@@ -79,17 +127,24 @@ struct AppOccupancyScanner: AppOccupancyScanning {
         return lhs.type.rawValue < rhs.type.rawValue
     }
 
-    private func inspect(pid: Int32, deadline: ContinuousClock.Instant) throws -> ProcessOccupancySnapshot {
+    private func inspect(
+        pid: Int32,
+        deadline: ContinuousClock.Instant,
+        cancellation: ScanCancellation
+    ) throws -> ProcessOccupancySnapshot {
         guard let cooperativeInspector = inspector as? any CooperativelyProcessInspecting else {
             return try inspector.inspect(pid: pid)
         }
         return try cooperativeInspector.inspect(pid: pid) {
-            !Task.isCancelled && ContinuousClock.now < deadline
+            !cancellation.isCancelled && ContinuousClock.now < deadline
         }
     }
 
-    private func shouldContinue(until deadline: ContinuousClock.Instant) -> Bool {
-        !Task.isCancelled && clock.now < deadline
+    private func shouldContinue(
+        until deadline: ContinuousClock.Instant,
+        cancellation: ScanCancellation
+    ) -> Bool {
+        !cancellation.isCancelled && ContinuousClock.now < deadline
     }
 
     private func classify(_ snapshot: ProcessOccupancySnapshot, in scope: OccupancyTargetScope) -> [OccupancyHolder] {
@@ -115,10 +170,23 @@ struct AppOccupancyScanner: AppOccupancyScanning {
     }
 }
 
+private final class ScanCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    var isCancelled: Bool { lock.withLock { cancelled } }
+    func cancel() { lock.withLock { cancelled = true } }
+}
+
 struct LiveProcessInspector: CooperativelyProcessInspecting {
     private enum InspectionError: Error {
         case unavailable
         case interrupted
+    }
+
+    private enum FDPathResult {
+        case path(String?)
+        case unavailable(Int32)
     }
 
     func candidatePIDs(limit: Int) throws -> [Int32] {
@@ -144,17 +212,18 @@ struct LiveProcessInspector: CooperativelyProcessInspecting {
     ) throws -> ProcessOccupancySnapshot {
         guard shouldContinue() else { throw InspectionError.interrupted }
         let executableName = try processName(pid: pid)
-        let workingDirectory = try workingDirectory(pid: pid)
-        let descriptorPaths = try vnodePaths(pid: pid, while: shouldContinue)
+        let workingDirectoryResult = workingDirectory(pid: pid)
+        let descriptorResult = try vnodePaths(pid: pid, while: shouldContinue)
         guard shouldContinue() else { throw InspectionError.interrupted }
 
         return ProcessOccupancySnapshot(
             pid: pid,
             executableName: executableName,
             displayName: NSRunningApplication(processIdentifier: pid)?.localizedName,
-            openPaths: descriptorPaths.filter { !$0.hasPrefix("/dev/") },
-            workingDirectory: workingDirectory,
-            deviceNodes: descriptorPaths.filter { $0.hasPrefix("/dev/") }
+            openPaths: descriptorResult.paths.filter { !$0.hasPrefix("/dev/") },
+            workingDirectory: workingDirectoryResult.path,
+            deviceNodes: descriptorResult.paths.filter { $0.hasPrefix("/dev/") },
+            isComplete: workingDirectoryResult.isComplete && descriptorResult.isComplete
         )
     }
 
@@ -162,66 +231,69 @@ struct LiveProcessInspector: CooperativelyProcessInspecting {
         var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         let length = proc_pidpath(pid, &path, UInt32(path.count))
         guard length > 0 else { throw InspectionError.unavailable }
-        return URL(fileURLWithPath: decodeNullTerminated(path)).lastPathComponent
+        return URL(fileURLWithPath: Self.decodePathBuffer(path)).lastPathComponent
     }
 
-    private func workingDirectory(pid: Int32) throws -> String? {
+    private func workingDirectory(pid: Int32) -> (path: String?, isComplete: Bool) {
         var info = proc_vnodepathinfo()
         let size = MemoryLayout<proc_vnodepathinfo>.size
         let returned = withUnsafeMutablePointer(to: &info) {
             proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, $0, Int32(size))
         }
-        guard returned == size else { throw InspectionError.unavailable }
-        return cString(from: &info.pvi_cdir.vip_path)
+        guard returned == size else { return (nil, false) }
+        return (boundedString(from: &info.pvi_cdir.vip_path), true)
     }
 
     private func vnodePaths(
         pid: Int32,
         while shouldContinue: @escaping @Sendable () -> Bool
-    ) throws -> [String] {
+    ) throws -> (paths: [String], isComplete: Bool) {
         let byteCount = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
-        guard byteCount >= 0 else { throw InspectionError.unavailable }
-        guard byteCount > 0 else { return [] }
+        guard byteCount >= 0 else { return ([], false) }
+        guard byteCount > 0 else { return ([], true) }
 
         let descriptorCount = Int(byteCount) / MemoryLayout<proc_fdinfo>.stride
         var descriptors = [proc_fdinfo](repeating: proc_fdinfo(), count: descriptorCount)
         let returned = descriptors.withUnsafeMutableBytes {
             proc_pidinfo(pid, PROC_PIDLISTFDS, 0, $0.baseAddress, Int32($0.count))
         }
-        guard returned >= 0 else { throw InspectionError.unavailable }
+        guard returned >= 0 else { return ([], false) }
 
         var paths: [String] = []
+        var isComplete = true
         for descriptor in descriptors.prefix(Int(returned) / MemoryLayout<proc_fdinfo>.stride) {
             guard shouldContinue() else { throw InspectionError.interrupted }
             guard descriptor.proc_fdtype == PROX_FDTYPE_VNODE else { continue }
-            if let path = try vnodePath(pid: pid, fd: descriptor.proc_fd) {
-                paths.append(path)
+            switch vnodePath(pid: pid, fd: descriptor.proc_fd) {
+            case let .path(path?): paths.append(path)
+            case .path(nil): break
+            case let .unavailable(errorCode):
+                if errorCode != EBADF && errorCode != ENOENT { isComplete = false }
             }
         }
-        return paths
+        return (paths, isComplete)
     }
 
-    private func vnodePath(pid: Int32, fd: Int32) throws -> String? {
+    private func vnodePath(pid: Int32, fd: Int32) -> FDPathResult {
         var info = vnode_fdinfowithpath()
         let size = MemoryLayout<vnode_fdinfowithpath>.size
         let returned = withUnsafeMutablePointer(to: &info) {
             proc_pidfdinfo(pid, fd, PROC_PIDFDVNODEPATHINFO, $0, Int32(size))
         }
-        guard returned == size else { throw InspectionError.unavailable }
-        return cString(from: &info.pvip.vip_path)
+        guard returned == size else { return .unavailable(errno) }
+        return .path(boundedString(from: &info.pvip.vip_path))
     }
 
-    private func decodeNullTerminated(_ bytes: [CChar]) -> String {
+    static func decodePathBuffer(_ bytes: [CChar]) -> String {
         let utf8 = bytes.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
         return String(decoding: utf8, as: UTF8.self)
     }
 
-    private func cString<T>(from value: inout T) -> String? {
-        withUnsafePointer(to: &value) {
-            $0.withMemoryRebound(to: CChar.self, capacity: MemoryLayout<T>.size) {
-                guard $0.pointee != 0 else { return nil }
-                return String(cString: $0)
-            }
+    private func boundedString<T>(from value: inout T) -> String? {
+        withUnsafeBytes(of: &value) { bytes in
+            guard bytes.first != 0 else { return nil }
+            let bounded = bytes.prefix { $0 != 0 }
+            return String(decoding: bounded, as: UTF8.self)
         }
     }
 }
