@@ -210,6 +210,36 @@ final class DeviceIOQuiescerTests: XCTestCase {
         XCTAssertEqual(result, Data("reply".utf8))
     }
 
+    func testXPCInterruptionKeepsSMARTTokenUnsafe() async throws {
+        try await assertSessionFailureKeepsSMARTUnsafe(event: .interrupted)
+    }
+
+    func testXPCInvalidationKeepsSMARTTokenUnsafe() async throws {
+        try await assertSessionFailureKeepsSMARTUnsafe(event: .invalidated)
+    }
+
+    func testXPCNormalAcknowledgementReleasesSMARTTokenExactlyOnce() async throws {
+        let tracker = DeviceIOTracker()
+        let session = ControlledSMARTXPCSession()
+        let client = try makeSessionClient(tracker: tracker, session: session)
+        let device = makeDevice("disk4")
+        let refresh = Task { await client.refreshSMART(for: device) }
+        await session.waitUntilHandlerInstalled()
+        let response = try DrivePulseXPCMessages.encodeSMARTReadCompletionResponse(.init(
+            schemaVersion: 1, payload: Data("{}".utf8), processDidExit: true
+        ))
+        session.emit(.reply(response))
+        session.emit(.reply(response))
+        session.emit(.invalidated)
+        _ = await refresh.value
+
+        let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
+            for: makeTarget("disk4"), timeout: .milliseconds(100)
+        )
+        try await barrier.waitUntilReady()
+        await barrier.release()
+    }
+
     @MainActor
     func testProductionProvidersAcceptOneSharedTracker() {
         let tracker = DeviceIOTracker()
@@ -262,7 +292,7 @@ final class DeviceIOQuiescerTests: XCTestCase {
         refresher.stop()
     }
 
-    func testDiskutilGlobalAPFSListPausesAndResumesWithoutTokenLeak() async throws {
+    func testDiskutilAPFSListPausesOnlyWhenRelevantTargetIsBlocked() async throws {
         let tracker = DeviceIOTracker()
         let calls = LockedCounter()
         let plist = try PropertyListSerialization.data(
@@ -277,17 +307,52 @@ final class DeviceIOQuiescerTests: XCTestCase {
         let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
             for: makeTarget("disk4"), timeout: .seconds(1)
         )
-        await provider.refresh()
+        await provider.refresh(physicalBSDNames: ["disk4"])
         XCTAssertEqual(calls.value, 0)
-        await barrier.release()
-        await provider.refresh()
+        await provider.refresh(physicalBSDNames: ["disk5"])
         XCTAssertEqual(calls.value, 1)
+        await barrier.release()
+        await provider.refresh(physicalBSDNames: ["disk4"])
+        XCTAssertEqual(calls.value, 2)
 
         let drained = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
             for: makeTarget("disk4"), timeout: .milliseconds(100)
         )
         try await drained.waitUntilReady()
         await drained.release()
+    }
+
+    func testDiskutilAPFSListDrainsEveryKnownTargetTokenDeterministically() async throws {
+        let tracker = DeviceIOTracker()
+        let gate = AsyncSuspensionGate()
+        let plist = try PropertyListSerialization.data(
+            fromPropertyList: ["APFSContainers": []], format: .xml, options: 0
+        )
+        let provider = LiveDiskUtilAPFSProvider(
+            commandRunner: { _, _ in await gate.wait(); return plist },
+            deviceIOTracker: tracker
+        )
+        let refresh = Task {
+            await provider.refresh(physicalBSDNames: ["disk4", "disk5"])
+        }
+        while await gate.waiterCount == 0 { await Task.yield() }
+
+        let disk4Barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
+            for: makeTarget("disk4"), timeout: .milliseconds(20)
+        )
+        let disk5Barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
+            for: makeTarget("disk5"), timeout: .milliseconds(20)
+        )
+        for barrier in [disk4Barrier, disk5Barrier] {
+            do { try await barrier.waitUntilReady(); XCTFail("Known target token must drain") }
+            catch { XCTAssertEqual(error as? DeviceIOQuiescenceError, .timedOut) }
+        }
+        await gate.releaseAll()
+        await refresh.value
+        try await disk4Barrier.waitUntilReady()
+        try await disk5Barrier.waitUntilReady()
+        await disk4Barrier.release()
+        await disk5Barrier.release()
     }
 
     func testEverySystemProfilerSpawnIsGloballyDrained() async throws {
@@ -353,6 +418,41 @@ final class DeviceIOQuiescerTests: XCTestCase {
             volumes: []
         )
     }
+
+    private func assertSessionFailureKeepsSMARTUnsafe(event: SMARTXPCSessionEvent) async throws {
+        let tracker = DeviceIOTracker()
+        let session = ControlledSMARTXPCSession()
+        let client = try makeSessionClient(tracker: tracker, session: session)
+        let device = makeDevice("disk4")
+        let refresh = Task { await client.refreshSMART(for: device) }
+        await session.waitUntilHandlerInstalled()
+        session.emit(event)
+        _ = await refresh.value
+
+        let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
+            for: makeTarget("disk4"), timeout: .milliseconds(20)
+        )
+        do { try await barrier.waitUntilReady(); XCTFail("Unacknowledged exit must remain unsafe") }
+        catch { XCTAssertEqual(error as? DeviceIOQuiescenceError, .timedOut) }
+        await barrier.release()
+    }
+
+    private func makeSessionClient(
+        tracker: DeviceIOTracker,
+        session: ControlledSMARTXPCSession
+    ) throws -> SMARTServiceClient {
+        let handshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.0.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.currentMinor
+        ))
+        return SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            readSMARTData: { _ in Data() },
+            completionSession: session,
+            deviceIOTracker: tracker
+        )
+    }
 }
 
 private final class LockedCounter: @unchecked Sendable {
@@ -370,5 +470,25 @@ private actor AsyncSuspensionGate {
         let pending = waiters
         waiters.removeAll()
         pending.forEach { $0.resume() }
+    }
+}
+
+private final class ControlledSMARTXPCSession: SMARTCompletionXPCSession, @unchecked Sendable {
+    private let lock = NSLock()
+    private var handler: (@Sendable (SMARTXPCSessionEvent) -> Void)?
+
+    func readSMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        lock.withLock { handler = eventHandler }
+    }
+
+    func waitUntilHandlerInstalled() async {
+        while lock.withLock({ handler == nil }) { await Task.yield() }
+    }
+
+    func emit(_ event: SMARTXPCSessionEvent) {
+        lock.withLock { handler }?(event)
     }
 }

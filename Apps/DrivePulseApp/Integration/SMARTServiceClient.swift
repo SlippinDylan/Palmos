@@ -17,12 +17,27 @@ protocol SMARTServiceProviding: Sendable {
     func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult
 }
 
+enum SMARTXPCSessionEvent: @unchecked Sendable {
+    case reply(Data)
+    case failure(Error)
+    case interrupted
+    case invalidated
+}
+
+protocol SMARTCompletionXPCSession: Sendable {
+    func readSMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    )
+}
+
 final class SMARTServiceClient: SMARTServiceProviding {
     private let helperMachServiceName: String
     private let isHelperInstalledOperation: @Sendable () -> Bool
     private let fetchHelperHandshakeOperation: @Sendable () async throws -> Data
     private let readSMARTDataOperation: @Sendable (Data) async throws -> Data
     private let readSMARTDataWithCompletionOperation: (@Sendable (Data) async throws -> Data)?
+    private let completionSession: (any SMARTCompletionXPCSession)?
     private let deviceIOTracker: DeviceIOTracker?
 
     func usesDeviceIOTracker(_ tracker: DeviceIOTracker) -> Bool {
@@ -35,6 +50,7 @@ final class SMARTServiceClient: SMARTServiceProviding {
         fetchHelperHandshake: (@Sendable () async throws -> Data)? = nil,
         readSMARTData: (@Sendable (Data) async throws -> Data)? = nil,
         readSMARTDataWithCompletion: (@Sendable (Data) async throws -> Data)? = nil,
+        completionSession: (any SMARTCompletionXPCSession)? = nil,
         deviceIOTracker: DeviceIOTracker? = nil
     ) {
         self.helperMachServiceName = helperMachServiceName
@@ -50,15 +66,13 @@ final class SMARTServiceClient: SMARTServiceProviding {
                 helperMachServiceName: helperMachServiceName
             )
         }
+        self.completionSession = completionSession ?? (
+            readSMARTData == nil && readSMARTDataWithCompletion == nil
+                ? LiveSMARTCompletionXPCSession(helperMachServiceName: helperMachServiceName)
+                : nil
+        )
         if let readSMARTDataWithCompletion {
             self.readSMARTDataWithCompletionOperation = readSMARTDataWithCompletion
-        } else if readSMARTData == nil {
-            self.readSMARTDataWithCompletionOperation = { requestData in
-                try await Self.readSMARTDataWithCompletion(
-                    requestData,
-                    helperMachServiceName: helperMachServiceName
-                )
-            }
         } else {
             self.readSMARTDataWithCompletionOperation = nil
         }
@@ -110,8 +124,18 @@ final class SMARTServiceClient: SMARTServiceProviding {
             if XPCFeatureCapabilities.negotiated(
                 helperContractMinor: handshake.contractMinor
             ).completionAwareSMART,
-               let readSMARTDataWithCompletionOperation {
-                let responseData = try await readSMARTDataWithCompletionOperation(requestData)
+               completionSession != nil || readSMARTDataWithCompletionOperation != nil {
+                let responseData: Data
+                if let completionSession {
+                    responseData = try await Self.readSMARTData(
+                        requestData,
+                        using: completionSession
+                    )
+                } else if let readSMARTDataWithCompletionOperation {
+                    responseData = try await readSMARTDataWithCompletionOperation(requestData)
+                } else {
+                    throw SMARTServiceClientError.missingReplyData
+                }
                 let response = try DrivePulseXPCMessages.decodeAcknowledgedSMARTReadCompletionResponse(
                     from: responseData
                 )
@@ -173,24 +197,19 @@ final class SMARTServiceClient: SMARTServiceProviding {
         }
     }
 
-    private static func readSMARTDataWithCompletion(
+    private static func readSMARTData(
         _ requestData: Data,
-        helperMachServiceName: String
+        using session: any SMARTCompletionXPCSession
     ) async throws -> Data {
-        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, gate in
-            proxy.readSMARTDataWithCompletion(for: requestData) { data, error in
-                if let error {
-                    gate.resume(throwing: error)
-                    connection.invalidate()
-                    return
+        try await withCheckedThrowingContinuation { continuation in
+            let gate = XPCReplyGate(continuation: continuation)
+            session.readSMARTData(requestData: requestData) { event in
+                switch event {
+                case let .reply(data): gate.resume(returning: data)
+                case let .failure(error): gate.resume(throwing: error)
+                case .interrupted: gate.resume(throwing: SMARTServiceClientError.connectionInterrupted)
+                case .invalidated: gate.resume(throwing: SMARTServiceClientError.connectionInvalidated)
                 }
-                guard let data else {
-                    gate.resume(throwing: SMARTServiceClientError.missingReplyData)
-                    connection.invalidate()
-                    return
-                }
-                gate.resume(returning: data)
-                connection.invalidate()
             }
         }
     }
@@ -272,6 +291,43 @@ final class SMARTServiceClient: SMARTServiceProviding {
         let launchDaemonPath = "/Library/LaunchDaemons/\(label).plist"
         return fileManager.fileExists(atPath: helperToolPath) &&
             fileManager.fileExists(atPath: launchDaemonPath)
+    }
+}
+
+private final class LiveSMARTCompletionXPCSession: SMARTCompletionXPCSession, @unchecked Sendable {
+    private let helperMachServiceName: String
+
+    init(helperMachServiceName: String) {
+        self.helperMachServiceName = helperMachServiceName
+    }
+
+    func readSMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        let connection = NSXPCConnection(
+            machServiceName: helperMachServiceName,
+            options: .privileged
+        )
+        connection.interruptionHandler = { eventHandler(.interrupted) }
+        connection.invalidationHandler = { eventHandler(.invalidated) }
+        connection.remoteObjectInterface = NSXPCInterface(with: DrivePulseSMARTXPCProtocol.self)
+        connection.resume()
+        let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+            eventHandler(.failure(error))
+            connection.invalidate()
+        }
+        guard let proxy = proxy as? DrivePulseSMARTXPCProtocol else {
+            eventHandler(.failure(SMARTServiceClientError.invalidRemoteProxy))
+            connection.invalidate()
+            return
+        }
+        proxy.readSMARTDataWithCompletion(for: requestData) { data, error in
+            if let error { eventHandler(.failure(error)) }
+            else if let data { eventHandler(.reply(data)) }
+            else { eventHandler(.failure(SMARTServiceClientError.missingReplyData)) }
+            connection.invalidate()
+        }
     }
 }
 

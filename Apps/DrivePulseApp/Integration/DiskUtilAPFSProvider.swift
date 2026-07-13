@@ -6,8 +6,13 @@ import DrivePulseCore
 
 protocol DiskUtilAPFSProviding: AnyObject, Sendable {
     func refresh() async
+    func refresh(physicalBSDNames: Set<String>) async
     func containerInfo(forContainerBSDName bsdName: String) async -> APFSContainerInfo?
     func physicalPartitions(forDiskBSDName bsdName: String) async -> [PhysicalPartitionInfo]
+}
+
+extension DiskUtilAPFSProviding {
+    func refresh(physicalBSDNames: Set<String>) async { await refresh() }
 }
 
 // MARK: - Live Implementation
@@ -34,8 +39,14 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
     }
 
     func refresh() async {
+        await refresh(physicalBSDNames: [])
+    }
+
+    func refresh(physicalBSDNames: Set<String>) async {
         let generation = await requestCoordinator.beginRequest()
-        guard let containerInfoByBSDName = await fetchContainerInfoByBSDName() else {
+        guard let containerInfoByBSDName = await fetchContainerInfoByBSDName(
+            physicalBSDNames: physicalBSDNames
+        ) else {
             return
         }
 
@@ -100,7 +111,9 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
         }
 
         let generation = await requestCoordinator.beginRequest()
-        guard let containerInfoByBSDName = await fetchContainerInfoByBSDName() else {
+        guard let containerInfoByBSDName = await fetchContainerInfoByBSDName(
+            physicalBSDNames: []
+        ) else {
             return nil
         }
 
@@ -111,8 +124,10 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
         return cacheBox.get()
     }
 
-    private func fetchContainerInfoByBSDName() async -> [String: APFSContainerInfo]? {
-        guard let data = await runGlobalCommand(arguments: ["apfs", "list", "-plist"]) else {
+    private func fetchContainerInfoByBSDName(
+        physicalBSDNames: Set<String>
+    ) async -> [String: APFSContainerInfo]? {
+        guard let data = await runAPFSListCommand(physicalBSDNames: physicalBSDNames) else {
             NSLog("[DiskUtilAPFSProvider] diskutil apfs list returned no data")
             return nil
         }
@@ -347,15 +362,24 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
         return data
     }
 
-    private func runGlobalCommand(arguments: [String]) async -> Data? {
-        let token: DeviceIOTracker.Token?
+    private func runAPFSListCommand(physicalBSDNames: Set<String>) async -> Data? {
+        let tokens: [DeviceIOTracker.Token]
         do {
-            token = try await deviceIOTracker?.beginGlobalOperation(kind: .diskutil)
+            if let deviceIOTracker {
+                tokens = try await deviceIOTracker.beginTargetOperations(
+                    physicalBSDNames: physicalBSDNames,
+                    kind: .diskutil
+                )
+            } else {
+                tokens = []
+            }
         } catch {
             return nil
         }
-        let data = await commandRunner("/usr/sbin/diskutil", arguments)
-        if let token, let deviceIOTracker { await deviceIOTracker.finish(token) }
+        let data = await commandRunner("/usr/sbin/diskutil", ["apfs", "list", "-plist"])
+        if let deviceIOTracker {
+            for token in tokens { await deviceIOTracker.finish(token) }
+        }
         return data
     }
 

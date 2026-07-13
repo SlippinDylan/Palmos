@@ -40,6 +40,24 @@ actor DeviceIOTracker {
         return token
     }
 
+    func beginTargetOperations(
+        physicalBSDNames: Set<String>,
+        kind: Kind
+    ) throws -> [Token] {
+        guard physicalBSDNames.isEmpty == false,
+              physicalBSDNames.allSatisfy({ $0.isEmpty == false }) else {
+            throw RegistrationError.invalidScope
+        }
+        guard physicalBSDNames.allSatisfy({ targetBarriers[$0, default: 0] == 0 }) else {
+            throw RegistrationError.paused
+        }
+        return physicalBSDNames.sorted().map { physicalBSDName in
+            let token = Token(id: UUID())
+            operations[token] = Operation(physicalBSDName: physicalBSDName, kind: kind)
+            return token
+        }
+    }
+
     func finish(_ token: Token) {
         operations.removeValue(forKey: token)
     }
