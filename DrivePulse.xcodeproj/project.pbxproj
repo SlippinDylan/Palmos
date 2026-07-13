@@ -75,6 +75,7 @@
 		100000000000000000000048 /* DeviceIOQuiescerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000047 /* DeviceIOQuiescerTests.swift */; };
 		100000000000000000000043 /* unix-ebusy-status.json in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000043 /* unix-ebusy-status.json */; };
 		100000000000000000000049 /* AppOccupancyScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000048 /* AppOccupancyScannerTests.swift */; };
+		10000000000000000000004D /* OccupancyXPCMessageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004C /* OccupancyXPCMessageTests.swift */; };
 		10000000000000000000004A /* process-fd-snapshot.json in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000049 /* process-fd-snapshot.json */; };
 		10000000000000000000004B /* AppOccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004A /* AppOccupancyScanner.swift */; };
 		10000000000000000000004C /* libproc.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004B /* libproc.tbd */; };
@@ -187,6 +188,7 @@
 		200000000000000000000049 /* process-fd-snapshot.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Fixtures/OccupancyScanner/process-fd-snapshot.json; sourceTree = "<group>"; };
 		20000000000000000000004A /* AppOccupancyScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppOccupancyScanner.swift; sourceTree = "<group>"; };
 		20000000000000000000004B /* libproc.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libproc.tbd; path = usr/lib/libproc.tbd; sourceTree = SDKROOT; };
+		20000000000000000000004C /* OccupancyXPCMessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OccupancyXPCMessageTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -332,6 +334,7 @@
 				200000000000000000000044 /* DiskArbitrationEjectClientTests.swift */,
 				200000000000000000000047 /* DeviceIOQuiescerTests.swift */,
 				200000000000000000000048 /* AppOccupancyScannerTests.swift */,
+				20000000000000000000004C /* OccupancyXPCMessageTests.swift */,
 				200000000000000000000049 /* process-fd-snapshot.json */,
 				200000000000000000000043 /* unix-ebusy-status.json */,
 				200000000000000000000022 /* Task7HelperPackagingTests.swift */,
@@ -653,6 +656,7 @@
 				100000000000000000000045 /* DiskArbitrationEjectClientTests.swift in Sources */,
 				100000000000000000000048 /* DeviceIOQuiescerTests.swift in Sources */,
 				100000000000000000000049 /* AppOccupancyScannerTests.swift in Sources */,
+				10000000000000000000004D /* OccupancyXPCMessageTests.swift in Sources */,
 				100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */,
 				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
 				10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */,

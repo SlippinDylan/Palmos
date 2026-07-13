@@ -16,4 +16,8 @@ enum XPCContractVersion {
         for requestData: Data,
         withReply reply: @escaping (Data?, NSError?) -> Void
     )
+    @objc optional func scanDiskOccupancy(
+        for requestData: Data,
+        withReply reply: @escaping (Data?, NSError?) -> Void
+    )
 }

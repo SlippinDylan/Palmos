@@ -77,6 +77,22 @@ final class XPCCompatibilityPolicyTests: XCTestCase {
         XCTAssertEqual(result, .degraded)
     }
 
+    func testCompletionAwareCompatibilityMatrixUsesOneMinorGate() {
+        XCTAssertEqual(evaluate(appMinor: 3, helperMinor: 3), .compatible)
+        XCTAssertEqual(evaluate(appMinor: 3, helperMinor: 4), .compatible)
+        XCTAssertEqual(evaluate(appMinor: 4, helperMinor: 3), .degraded)
+        XCTAssertEqual(evaluate(appMinor: 4, helperMinor: 4), .compatible)
+    }
+
+    private func evaluate(appMinor: Int, helperMinor: Int) -> XPCCompatibilityResult {
+        XPCCompatibilityPolicy.evaluate(
+            appMajor: appContractMajor,
+            appMinor: appMinor,
+            helperMajor: appContractMajor,
+            helperMinor: helperMinor
+        )
+    }
+
     private func evaluateCompatibility(
         helperHandshake: HelperHandshakePayload
     ) -> XPCCompatibilityResult {
