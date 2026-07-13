@@ -316,6 +316,62 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(forceCalls, [])
     }
 
+    func testNormalRevalidationDoesNotDispatchWhenTopologyAdvancesWhileItIsSuspended() async throws {
+        let staleRevalidationGate = AsyncGate()
+        let topologyGate = AsyncGate()
+        let fixture = Fixture()
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .failure(EjectTargetResolutionError.targetChanged)
+        ])
+        await fixture.resolver.setRevalidationGates([staleRevalidationGate, topologyGate])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 1 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 2 }
+        await staleRevalidationGate.open()
+        try await Task.sleep(for: .milliseconds(20))
+
+        let callsBeforeCurrentValidation = await fixture.ejecter.normalCalls()
+        XCTAssertEqual(callsBeforeCurrentValidation, [])
+        await topologyGate.open()
+        try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
+        let finalNormalCalls = await fixture.ejecter.normalCalls()
+        XCTAssertEqual(finalNormalCalls.count, 0)
+    }
+
+    func testForceRevalidationDoesNotDispatchWhenTopologyAdvancesWhileItIsSuspended() async throws {
+        let initialGate = AsyncGate()
+        let staleRevalidationGate = AsyncGate()
+        let topologyGate = AsyncGate()
+        await initialGate.open()
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))])
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .success(fixture.resolved()),
+            .failure(EjectTargetResolutionError.targetChanged)
+        ])
+        await fixture.resolver.setRevalidationGates([initialGate, staleRevalidationGate, topologyGate])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        fixture.coordinator.requestForce()
+        fixture.coordinator.confirmForce()
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 2 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 3 }
+        await staleRevalidationGate.open()
+        try await Task.sleep(for: .milliseconds(20))
+
+        let callsBeforeCurrentValidation = await fixture.ejecter.forceCalls()
+        XCTAssertEqual(callsBeforeCurrentValidation, [])
+        await topologyGate.open()
+        try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
+        let finalForceCalls = await fixture.ejecter.forceCalls()
+        XCTAssertEqual(finalForceCalls.count, 0)
+    }
+
     func testInvalidTopologyDuringBarrierDrainEndsNeutrallyWithoutDispatchingEject() async throws {
         let drainGate = AsyncGate()
         let fixture = Fixture(barrierWaitGate: drainGate)
@@ -584,6 +640,7 @@ private actor ResolverSpy: EjectTargetResolving {
     private let resolved: ResolvedEjectTarget
     private let events: EventLog
     private var revalidations: [Result<ResolvedEjectTarget, Error>] = []
+    private var revalidationGates: [AsyncGate] = []
     private(set) var resolveDeviceIDs: [DeviceID] = []
     private(set) var revalidatedTargets: [EjectWorkflowTarget] = []
 
@@ -593,6 +650,7 @@ private actor ResolverSpy: EjectTargetResolving {
     }
 
     func setRevalidations(_ values: [Result<ResolvedEjectTarget, Error>]) { revalidations = values }
+    func setRevalidationGates(_ values: [AsyncGate]) { revalidationGates = values }
     func resolveCalls() -> [DeviceID] { resolveDeviceIDs }
     func revalidationCalls() -> [EjectWorkflowTarget] { revalidatedTargets }
 
@@ -605,8 +663,10 @@ private actor ResolverSpy: EjectTargetResolving {
     func revalidate(_ target: EjectWorkflowTarget) async throws -> ResolvedEjectTarget {
         revalidatedTargets.append(target)
         await events.append("revalidate")
-        guard revalidations.isEmpty == false else { return resolved }
-        return try revalidations.removeFirst().get()
+        let gate = revalidationGates.isEmpty ? nil : revalidationGates.removeFirst()
+        let result = revalidations.isEmpty ? .success(resolved) : revalidations.removeFirst()
+        await gate?.wait()
+        return try result.get()
     }
 }
 

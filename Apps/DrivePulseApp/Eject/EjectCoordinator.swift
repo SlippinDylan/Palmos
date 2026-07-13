@@ -19,6 +19,7 @@ final class EjectCoordinator: ObservableObject {
     private var operationTask: Task<Void, Never>?
     private var topologyValidationTask: Task<Void, Never>?
     private var latestTopologyGeneration: Int?
+    private var validatedTopologyGeneration: Int?
     private var releaseWorkflowID: UUID?
     private var releaseTask: Task<Void, Never>?
 
@@ -41,6 +42,7 @@ final class EjectCoordinator: ObservableObject {
         let id = UUID()
         workflowID = id
         latestTopologyGeneration = topologyGeneration
+        validatedTopologyGeneration = topologyGeneration
         operationTask = Task { [weak self] in
             await self?.prepareAndEject(
                 workflowID: id,
@@ -156,11 +158,8 @@ final class EjectCoordinator: ObservableObject {
 
     private func revalidateAndPerformNormalEject(workflowID id: UUID) async {
         guard let workflow = activeWorkflow, workflow.id == id else { return }
-        let validationGeneration = latestTopologyGeneration ?? workflow.target.topologyGeneration
         do {
-            let refreshed = try await resolver.revalidate(workflow.target)
-            guard isCurrent(id) else { return }
-            workflow.refreshScope(refreshed.scope, generation: validationGeneration)
+            guard try await revalidateForOperation(workflow: workflow) != nil else { return }
             state = .working(target: workflow.target, stage: .unmounting)
             let result = await ejecter.performNormalEject(bsdName: workflow.target.physicalBSDName)
             guard isCurrent(id) else { return }
@@ -172,11 +171,8 @@ final class EjectCoordinator: ObservableObject {
 
     private func revalidateAndPerformForceEject(workflowID id: UUID) async {
         guard let workflow = activeWorkflow, workflow.id == id else { return }
-        let validationGeneration = latestTopologyGeneration ?? workflow.target.topologyGeneration
         do {
-            let refreshed = try await resolver.revalidate(workflow.target)
-            guard isCurrent(id) else { return }
-            workflow.refreshScope(refreshed.scope, generation: validationGeneration)
+            guard try await revalidateForOperation(workflow: workflow) != nil else { return }
             state = .working(target: workflow.target, stage: .forceUnmounting)
             let result = await ejecter.performConfirmedForceEject(bsdName: workflow.target.physicalBSDName)
             guard isCurrent(id) else { return }
@@ -196,6 +192,7 @@ final class EjectCoordinator: ObservableObject {
         do {
             let refreshed = try await resolver.revalidate(workflow.target)
             guard isCurrent(id), latestTopologyGeneration == generation else { return }
+            validatedTopologyGeneration = generation
             workflow.refreshScope(refreshed.scope, generation: generation)
         } catch {
             guard isCurrent(id), latestTopologyGeneration == generation else { return }
@@ -207,6 +204,29 @@ final class EjectCoordinator: ObservableObject {
                 await handleRevalidationError(error, target: workflow.target, workflowID: id)
             }
         }
+    }
+
+    private func revalidateForOperation(
+        workflow: ActiveWorkflow
+    ) async throws -> ResolvedEjectTarget? {
+        while isCurrent(workflow.id) {
+            let generation = latestTopologyGeneration ?? workflow.target.topologyGeneration
+            if (validatedTopologyGeneration ?? Int.min) < generation {
+                await topologyValidationTask?.value
+                guard isCurrent(workflow.id) else { return nil }
+                continue
+            }
+
+            let refreshed = try await resolver.revalidate(workflow.target)
+            guard isCurrent(workflow.id) else { return nil }
+            guard latestTopologyGeneration == generation,
+                  (validatedTopologyGeneration ?? Int.min) >= generation else {
+                continue
+            }
+            workflow.refreshScope(refreshed.scope, generation: generation)
+            return refreshed
+        }
+        return nil
     }
 
     private func handleNormalResult(
@@ -320,6 +340,7 @@ final class EjectCoordinator: ObservableObject {
         operationTask = nil
         topologyValidationTask = nil
         latestTopologyGeneration = nil
+        validatedTopologyGeneration = nil
         releaseWorkflowID = nil
         releaseTask = nil
     }
