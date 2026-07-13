@@ -79,6 +79,17 @@
 		10000000000000000000004A /* process-fd-snapshot.json in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000049 /* process-fd-snapshot.json */; };
 		10000000000000000000004B /* AppOccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004A /* AppOccupancyScanner.swift */; };
 		10000000000000000000004C /* libproc.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004B /* libproc.tbd */; };
+		100000000000000000000050 /* HelperOccupancyRequestValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000050 /* HelperOccupancyRequestValidator.swift */; };
+		100000000000000000000051 /* HelperDiskTopologyResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000051 /* HelperDiskTopologyResolver.swift */; };
+		100000000000000000000052 /* HelperOccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000052 /* HelperOccupancyScanner.swift */; };
+		100000000000000000000053 /* HelperOccupancySecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000053 /* HelperOccupancySecurityTests.swift */; };
+		100000000000000000000054 /* HelperOccupancyRequestValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000050 /* HelperOccupancyRequestValidator.swift */; };
+		100000000000000000000055 /* HelperDiskTopologyResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000051 /* HelperDiskTopologyResolver.swift */; };
+		100000000000000000000056 /* HelperOccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000052 /* HelperOccupancyScanner.swift */; };
+		100000000000000000000057 /* DrivePulseXPCMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001B /* DrivePulseXPCMessages.swift */; };
+		100000000000000000000058 /* DrivePulseXPCContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001A /* DrivePulseXPCContracts.swift */; };
+		100000000000000000000059 /* libproc.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004B /* libproc.tbd */; };
+		10000000000000000000005A /* libproc.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004B /* libproc.tbd */; };
 		E268DE9D187C136F974A3F7E /* MenuBarExtraAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 322662F17F85D329F8C03472 /* MenuBarExtraAccess */; };
 /* End PBXBuildFile section */
 
@@ -189,6 +200,11 @@
 		20000000000000000000004A /* AppOccupancyScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppOccupancyScanner.swift; sourceTree = "<group>"; };
 		20000000000000000000004B /* libproc.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libproc.tbd; path = usr/lib/libproc.tbd; sourceTree = SDKROOT; };
 		20000000000000000000004C /* OccupancyXPCMessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OccupancyXPCMessageTests.swift; sourceTree = "<group>"; };
+		200000000000000000000050 /* HelperOccupancyRequestValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperOccupancyRequestValidator.swift; sourceTree = "<group>"; };
+		200000000000000000000051 /* HelperDiskTopologyResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperDiskTopologyResolver.swift; sourceTree = "<group>"; };
+		200000000000000000000052 /* HelperOccupancyScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperOccupancyScanner.swift; sourceTree = "<group>"; };
+		200000000000000000000053 /* HelperOccupancySecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperOccupancySecurityTests.swift; sourceTree = "<group>"; };
+		200000000000000000000054 /* DrivePulseSMARTServiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DrivePulseSMARTServiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -214,7 +230,16 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				10000000000000000000005A /* libproc.tbd in Frameworks */,
 				100000000000000000000027 /* DrivePulseCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000020 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000059 /* libproc.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -226,6 +251,7 @@
 			children = (
 				300000000000000000000003 /* DrivePulseApp */,
 				30000000000000000000000D /* DrivePulseSMARTService */,
+				300000000000000000000023 /* DrivePulseSMARTServiceTests */,
 				300000000000000000000008 /* DrivePulseAppTests */,
 				300000000000000000000009 /* Config */,
 				30000000000000000000000B /* Shared */,
@@ -362,6 +388,7 @@
 				20000000000000000000000C /* DrivePulseApp.app */,
 				20000000000000000000000D /* DrivePulseAppTests.xctest */,
 				20000000000000000000001C /* com.drivepulse.smartservice */,
+				200000000000000000000054 /* DrivePulseSMARTServiceTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -388,9 +415,28 @@
 			children = (
 				30000000000000000000000E /* Service */,
 				30000000000000000000001B /* XPC */,
+				30000000000000000000001F /* Occupancy */,
 				200000000000000000000023 /* com.drivepulse.smartservice.plist */,
 			);
 			path = Apps/DrivePulseSMARTService;
+			sourceTree = "<group>";
+		};
+		30000000000000000000001F /* Occupancy */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000050 /* HelperOccupancyRequestValidator.swift */,
+				200000000000000000000051 /* HelperDiskTopologyResolver.swift */,
+				200000000000000000000052 /* HelperOccupancyScanner.swift */,
+			);
+			path = Occupancy;
+			sourceTree = "<group>";
+		};
+		300000000000000000000023 /* DrivePulseSMARTServiceTests */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000053 /* HelperOccupancySecurityTests.swift */,
+			);
+			path = Apps/DrivePulseSMARTServiceTests;
 			sourceTree = "<group>";
 		};
 		30000000000000000000000E /* Service */ = {
@@ -497,6 +543,22 @@
 			productReference = 20000000000000000000001C /* com.drivepulse.smartservice */;
 			productType = "com.apple.product-type.tool";
 		};
+		400000000000000000000006 /* DrivePulseSMARTServiceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60000000000000000000000D /* Build configuration list for PBXNativeTarget "DrivePulseSMARTServiceTests" */;
+			buildPhases = (
+				300000000000000000000021 /* Sources */,
+				300000000000000000000020 /* Frameworks */,
+				300000000000000000000022 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = DrivePulseSMARTServiceTests;
+			packageProductDependencies = ();
+			productName = DrivePulseSMARTServiceTests;
+			productReference = 200000000000000000000054 /* DrivePulseSMARTServiceTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -514,6 +576,7 @@
 					400000000000000000000004 = {
 						CreatedOnToolsVersion = 16.0;
 					};
+					400000000000000000000006 = { CreatedOnToolsVersion = 16.0; };
 				};
 			};
 			buildConfigurationList = 600000000000000000000001 /* Build configuration list for PBXProject "DrivePulse" */;
@@ -538,6 +601,7 @@
 				400000000000000000000001 /* DrivePulseApp */,
 				400000000000000000000002 /* DrivePulseAppTests */,
 				400000000000000000000004 /* DrivePulseSMARTService */,
+				400000000000000000000006 /* DrivePulseSMARTServiceTests */,
 			);
 		};
 /* End PBXProject section */
@@ -567,6 +631,12 @@
 			buildActionMask = 2147483647;
 			files = (
 			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000022 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -675,6 +745,22 @@
 				100000000000000000000024 /* DrivePulseSMARTService.swift in Sources */,
 				100000000000000000000025 /* SmartctlRunner.swift in Sources */,
 				100000000000000000000026 /* TransportHintResolver.swift in Sources */,
+				100000000000000000000050 /* HelperOccupancyRequestValidator.swift in Sources */,
+				100000000000000000000051 /* HelperDiskTopologyResolver.swift in Sources */,
+				100000000000000000000052 /* HelperOccupancyScanner.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000021 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000053 /* HelperOccupancySecurityTests.swift in Sources */,
+				100000000000000000000054 /* HelperOccupancyRequestValidator.swift in Sources */,
+				100000000000000000000055 /* HelperDiskTopologyResolver.swift in Sources */,
+				100000000000000000000056 /* HelperOccupancyScanner.swift in Sources */,
+				100000000000000000000057 /* DrivePulseXPCMessages.swift in Sources */,
+				100000000000000000000058 /* DrivePulseXPCContracts.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -807,6 +893,32 @@
 			};
 			name = Release;
 		};
+		60000000000000000000000C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000F /* Base.xcconfig */;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.drivepulse.smartservice.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		60000000000000000000000C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000F /* Base.xcconfig */;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.drivepulse.smartservice.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -842,6 +954,15 @@
 			buildConfigurations = (
 				60000000000000000000000A /* Debug */,
 				60000000000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60000000000000000000000D /* Build configuration list for PBXNativeTarget "DrivePulseSMARTServiceTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60000000000000000000000C1 /* Debug */,
+				60000000000000000000000C2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
