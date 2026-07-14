@@ -425,20 +425,38 @@ final class LiveDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unchecked Sendable
         forPhysicalBSDName physicalBSDName: String,
         expectedContainerBSDName: String?
     ) async -> String? {
+        let validationBSDName = expectedContainerBSDName ?? physicalBSDName
         guard let data = await commandRunner(
             "/usr/sbin/diskutil",
-            ["info", "-plist", physicalBSDName]
+            ["info", "-plist", validationBSDName]
         ), let plist = try? PropertyListSerialization.propertyList(
             from: data, options: [], format: nil
         ) as? [String: Any],
-        plist["DeviceIdentifier"] as? String == physicalBSDName,
-        plist["Content"] as? String == "Apple_APFS",
-        let containerBSDName = plist["APFSContainerReference"] as? String,
-        containerBSDName.range(of: #"^disk\d+(s\d+)*$"#, options: .regularExpression) != nil else {
+        plist["DeviceIdentifier"] as? String == validationBSDName else {
             return nil
         }
-        if let expectedContainerBSDName,
-           expectedContainerBSDName != containerBSDName {
+
+        let containerBSDName: String?
+        if let expectedContainerBSDName {
+            guard plist["APFSContainerReference"] as? String == expectedContainerBSDName else {
+                return nil
+            }
+            let physicalStores = (plist["APFSPhysicalStores"] as? [[String: Any]] ?? [])
+                .compactMap { $0["APFSPhysicalStore"] as? String }
+            guard physicalStores.contains(where: {
+                Self.defaultPhysicalBSDName(for: $0) == physicalBSDName
+            }) else {
+                return nil
+            }
+            containerBSDName = expectedContainerBSDName
+        } else {
+            guard plist["Content"] as? String == "Apple_APFS" else {
+                return nil
+            }
+            containerBSDName = plist["APFSContainerReference"] as? String
+        }
+        guard let containerBSDName,
+        containerBSDName.range(of: #"^disk\d+(s\d+)*$"#, options: .regularExpression) != nil else {
             return nil
         }
         return containerBSDName

@@ -69,9 +69,12 @@ struct OverviewCardView: View {
     }
 
     private func usedSpaceString(_ device: ExternalDevice) -> String {
+        let mountedVolume = device.volumes.first(where: { $0.capacityConsumedBytes != nil })
         guard
-            let total = device.apfsContainerDetails?.totalCapacityBytes,
-            let used = device.apfsContainerDetails?.capacityInUseBytes,
+            let total = device.apfsContainerDetails?.totalCapacityBytes
+                ?? mountedVolume?.capacityTotalBytes,
+            let used = device.apfsContainerDetails?.capacityInUseBytes
+                ?? mountedVolume?.capacityConsumedBytes,
             total > 0
         else { return PanelDisplayValue.missing }
         let pct = Double(used) / Double(total) * 100
@@ -80,9 +83,12 @@ struct OverviewCardView: View {
     }
 
     private func availableSpaceString(_ device: ExternalDevice) -> String {
+        let mountedVolume = device.volumes.first(where: { $0.capacityAvailableBytes != nil })
         guard
-            let total = device.apfsContainerDetails?.totalCapacityBytes,
-            let free = device.apfsContainerDetails?.capacityNotAllocatedBytes,
+            let total = device.apfsContainerDetails?.totalCapacityBytes
+                ?? mountedVolume?.capacityTotalBytes,
+            let free = device.apfsContainerDetails?.capacityNotAllocatedBytes
+                ?? mountedVolume?.capacityAvailableBytes,
             total > 0
         else { return PanelDisplayValue.missing }
         let pct = Double(free) / Double(total) * 100

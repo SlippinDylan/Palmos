@@ -766,10 +766,16 @@ final class DrivePulseAppController: ObservableObject {
     private func applyCapacityUpdates(_ updates: [VolumeCapacityRefresher.CapacityUpdate]) {
         let updatesByBSDName = Dictionary(uniqueKeysWithValues: updates.map { ($0.bsdName, $0) })
         for i in state.devices.indices {
+            for volumeIndex in state.devices[i].volumes.indices {
+                let bsdName = state.devices[i].volumes[volumeIndex].bsdName
+                guard let update = updatesByBSDName[bsdName] else { continue }
+                state.devices[i].volumes[volumeIndex].capacityTotalBytes = update.totalBytes
+                state.devices[i].volumes[volumeIndex].capacityConsumedBytes = update.consumedBytes
+                state.devices[i].volumes[volumeIndex].capacityAvailableBytes = update.availableBytes
+            }
             guard var containerDetails = state.devices[i].apfsContainerDetails else { continue }
-            if let containerUpdate = containerDetails.volumes
-                .compactMap({ updatesByBSDName[$0.bsdName] })
-                .first {
+            if let containerUpdate = state.devices[i].volumes
+                .compactMap({ updatesByBSDName[$0.bsdName] }).first {
                 containerDetails.totalCapacityBytes = containerUpdate.totalBytes
                 containerDetails.capacityInUseBytes = containerUpdate.consumedBytes
                 containerDetails.capacityNotAllocatedBytes = containerUpdate.availableBytes
@@ -782,9 +788,14 @@ final class DrivePulseAppController: ObservableObject {
         var mountPoints: [String: String] = [:]
         var physicalBSDNames: [String: String] = [:]
         for device in devices {
-            guard let volumes = device.apfsContainerDetails?.volumes else { continue }
-            for volume in volumes {
-                if let mountPoint = volume.mountPoint, !mountPoint.isEmpty {
+            let enrichedMountPoints = Dictionary(uniqueKeysWithValues:
+                (device.apfsContainerDetails?.volumes ?? []).compactMap { volume in
+                    volume.mountPoint.map { (volume.bsdName, $0) }
+                }
+            )
+            for volume in device.volumes {
+                let mountPoint = volume.mountPoint ?? enrichedMountPoints[volume.bsdName]
+                if let mountPoint, !mountPoint.isEmpty {
                     mountPoints[volume.bsdName] = mountPoint
                     physicalBSDNames[volume.bsdName] = device.physicalStoreBSDName
                 }

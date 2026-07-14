@@ -367,6 +367,76 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(diskUtilProvider.refreshCallCount, 2)
     }
 
+    func testControllerRefreshesMountedVolumeCapacityBeforeAPFSEnrichmentCompletes() async throws {
+        let capacityRefresher = VolumeCapacityRefresher(
+            capacityReader: { bsdName, _ in
+                .init(bsdName: bsdName, totalBytes: 100, availableBytes: 40, consumedBytes: 60)
+            }
+        )
+        let device = ExternalDevice(
+            id: DeviceID(rawValue: "disk4"),
+            displayName: "Test",
+            transportName: "USB",
+            physicalStoreBSDName: "disk4",
+            apfsContainerBSDName: "disk10",
+            volumes: [MountedVolume(bsdName: "disk4s1", mountPoint: "/Volumes/Test")]
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider(),
+            volumeCapacityRefresher: capacityRefresher
+        )
+
+        capacityRefresher.start(
+            mountPoints: ["disk4s1": "/Volumes/Test"],
+            physicalBSDNames: ["disk4s1": "disk4"]
+        )
+        await waitUntil {
+            controller.state.devices.first?.volumes.first?.capacityConsumedBytes == 60
+        }
+        capacityRefresher.stop()
+
+        XCTAssertEqual(controller.state.devices.first?.volumes.first?.capacityAvailableBytes, 40)
+    }
+
+    func testCapacityRefresherRunsReaderOffMainThreadAndSupersedesImmediateRefresh() async throws {
+        let firstStarted = expectation(description: "first started")
+        let releaseFirst = DispatchSemaphore(value: 0)
+        let updates = ControllerTestLockedArray<[VolumeCapacityRefresher.CapacityUpdate]>()
+        let readerCalls = ControllerTestLockedArray<Int>()
+        let mainThreadReads = ControllerTestLockedArray<Bool>()
+        let refresher = VolumeCapacityRefresher(capacityReader: { bsdName, _ -> VolumeCapacityRefresher.CapacityUpdate? in
+            let call = readerCalls.values.count + 1
+            readerCalls.append(call)
+            mainThreadReads.append(Thread.isMainThread)
+            if call == 1 {
+                firstStarted.fulfill()
+                releaseFirst.wait()
+            }
+            return .init(
+                bsdName: bsdName,
+                totalBytes: call == 1 ? 100 : 200,
+                availableBytes: 40,
+                consumedBytes: call == 1 ? 60 : 160
+            )
+        })
+        refresher.onUpdate = { updates.append($0) }
+
+        refresher.start(mountPoints: ["disk4s1": "/Volumes/Test"])
+        await fulfillment(of: [firstStarted], timeout: 1)
+        refresher.start(mountPoints: ["disk4s1": "/Volumes/Test"])
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(readerCalls.values, [1])
+        releaseFirst.signal()
+        await waitUntil { updates.values.last?.first?.totalBytes == 200 }
+        refresher.stop()
+
+        XCTAssertEqual(mainThreadReads.values, [false, false])
+        XCTAssertEqual(updates.values.count, 1)
+        XCTAssertEqual(updates.values.first?.first?.totalBytes, 200)
+    }
+
     func testControllerRetriesAPFSEnrichmentWhenVolumeDetailsAreIncomplete() async throws {
         let bootstrapDevice = makeDevice(
             id: "disk21",
@@ -1892,6 +1962,17 @@ final class DrivePulseAppControllerTests: XCTestCase {
     }
 }
 
+private final class ControllerTestLockedArray<Element>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Element] = []
+
+    var values: [Element] { lock.withLock { storage } }
+
+    func append(_ element: Element) {
+        lock.withLock { storage.append(element) }
+    }
+}
+
 private final class StubDiskSampler: DiskSampling, @unchecked Sendable {
     private let lock = NSLock()
     private var samplesByBSDName: [String: [DiskIOCounters]]
@@ -2676,12 +2757,13 @@ private actor StubDiskUtilCommandRunner {
     }
 
     func run(_ executable: String, _ arguments: [String]) async -> Data? {
-        if arguments == ["info", "-plist", "disk21"] {
+        if arguments == ["info", "-plist", "disk21s2"] {
             return try? PropertyListSerialization.data(
                 fromPropertyList: [
-                    "DeviceIdentifier": "disk21",
-                    "Content": "Apple_APFS",
-                    "APFSContainerReference": "disk21s2"
+                    "DeviceIdentifier": "disk21s2",
+                    "Content": "EF57347C-0000-11AA-AA11-00306543ECAC",
+                    "APFSContainerReference": "disk21s2",
+                    "APFSPhysicalStores": [["APFSPhysicalStore": "disk21s2"]]
                 ], format: .xml, options: 0
             )
         }
@@ -2821,12 +2903,13 @@ private actor OverlappingDiskUtilCommandRunner {
     private var continuations: [Int: CheckedContinuation<Data?, Never>] = [:]
 
     func run(_ executable: String, _ arguments: [String]) async -> Data? {
-        if arguments == ["info", "-plist", "disk21"] {
+        if arguments == ["info", "-plist", "disk21s2"] {
             return try? PropertyListSerialization.data(
                 fromPropertyList: [
-                    "DeviceIdentifier": "disk21",
-                    "Content": "Apple_APFS",
-                    "APFSContainerReference": "disk21s2"
+                    "DeviceIdentifier": "disk21s2",
+                    "Content": "EF57347C-0000-11AA-AA11-00306543ECAC",
+                    "APFSContainerReference": "disk21s2",
+                    "APFSPhysicalStores": [["APFSPhysicalStore": "disk21s2"]]
                 ], format: .xml, options: 0
             )
         }

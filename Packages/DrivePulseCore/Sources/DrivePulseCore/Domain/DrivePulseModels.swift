@@ -157,10 +157,22 @@ public enum XPCCompatibilityPolicy {
 public struct MountedVolume: Equatable, Sendable {
     public var bsdName: String
     public var mountPoint: String?
+    public var capacityTotalBytes: Int64?
+    public var capacityAvailableBytes: Int64?
+    public var capacityConsumedBytes: Int64?
 
-    public init(bsdName: String, mountPoint: String? = nil) {
+    public init(
+        bsdName: String,
+        mountPoint: String? = nil,
+        capacityTotalBytes: Int64? = nil,
+        capacityAvailableBytes: Int64? = nil,
+        capacityConsumedBytes: Int64? = nil
+    ) {
         self.bsdName = bsdName
         self.mountPoint = mountPoint
+        self.capacityTotalBytes = capacityTotalBytes
+        self.capacityAvailableBytes = capacityAvailableBytes
+        self.capacityConsumedBytes = capacityConsumedBytes
     }
 }
 

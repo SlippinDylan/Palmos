@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 final class VolumeCapacityRefresher {
-    struct CapacityUpdate {
+    struct CapacityUpdate: Sendable {
         let bsdName: String
         let totalBytes: Int64
         let availableBytes: Int64
@@ -11,10 +11,12 @@ final class VolumeCapacityRefresher {
 
     var onUpdate: (([CapacityUpdate]) -> Void)?
     private var timer: Timer?
+    private var refreshTask: Task<Void, Never>?
+    private var refreshPending = false
     private var mountPoints: [String: String] = [:]  // bsdName → mountPoint
     private var physicalBSDNames: [String: String] = [:]
     private let deviceIOTracker: DeviceIOTracker?
-    private let capacityReader: (String, String) -> CapacityUpdate?
+    private let capacityReader: @Sendable (String, String) -> CapacityUpdate?
 
     func usesDeviceIOTracker(_ tracker: DeviceIOTracker) -> Bool {
         deviceIOTracker === tracker
@@ -22,7 +24,7 @@ final class VolumeCapacityRefresher {
 
     init(
         deviceIOTracker: DeviceIOTracker? = nil,
-        capacityReader: ((String, String) -> CapacityUpdate?)? = nil
+        capacityReader: (@Sendable (String, String) -> CapacityUpdate?)? = nil
     ) {
         self.deviceIOTracker = deviceIOTracker
         self.capacityReader = capacityReader ?? Self.readCapacity
@@ -33,14 +35,17 @@ final class VolumeCapacityRefresher {
         self.physicalBSDNames = physicalBSDNames
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in await self?.refresh() }
+            Task { @MainActor [weak self] in self?.scheduleImmediateRefresh() }
         }
-        Task { await refresh() }
+        scheduleImmediateRefresh()
     }
 
     func stop() {
         timer?.invalidate()
         timer = nil
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshPending = false
     }
 
     func updateMountPoints(
@@ -52,12 +57,15 @@ final class VolumeCapacityRefresher {
     }
 
     private func refresh() async {
+        let mountPoints = mountPoints
+        let physicalBSDNames = physicalBSDNames
+        let capacityReader = capacityReader
         var updates: [CapacityUpdate] = []
         for (bsdName, mountPoint) in mountPoints {
+            guard !Task.isCancelled else { return }
             var capacityToken: DeviceIOTracker.Token?
             var metadataToken: DeviceIOTracker.Token?
-            if let deviceIOTracker {
-                guard let physicalBSDName = physicalBSDNames[bsdName] else { continue }
+            if let deviceIOTracker, let physicalBSDName = physicalBSDNames[bsdName] {
                 do {
                     capacityToken = try await deviceIOTracker.beginTargetOperation(
                         physicalBSDName: physicalBSDName,
@@ -75,17 +83,41 @@ final class VolumeCapacityRefresher {
                 capacityToken = nil
                 metadataToken = nil
             }
-            let update = capacityReader(bsdName, mountPoint)
+            let update = await Task.detached(priority: .utility) {
+                capacityReader(bsdName, mountPoint)
+            }.value
             if let metadataToken { await deviceIOTracker?.finish(metadataToken) }
             if let capacityToken { await deviceIOTracker?.finish(capacityToken) }
+            guard !Task.isCancelled else { return }
             guard let update else { continue }
             updates.append(update)
         }
-        guard !updates.isEmpty else { return }
+        guard !Task.isCancelled, !refreshPending, !updates.isEmpty else { return }
         onUpdate?(updates)
     }
 
-    private static func readCapacity(bsdName: String, at mountPoint: String) -> CapacityUpdate? {
+    private func scheduleImmediateRefresh() {
+        guard refreshTask == nil else {
+            refreshPending = true
+            return
+        }
+        refreshTask = Task { [weak self] in
+            await self?.runRefreshLoop()
+        }
+    }
+
+    private func runRefreshLoop() async {
+        repeat {
+            refreshPending = false
+            await refresh()
+        } while refreshPending && !Task.isCancelled
+        refreshTask = nil
+    }
+
+    nonisolated private static func readCapacity(
+        bsdName: String,
+        at mountPoint: String
+    ) -> CapacityUpdate? {
         let url = URL(fileURLWithPath: mountPoint)
         let keys: Set<URLResourceKey> = [
             .volumeTotalCapacityKey,
