@@ -43,6 +43,7 @@ final class EjectRecoveryViewTests: XCTestCase {
 
         XCTAssertTrue(presentation?.title.contains(target.displayName) == true)
         XCTAssertFalse(presentation?.reason.isEmpty == true)
+        XCTAssertEqual(presentation?.primaryText, presentation?.reason)
         XCTAssertEqual(presentation?.actions, [])
     }
 

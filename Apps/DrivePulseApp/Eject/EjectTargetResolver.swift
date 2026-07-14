@@ -120,7 +120,10 @@ struct LiveEjectTargetResolver: EjectTargetResolving {
         guard let wholeMedia = media.first(where: { $0.isWhole && $0.deviceID == deviceID }) else {
             throw EjectTargetResolutionError.deviceNotFound
         }
-        guard wholeMedia.isExternal, wholeMedia.isEjectable else {
+        // Disk Arbitration is the authority on whether an external disk can be
+        // unmounted/ejected. Some devices Finder can eject do not advertise the
+        // optional ejectable description flag on their whole-media object.
+        guard wholeMedia.isExternal else {
             throw EjectTargetResolutionError.unsafeMedia
         }
         guard wholeMedia.bsdName.isEmpty == false, let registryEntryID = wholeMedia.registryEntryID else {

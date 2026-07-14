@@ -122,12 +122,13 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
             )
         case .resolutionFailed(let request, let failure):
             guard request.deviceID == selectedDeviceID else { return nil }
+            let reason = EjectLocalization.failureReason(failure)
             self.init(
                 deviceID: request.deviceID,
                 displayName: request.displayName,
                 title: EjectLocalization.failureTitle(displayName: request.displayName),
-                primaryText: EjectLocalization.failurePrimaryText(failure),
-                reason: EjectLocalization.failureReason(failure),
+                primaryText: reason,
+                reason: reason,
                 guidance: EjectLocalization.failureGuidance(failure),
                 technicalDetail: nil,
                 actions: [],

@@ -53,12 +53,21 @@ final class EjectTargetResolverTests: XCTestCase {
             equals: .unsafeMedia
         )
 
-        let fixedMedia = media(id: "serial:x", bsd: "disk2", registryID: 2, isEjectable: false)
-        let fixedResolver = LiveEjectTargetResolver(snapshotProvider: SnapshotAdapter(snapshots: [[fixedMedia]]))
-        await XCTAssertThrowsErrorAsync(
-            try await fixedResolver.resolve(deviceID: DeviceID(rawValue: "serial:x"), displayName: "X", topologyGeneration: 1),
-            equals: .unsafeMedia
+        let externallyManagedMedia = media(
+            id: "serial:x",
+            bsd: "disk2",
+            registryID: 2,
+            isEjectable: false
         )
+        let externalResolver = LiveEjectTargetResolver(
+            snapshotProvider: SnapshotAdapter(snapshots: [[externallyManagedMedia]])
+        )
+        let resolved = try? await externalResolver.resolve(
+            deviceID: DeviceID(rawValue: "serial:x"),
+            displayName: "X",
+            topologyGeneration: 1
+        )
+        XCTAssertEqual(resolved?.target.physicalBSDName, "disk2")
     }
 
     func testRevalidationRejectsBSDReassignmentAndIdentityChanges() async throws {
