@@ -43,6 +43,11 @@ struct EjectWorkflowTarget: Equatable, Sendable {
     let topologyGeneration: Int
 }
 
+struct EjectWorkflowRequest: Equatable, Sendable {
+    let deviceID: DeviceID
+    let displayName: String
+}
+
 struct OccupancyTargetScope: Equatable, Sendable {
     let physicalBSDName: String
     let deviceNodes: Set<String>
@@ -75,11 +80,13 @@ struct EjectRecoveryState: Equatable, Sendable {
 
 enum EjectWorkflowState: Equatable, Sendable {
     case idle
+    case preparing(EjectWorkflowRequest)
     case working(target: EjectWorkflowTarget, stage: EjectOperationStage)
     case awaitingRecovery(EjectRecoveryState)
     case awaitingForceConfirmation(EjectRecoveryState)
     case succeeded(EjectWorkflowTarget)
     case disappeared(EjectWorkflowTarget)
+    case resolutionFailed(request: EjectWorkflowRequest, failure: EjectFailure)
     case failed(target: EjectWorkflowTarget, failure: EjectFailure)
 }
 

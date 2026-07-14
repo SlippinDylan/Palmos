@@ -365,7 +365,8 @@ final class DrivePulseAppController: ObservableObject {
                 EjectLocalization.disappearanceFeedback(target: target),
                 clearsAfter: actionFailureFeedbackDuration
             )
-        case .idle, .working, .awaitingRecovery, .awaitingForceConfirmation, .failed:
+        case .idle, .preparing, .working, .awaitingRecovery, .awaitingForceConfirmation,
+             .resolutionFailed, .failed:
             break
         }
     }
@@ -906,9 +907,9 @@ final class DrivePulseAppController: ObservableObject {
 private extension EjectWorkflowState {
     var isActiveWorkflow: Bool {
         switch self {
-        case .working, .awaitingRecovery, .awaitingForceConfirmation:
+        case .preparing, .working, .awaitingRecovery, .awaitingForceConfirmation:
             return true
-        case .idle, .succeeded, .disappeared, .failed:
+        case .idle, .succeeded, .disappeared, .resolutionFailed, .failed:
             return false
         }
     }

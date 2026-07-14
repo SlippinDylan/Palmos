@@ -6,6 +6,55 @@ import DrivePulseCore
 
 @MainActor
 final class EjectCoordinatorTests: XCTestCase {
+    func testBeginImmediatelyPublishesVisiblePreparationBeforeResolveCompletes() async throws {
+        let resolveGate = AsyncGate()
+        let fixture = Fixture(resolveGate: resolveGate)
+
+        fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: fixture.target.displayName,
+            topologyGeneration: 9
+        )
+
+        guard case .preparing(let request) = fixture.coordinator.state else {
+            return XCTFail("Initial eject must publish preparation before live resolution completes")
+        }
+        XCTAssertEqual(request.deviceID, fixture.target.deviceID)
+        XCTAssertEqual(request.displayName, fixture.target.displayName)
+
+        await resolveGate.open()
+        try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
+    }
+
+    func testInitialResolutionFailuresRemainVisibleAndStructured() async throws {
+        for resolutionError in [
+            EjectTargetResolutionError.deviceNotFound,
+            .unsafeMedia,
+            .incompleteMediaIdentity,
+            .targetChanged
+        ] {
+            let fixture = Fixture(resolveResult: .failure(resolutionError))
+
+            fixture.coordinator.begin(
+                deviceID: fixture.target.deviceID,
+                displayName: fixture.target.displayName,
+                topologyGeneration: 9
+            )
+
+            try await waitUntil {
+                if case .resolutionFailed = fixture.coordinator.state { return true }
+                return false
+            }
+            guard case .resolutionFailed(let request, let failure) = fixture.coordinator.state else {
+                return XCTFail("Expected a visible resolution failure")
+            }
+            XCTAssertEqual(request.deviceID, fixture.target.deviceID)
+            XCTAssertEqual(request.displayName, fixture.target.displayName)
+            XCTAssertEqual(failure.stage, .preparing)
+            XCTAssertNotEqual(failure.category, .busy)
+        }
+    }
+
     func testNormalPathUsesFreshResolveBarrierRevalidationAndNormalEject() async throws {
         let fixture = Fixture()
         let refreshed = fixture.resolved(scopePath: "/Volumes/Fresh")
@@ -750,7 +799,8 @@ private final class Fixture {
         scanGate: AsyncGate? = nil,
         releaseGate: AsyncGate? = nil,
         resolveGate: AsyncGate? = nil,
-        quiescerAcquireGate: AsyncGate? = nil
+        quiescerAcquireGate: AsyncGate? = nil,
+        resolveResult: Result<ResolvedEjectTarget, Error>? = nil
     ) {
         let target = self.target
         let scope = OccupancyTargetScope(
@@ -760,6 +810,7 @@ private final class Fixture {
         )
         resolver = ResolverSpy(
             resolved: .init(target: target, scope: scope),
+            resolveResult: resolveResult,
             resolveGate: resolveGate,
             events: events
         )
@@ -821,6 +872,7 @@ private actor EventLog {
 
 private actor ResolverSpy: EjectTargetResolving {
     private let resolved: ResolvedEjectTarget
+    private let resolveResult: Result<ResolvedEjectTarget, Error>?
     private let resolveGate: AsyncGate?
     private let events: EventLog
     private var revalidations: [Result<ResolvedEjectTarget, Error>] = []
@@ -828,8 +880,14 @@ private actor ResolverSpy: EjectTargetResolving {
     private(set) var resolveDeviceIDs: [DeviceID] = []
     private(set) var revalidatedTargets: [EjectWorkflowTarget] = []
 
-    init(resolved: ResolvedEjectTarget, resolveGate: AsyncGate?, events: EventLog) {
+    init(
+        resolved: ResolvedEjectTarget,
+        resolveResult: Result<ResolvedEjectTarget, Error>?,
+        resolveGate: AsyncGate?,
+        events: EventLog
+    ) {
         self.resolved = resolved
+        self.resolveResult = resolveResult
         self.resolveGate = resolveGate
         self.events = events
     }
@@ -843,7 +901,7 @@ private actor ResolverSpy: EjectTargetResolving {
         resolveDeviceIDs.append(deviceID)
         await events.append("resolve")
         await resolveGate?.wait()
-        return resolved
+        return try (resolveResult ?? .success(resolved)).get()
     }
 
     func revalidate(_ target: EjectWorkflowTarget) async throws -> ResolvedEjectTarget {

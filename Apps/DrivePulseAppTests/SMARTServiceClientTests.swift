@@ -281,6 +281,48 @@ final class SMARTServiceClientTests: XCTestCase {
         XCTAssertEqual(result, .failed("connection invalid"))
     }
 
+    func testRefreshSMARTMapsMissingHelperInterruptionToHelperNotInstalled() async {
+        let client = SMARTServiceClient(
+            isHelperInstalled: { false },
+            fetchHelperHandshake: {
+                throw SMARTServiceClientError.connectionInterrupted
+            }
+        )
+
+        let result = await client.refreshSMART(for: makeClientDevice(id: "disk-interrupted"))
+
+        XCTAssertEqual(result, .helperNotInstalled)
+    }
+
+    func testRefreshSMARTMapsMissingHelperInvalidationToHelperNotInstalled() async {
+        let client = SMARTServiceClient(
+            isHelperInstalled: { false },
+            fetchHelperHandshake: {
+                throw SMARTServiceClientError.connectionInvalidated
+            }
+        )
+
+        let result = await client.refreshSMART(for: makeClientDevice(id: "disk-invalidated"))
+
+        XCTAssertEqual(result, .helperNotInstalled)
+    }
+
+    func testRefreshSMARTKeepsInstalledHelperInterruptionAsConnectionFailure() async {
+        let client = SMARTServiceClient(
+            isHelperInstalled: { true },
+            fetchHelperHandshake: {
+                throw SMARTServiceClientError.connectionInterrupted
+            }
+        )
+
+        let result = await client.refreshSMART(for: makeClientDevice(id: "disk-installed"))
+
+        XCTAssertEqual(
+            result,
+            .failed(SMARTServiceClientError.connectionInterrupted.localizedDescription)
+        )
+    }
+
     func testRefreshSMARTDoesNotTreatArbitraryConnectionStringAsMissingHelper() async {
         let client = SMARTServiceClient(
             isHelperInstalled: { false },

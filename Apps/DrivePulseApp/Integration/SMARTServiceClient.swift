@@ -406,6 +406,12 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
             return isHelperInstalledOperation() ? .failed(description) : .helperNotInstalled
         }
 
+        if let connectionError = error as? SMARTServiceClientError,
+           connectionError == .connectionInterrupted ||
+           connectionError == .connectionInvalidated {
+            return isHelperInstalledOperation() ? .failed(description) : .helperNotInstalled
+        }
+
         if nsError.domain == NSPOSIXErrorDomain &&
             (nsError.code == Int(EPERM) || nsError.code == Int(EACCES)) {
             return .permissionRequired
@@ -576,7 +582,7 @@ private final class LiveOccupancyXPCSession: OccupancyXPCSession, @unchecked Sen
     }
 }
 
-private enum SMARTServiceClientError: LocalizedError {
+enum SMARTServiceClientError: LocalizedError, Equatable {
     case invalidRemoteProxy
     case missingReplyData
     case connectionInterrupted

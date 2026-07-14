@@ -6,6 +6,46 @@ import DrivePulseCore
 @testable import DrivePulseApp
 
 final class EjectRecoveryViewTests: XCTestCase {
+    func testInitialPreparationRendersVisibleProgressForSelectedDevice() {
+        let request = EjectWorkflowRequest(
+            deviceID: target.deviceID,
+            displayName: target.displayName
+        )
+
+        let presentation = EjectRecoveryPresentation(
+            state: .preparing(request),
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertEqual(presentation?.operationStatus, EjectLocalization.operationInProgress)
+        XCTAssertTrue(presentation?.isOperationActive == true)
+        XCTAssertEqual(presentation?.actions, [])
+    }
+
+    func testInitialResolutionFailureRendersLocalizedReason() {
+        let request = EjectWorkflowRequest(
+            deviceID: target.deviceID,
+            displayName: target.displayName
+        )
+        let failure = EjectFailure(
+            stage: .preparing,
+            category: .notFound,
+            rawStatus: nil,
+            systemMessage: nil,
+            physicalBSDName: "",
+            holders: []
+        )
+
+        let presentation = EjectRecoveryPresentation(
+            state: .resolutionFailed(request: request, failure: failure),
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertTrue(presentation?.title.contains(target.displayName) == true)
+        XCTAssertFalse(presentation?.reason.isEmpty == true)
+        XCTAssertEqual(presentation?.actions, [])
+    }
+
     func testKnownHoldersUsePreferredNamesAndLocalizedListFormatting() {
         let presentation = EjectRecoveryPresentation(
             state: .awaitingRecovery(recovery(holders: [

@@ -36,7 +36,8 @@ struct EjectForceConfirmationPresentation: Equatable, Sendable {
 }
 
 struct EjectRecoveryPresentation: Equatable, Sendable {
-    let target: EjectWorkflowTarget
+    let deviceID: DeviceID
+    let displayName: String
     let title: String
     let primaryText: String
     let reason: String
@@ -47,7 +48,8 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
     let operationStatus: String?
 
     private init(
-        target: EjectWorkflowTarget,
+        deviceID: DeviceID,
+        displayName: String,
         title: String,
         primaryText: String,
         reason: String,
@@ -57,7 +59,8 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         isOperationActive: Bool,
         operationStatus: String?
     ) {
-        self.target = target
+        self.deviceID = deviceID
+        self.displayName = displayName
         self.title = title
         self.primaryText = primaryText
         self.reason = reason
@@ -74,6 +77,20 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         selectedDeviceID: DeviceID?
     ) {
         switch state {
+        case .preparing(let request):
+            guard request.deviceID == selectedDeviceID else { return nil }
+            self.init(
+                deviceID: request.deviceID,
+                displayName: request.displayName,
+                title: EjectLocalization.operationInProgress,
+                primaryText: EjectLocalization.preparingStage,
+                reason: EjectLocalization.preparingStage,
+                guidance: nil,
+                technicalDetail: nil,
+                actions: [],
+                isOperationActive: true,
+                operationStatus: EjectLocalization.operationInProgress
+            )
         case .awaitingRecovery(let recovery):
             guard recovery.target.deviceID == selectedDeviceID else { return nil }
             self = Self.recovery(recovery, isOperationActive: false)
@@ -92,12 +109,27 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         case .failed(let target, let failure):
             guard target.deviceID == selectedDeviceID else { return nil }
             self.init(
-                target: target,
+                deviceID: target.deviceID,
+                displayName: target.displayName,
                 title: EjectLocalization.failureTitle(target: target),
                 primaryText: EjectLocalization.failurePrimaryText(failure),
                 reason: EjectLocalization.failureReason(failure),
                 guidance: EjectLocalization.failureGuidance(failure),
                 technicalDetail: EjectLocalization.technicalDetail(failure),
+                actions: [],
+                isOperationActive: false,
+                operationStatus: nil
+            )
+        case .resolutionFailed(let request, let failure):
+            guard request.deviceID == selectedDeviceID else { return nil }
+            self.init(
+                deviceID: request.deviceID,
+                displayName: request.displayName,
+                title: EjectLocalization.failureTitle(displayName: request.displayName),
+                primaryText: EjectLocalization.failurePrimaryText(failure),
+                reason: EjectLocalization.failureReason(failure),
+                guidance: EjectLocalization.failureGuidance(failure),
+                technicalDetail: nil,
                 actions: [],
                 isOperationActive: false,
                 operationStatus: nil
@@ -119,7 +151,8 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
                 ListFormatter.localizedString(byJoining: holders)
             )
         return Self(
-            target: recovery.target,
+            deviceID: recovery.target.deviceID,
+            displayName: recovery.target.displayName,
             title: EjectLocalization.failureTitle(target: recovery.target),
             primaryText: reason,
             reason: reason,
@@ -134,7 +167,11 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
 
 enum EjectLocalization {
     static func failureTitle(target: EjectWorkflowTarget) -> String {
-        format(String(localized: "eject.recovery.title"), target.displayName)
+        failureTitle(displayName: target.displayName)
+    }
+
+    static func failureTitle(displayName: String) -> String {
+        format(String(localized: "eject.recovery.title"), displayName)
     }
 
     static func knownHolderReason(_ names: String) -> String {
@@ -151,6 +188,10 @@ enum EjectLocalization {
 
     static var operationInProgress: String {
         String(localized: "eject.recovery.operationInProgress")
+    }
+
+    static var preparingStage: String {
+        stageName(.preparing)
     }
 
     static var smartCompletionUnobservableReason: String {

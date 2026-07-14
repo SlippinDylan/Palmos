@@ -41,9 +41,11 @@ final class EjectCoordinator: ObservableObject {
     func begin(deviceID: DeviceID, displayName: String, topologyGeneration: Int) {
         guard workflowID == nil else { return }
         let id = UUID()
+        let request = EjectWorkflowRequest(deviceID: deviceID, displayName: displayName)
         workflowID = id
         latestTopologyGeneration = topologyGeneration
         validatedTopologyGeneration = topologyGeneration
+        state = .preparing(request)
         operationTask = Task { [weak self] in
             await self?.prepareAndEject(
                 workflowID: id,
@@ -155,8 +157,10 @@ final class EjectCoordinator: ObservableObject {
             if let target = activeWorkflow?.target {
                 await handleRevalidationError(error, target: target, workflowID: id)
             } else {
+                let request = EjectWorkflowRequest(deviceID: deviceID, displayName: displayName)
+                let failure = resolutionFailure(error)
                 clearWorkflow(id)
-                state = .idle
+                state = .resolutionFailed(request: request, failure: failure)
             }
         }
     }
@@ -288,6 +292,26 @@ final class EjectCoordinator: ObservableObject {
             holders: []
         )
         await finishFailure(failure, target: target, workflowID: id)
+    }
+
+    private func resolutionFailure(_ error: Error) -> EjectFailure {
+        let category: EjectFailureCategory
+        switch error as? EjectTargetResolutionError {
+        case .deviceNotFound:
+            category = .notFound
+        case .unsafeMedia:
+            category = .notPermitted
+        case .incompleteMediaIdentity, .targetChanged, nil:
+            category = .unknown
+        }
+        return EjectFailure(
+            stage: .preparing,
+            category: category,
+            rawStatus: nil,
+            systemMessage: nil,
+            physicalBSDName: "",
+            holders: []
+        )
     }
 
     private func finishSuccess(workflow: ActiveWorkflow) async {
