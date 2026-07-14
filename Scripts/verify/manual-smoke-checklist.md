@@ -37,6 +37,30 @@ Run this checklist after each significant change to the app or helper. Every ite
 - [ ] Safe Eject ejects the selected physical device
 - [ ] Settings opens the Settings window
 
+## Safe Eject and Occupancy Diagnostics
+
+> **Disposable-media requirement:** perform these checks only with an external disk that contains no valuable data. Stop all real backups and copies first. Never use the fixture script to justify force ejecting valuable media.
+
+- [ ] Run `Scripts/verify/safe-eject-fixture.sh check --device diskN` and confirm the selected whole disk and mounted descendants are correct
+- [ ] Normal eject uses whole-disk unmount followed by eject and reports “safe to remove” only after eject succeeds
+- [ ] Open-file holder is identified after running the fixture's `open-file-holder` command on the disposable mounted volume
+- [ ] Working-directory holder is identified after running `working-directory-holder`
+- [ ] Device-node holder is identified when current permissions allow `device-node-holder`
+- [ ] When holder inspection is unavailable or empty, UI honestly says macOS reports the disk in use but the process could not be identified
+- [ ] Busy recovery remains visible until Cancel, Retry Eject, or Force Eject… is selected
+- [ ] Retry keeps the recovery explanation visible while the normal eject operation is running
+- [ ] Force Eject… opens a second confirmation; Cancel is the safe/default action and Force Eject is destructive
+- [ ] Confirmed force-unmount failure reports the force-unmount stage and never reports safe removal
+- [ ] Forced-unmount success followed by eject failure reports the eject stage and never reports safe removal
+- [ ] Releasing holders with `release-holders` allows a subsequent normal eject
+- [ ] DrivePulse is not reported as its own occupying process while SMART/capacity enrichment is draining
+- [ ] APFS media with multiple volumes includes every mounted descendant in occupancy matching
+- [ ] Non-APFS partitioned media matches exact mounted descendants without path-prefix collisions
+- [ ] Removing/reassigning the target during recovery prevents Retry or Force from acting on the replacement disk
+- [ ] Validate on both Apple silicon and Intel hardware when preparing a universal release
+- [ ] Validate every supported macOS major version
+- [ ] At the 360-point panel width, verify English, Simplified Chinese, and Traditional Chinese layouts without clipped recovery or confirmation controls
+
 ## Settings
 
 - [ ] Launch at Login toggle saves and persists across app restarts
