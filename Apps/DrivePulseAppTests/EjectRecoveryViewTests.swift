@@ -43,6 +43,30 @@ final class EjectRecoveryViewTests: XCTestCase {
         ))
     }
 
+    func testWorkingRetryKeepsRecoveryContextVisibleAndDisablesActions() {
+        let recovery = recovery(holders: [
+            .init(pid: 42, executableName: "Finder", displayName: nil, type: .openFileOrDirectory)
+        ])
+        let presentation = EjectRecoveryPresentation(
+            state: .working(target: target, stage: .unmounting),
+            retainedRecovery: recovery,
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertEqual(presentation?.reason, EjectLocalization.knownHolderReason("Finder"))
+        XCTAssertEqual(presentation?.actions, [.cancel, .retry, .requestForce])
+        XCTAssertTrue(presentation?.isOperationActive == true)
+        XCTAssertEqual(presentation?.operationStatus, EjectLocalization.operationInProgress)
+    }
+
+    func testWorkingWithoutRetainedRecoveryDoesNotRenderRecoveryUI() {
+        XCTAssertNil(EjectRecoveryPresentation(
+            state: .working(target: target, stage: .unmounting),
+            retainedRecovery: nil,
+            selectedDeviceID: target.deviceID
+        ))
+    }
+
     func testForceRequestIsOnlyAConfirmationIntent() {
         let presentation = EjectRecoveryPresentation(
             state: .awaitingRecovery(recovery()),

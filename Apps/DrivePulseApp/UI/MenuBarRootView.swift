@@ -73,6 +73,7 @@ struct MenuBarRootView: View {
                 isPerformingAction: controller.isPerformingSystemAction,
                 message: controller.actionFeedback,
                 ejectState: ejectCoordinator.state,
+                retainedRecovery: ejectCoordinator.retainedRecovery,
                 selectedDeviceID: controller.state.selectedDeviceID,
                 onAction: controller.perform,
                 onCancelEject: controller.cancelEject,

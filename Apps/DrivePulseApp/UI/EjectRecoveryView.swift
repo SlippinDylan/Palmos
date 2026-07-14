@@ -29,6 +29,16 @@ struct EjectRecoveryView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let operationStatus = presentation.operationStatus {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(operationStatus)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             if let detail = presentation.technicalDetail {
                 DisclosureGroup(
                     String(localized: "eject.technicalDetails.label"),

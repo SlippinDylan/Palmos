@@ -138,6 +138,39 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(releaseCount, 0)
     }
 
+    func testRetryRetainsRecoveryWhileNormalEjectIsInFlight() async throws {
+        let retryGate = AsyncGate()
+        let holder = OccupancyHolder(
+            pid: 42,
+            executableName: "Finder",
+            displayName: nil,
+            type: .openFileOrDirectory
+        )
+        let fixture = Fixture(
+            normalResults: [.failure(Fixture.failure(.busy)), .success(())],
+            holders: [holder],
+            normalGates: [nil, retryGate]
+        )
+        fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: "T7",
+            topologyGeneration: 9
+        )
+        try await waitUntil { fixture.coordinator.state.recovery?.holders == [holder] }
+
+        fixture.coordinator.retry()
+
+        try await waitUntil { (await fixture.ejecter.normalCalls()).count == 2 }
+        XCTAssertEqual(fixture.coordinator.retainedRecovery?.holders, [holder])
+        guard case .working(_, .unmounting) = fixture.coordinator.state else {
+            return XCTFail("Expected retry to remain visibly in flight")
+        }
+
+        await retryGate.open()
+        try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
+        XCTAssertNil(fixture.coordinator.retainedRecovery)
+    }
+
     func testForceRequestOnlyChangesConfirmationState() async throws {
         let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))])
         fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
@@ -172,6 +205,40 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(forceBSDNames, ["disk4"])
         XCTAssertEqual(revalidatedTargets.count, 2)
         XCTAssertEqual(releaseCount, 1)
+    }
+
+    func testConfirmedForceRetainsRecoveryWhileForceEjectIsInFlight() async throws {
+        let forceGate = AsyncGate()
+        let holder = OccupancyHolder(
+            pid: 42,
+            executableName: "Finder",
+            displayName: nil,
+            type: .openFileOrDirectory
+        )
+        let fixture = Fixture(
+            normalResults: [.failure(Fixture.failure(.busy))],
+            holders: [holder],
+            forceGate: forceGate
+        )
+        fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: "T7",
+            topologyGeneration: 9
+        )
+        try await waitUntil { fixture.coordinator.state.recovery?.holders == [holder] }
+        fixture.coordinator.requestForce()
+
+        fixture.coordinator.confirmForce()
+
+        try await waitUntil { (await fixture.ejecter.forceCalls()).count == 1 }
+        XCTAssertEqual(fixture.coordinator.retainedRecovery?.holders, [holder])
+        guard case .working(_, .forceUnmounting) = fixture.coordinator.state else {
+            return XCTFail("Expected force eject to remain visibly in flight")
+        }
+
+        await forceGate.open()
+        try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
+        XCTAssertNil(fixture.coordinator.retainedRecovery)
     }
 
     func testForceFailureIsTerminalAndNeverSucceeds() async throws {
@@ -610,6 +677,7 @@ private final class Fixture {
         barrierWaitGate: AsyncGate? = nil,
         normalGate: AsyncGate? = nil,
         forceGate: AsyncGate? = nil,
+        normalGates: [AsyncGate?] = [],
         scanGate: AsyncGate? = nil,
         releaseGate: AsyncGate? = nil,
         resolveGate: AsyncGate? = nil,
@@ -643,6 +711,7 @@ private final class Fixture {
             forceResults: forceResults,
             normalGate: normalGate,
             forceGate: forceGate,
+            normalGates: normalGates,
             events: events
         )
         scanner = ScannerSpy(
@@ -787,6 +856,7 @@ private actor EjecterSpy: DiskEjecting {
     private let events: EventLog
     private let normalGate: AsyncGate?
     private let forceGate: AsyncGate?
+    private var normalGates: [AsyncGate?]
     private(set) var normalBSDNames: [String] = []
     private(set) var forceBSDNames: [String] = []
 
@@ -795,19 +865,22 @@ private actor EjecterSpy: DiskEjecting {
         forceResults: [Result<Void, EjectFailure>],
         normalGate: AsyncGate?,
         forceGate: AsyncGate?,
+        normalGates: [AsyncGate?],
         events: EventLog
     ) {
         self.normalResults = normalResults
         self.forceResults = forceResults
         self.normalGate = normalGate
         self.forceGate = forceGate
+        self.normalGates = normalGates
         self.events = events
     }
 
     func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure> {
         normalBSDNames.append(bsdName)
         await events.append("normal:\(bsdName)")
-        await normalGate?.wait()
+        let gate = normalGates.isEmpty ? normalGate : normalGates.removeFirst()
+        await gate?.wait()
         return normalResults.removeFirst()
     }
 

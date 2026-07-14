@@ -44,6 +44,7 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
     let technicalDetail: String?
     let actions: [EjectRecoveryAction]
     let isOperationActive: Bool
+    let operationStatus: String?
 
     private init(
         target: EjectWorkflowTarget,
@@ -53,7 +54,8 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         guidance: String?,
         technicalDetail: String?,
         actions: [EjectRecoveryAction],
-        isOperationActive: Bool
+        isOperationActive: Bool,
+        operationStatus: String?
     ) {
         self.target = target
         self.title = title
@@ -63,9 +65,14 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         self.technicalDetail = technicalDetail
         self.actions = actions
         self.isOperationActive = isOperationActive
+        self.operationStatus = operationStatus
     }
 
-    init?(state: EjectWorkflowState, selectedDeviceID: DeviceID?) {
+    init?(
+        state: EjectWorkflowState,
+        retainedRecovery: EjectRecoveryState? = nil,
+        selectedDeviceID: DeviceID?
+    ) {
         switch state {
         case .awaitingRecovery(let recovery):
             guard recovery.target.deviceID == selectedDeviceID else { return nil }
@@ -73,6 +80,15 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         case .awaitingForceConfirmation(let recovery):
             guard recovery.target.deviceID == selectedDeviceID else { return nil }
             self = Self.recovery(recovery, isOperationActive: true)
+        case .working(let target, _):
+            guard let retainedRecovery,
+                  retainedRecovery.target == target,
+                  target.deviceID == selectedDeviceID else { return nil }
+            self = Self.recovery(
+                retainedRecovery,
+                isOperationActive: true,
+                operationStatus: EjectLocalization.operationInProgress
+            )
         case .failed(let target, let failure):
             guard target.deviceID == selectedDeviceID else { return nil }
             self.init(
@@ -83,7 +99,8 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
                 guidance: nil,
                 technicalDetail: EjectLocalization.technicalDetail(failure),
                 actions: [],
-                isOperationActive: false
+                isOperationActive: false,
+                operationStatus: nil
             )
         default:
             return nil
@@ -92,7 +109,8 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
 
     private static func recovery(
         _ recovery: EjectRecoveryState,
-        isOperationActive: Bool
+        isOperationActive: Bool,
+        operationStatus: String? = nil
     ) -> Self {
         let holders = recovery.holders.map(\.preferredName)
         let reason = holders.isEmpty
@@ -108,7 +126,8 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
             guidance: EjectLocalization.recoveryGuidance,
             technicalDetail: EjectLocalization.technicalDetail(recovery.failure),
             actions: [.cancel, .retry, .requestForce],
-            isOperationActive: isOperationActive
+            isOperationActive: isOperationActive,
+            operationStatus: operationStatus
         )
     }
 }
@@ -128,6 +147,10 @@ enum EjectLocalization {
 
     static var recoveryGuidance: String {
         String(localized: "eject.recovery.guidance")
+    }
+
+    static var operationInProgress: String {
+        String(localized: "eject.recovery.operationInProgress")
     }
 
     static func actionTitle(for action: EjectRecoveryAction) -> String {

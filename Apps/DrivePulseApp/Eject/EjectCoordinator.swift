@@ -6,6 +6,7 @@ import DrivePulseCore
 @MainActor
 final class EjectCoordinator: ObservableObject {
     @Published private(set) var state: EjectWorkflowState = .idle
+    @Published private(set) var retainedRecovery: EjectRecoveryState?
 
     private let resolver: any EjectTargetResolving
     private let quiescer: any DeviceIOQuiescing
@@ -251,11 +252,13 @@ final class EjectCoordinator: ObservableObject {
             guard isCurrent(workflow.id) else { return }
             var diagnosedFailure = failure
             diagnosedFailure.holders = scan.holders
-            state = .awaitingRecovery(.init(
+            let recovery = EjectRecoveryState(
                 target: workflow.target,
                 failure: diagnosedFailure,
                 holders: scan.holders
-            ))
+            )
+            retainedRecovery = recovery
+            state = .awaitingRecovery(recovery)
         case .failure(let failure):
             await finishFailure(failure, target: workflow.target, workflowID: workflow.id)
         }
@@ -352,6 +355,7 @@ final class EjectCoordinator: ObservableObject {
         validatedTopologyGeneration = nil
         releaseWorkflowID = nil
         releaseTask = nil
+        retainedRecovery = nil
     }
 
     private func isCurrent(_ id: UUID) -> Bool {

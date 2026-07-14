@@ -150,6 +150,7 @@ struct ActionBarView: View {
     let isPerformingAction: Bool
     let message: String?
     let ejectState: EjectWorkflowState
+    let retainedRecovery: EjectRecoveryState?
     let selectedDeviceID: DeviceID?
     let onAction: (SystemAction) -> Void
     let onCancelEject: () -> Void
@@ -201,6 +202,7 @@ struct ActionBarView: View {
 
             if let presentation = EjectRecoveryPresentation(
                 state: ejectState,
+                retainedRecovery: retainedRecovery,
                 selectedDeviceID: selectedDeviceID
             ) {
                 EjectRecoveryView(
