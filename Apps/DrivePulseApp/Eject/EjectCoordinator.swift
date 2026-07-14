@@ -375,9 +375,14 @@ final class EjectCoordinator: ObservableObject {
         _ error: DeviceIOQuiescenceError,
         target: EjectWorkflowTarget
     ) -> EjectFailure {
-        EjectFailure(
+        let category: EjectFailureCategory = switch error {
+        case .timedOut: .timedOut
+        case .legacySMARTCompletionUnobservable: .smartCompletionUnobservable
+        case .cancelled: .unknown
+        }
+        return EjectFailure(
             stage: .preparing,
-            category: error == .timedOut ? .timedOut : .unknown,
+            category: category,
             rawStatus: nil,
             systemMessage: nil,
             physicalBSDName: target.physicalBSDName,

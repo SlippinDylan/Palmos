@@ -106,6 +106,25 @@ final class EjectRecoveryViewTests: XCTestCase {
         XCTAssertTrue(presentation?.technicalDetail?.contains("0xFEDCBA98") == true)
     }
 
+    func testUnobservableSMARTCompletionExplainsRestartRecovery() {
+        let failure = EjectFailure(
+            stage: .preparing,
+            category: .smartCompletionUnobservable,
+            rawStatus: nil,
+            systemMessage: nil,
+            physicalBSDName: "disk4",
+            holders: []
+        )
+        let presentation = EjectRecoveryPresentation(
+            state: .failed(target: target, failure: failure),
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertEqual(presentation?.reason, EjectLocalization.smartCompletionUnobservableReason)
+        XCTAssertEqual(presentation?.guidance, EjectLocalization.smartCompletionUnobservableGuidance)
+        XCTAssertEqual(presentation?.actions, [])
+    }
+
     func testAccessibilityLabelsDistinguishRetryAndForceInSafeOrder() {
         let presentation = EjectRecoveryPresentation(
             state: .awaitingRecovery(recovery()),

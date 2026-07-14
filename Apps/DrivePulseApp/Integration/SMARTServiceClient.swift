@@ -122,6 +122,7 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
     }
 
     func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
+        var token: DeviceIOTracker.Token?
         do {
             let handshakeData = try await fetchHelperHandshakeOperation()
             let handshake = try decodeHandshake(from: handshakeData)
@@ -137,7 +138,7 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
                 deviceModel: device.displayName
             )
             let requestData = try encodeReadRequest(request)
-            let token = try await deviceIOTracker?.beginTargetOperation(
+            token = try await deviceIOTracker?.beginTargetOperation(
                 physicalBSDName: device.physicalStoreBSDName,
                 kind: .smart
             )
@@ -162,13 +163,18 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
                 )
                 payload = response.payload
                 if let token { await deviceIOTracker?.finish(token) }
+                token = nil
             } else {
                 payload = try await readSMARTDataOperation(requestData)
                 if let token { await deviceIOTracker?.finish(token) }
+                token = nil
             }
             let smartData = try SmartDataParser.parse(jsonData: payload)
             return .available(smartData, compatibility: compatibility)
         } catch {
+            if let token {
+                await deviceIOTracker?.markSMARTCompletionUnobservable(token)
+            }
             return mapRefreshError(error)
         }
     }

@@ -133,7 +133,7 @@ final class DeviceIOQuiescerTests: XCTestCase {
         XCTAssertEqual(try DrivePulseXPCMessages.decodeAcknowledgedSMARTReadCompletionResponse(from: data), response)
     }
 
-    func testMalformedSMARTCompletionKeepsPreparationUnsafe() async throws {
+    func testMalformedSMARTCompletionBecomesExplicitSafetyBlock() async throws {
         let tracker = DeviceIOTracker()
         let handshake = try DrivePulseXPCMessages.encode(HelperHandshake(
             helperVersion: "1.0.0",
@@ -155,9 +155,20 @@ final class DeviceIOQuiescerTests: XCTestCase {
             try await barrier.waitUntilReady()
             XCTFail("Malformed completion must keep eject preparation unsafe")
         } catch {
-            XCTAssertEqual(error as? DeviceIOQuiescenceError, .timedOut)
+            XCTAssertEqual(error as? DeviceIOQuiescenceError, .legacySMARTCompletionUnobservable)
         }
         await barrier.release()
+
+        let retryBarrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
+            for: makeTarget("disk4"), timeout: .seconds(1)
+        )
+        do {
+            try await retryBarrier.waitUntilReady()
+            XCTFail("Unobservable SMART completion must remain fail-closed")
+        } catch {
+            XCTAssertEqual(error as? DeviceIOQuiescenceError, .legacySMARTCompletionUnobservable)
+        }
+        await retryBarrier.release()
     }
 
     func testSMARTCancellationKeepsTokenUntilAcknowledgedReplyThenReleasesExactlyOnce() async throws {
@@ -604,7 +615,7 @@ final class DeviceIOQuiescerTests: XCTestCase {
             for: makeTarget("disk4"), timeout: .milliseconds(20)
         )
         do { try await barrier.waitUntilReady(); XCTFail("Unacknowledged exit must remain unsafe") }
-        catch { XCTAssertEqual(error as? DeviceIOQuiescenceError, .timedOut) }
+        catch { XCTAssertEqual(error as? DeviceIOQuiescenceError, .legacySMARTCompletionUnobservable) }
         await barrier.release()
     }
 

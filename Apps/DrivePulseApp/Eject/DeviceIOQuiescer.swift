@@ -1,6 +1,12 @@
 import Foundation
 
 actor DeviceIOTracker {
+    fileprivate enum TargetQuiescence {
+        case drained
+        case pending
+        case smartCompletionUnobservable
+    }
+
     enum Kind: Hashable, Sendable {
         case smart, capacity, metadata, diskutil, systemProfiler
     }
@@ -20,6 +26,7 @@ actor DeviceIOTracker {
     }
 
     private var operations: [Token: Operation] = [:]
+    private var unobservableSMARTTargets: Set<String> = []
     private var targetBarriers: [String: Int] = [:]
     private var globalBarrierCount = 0
 
@@ -44,6 +51,15 @@ actor DeviceIOTracker {
         operations.removeValue(forKey: token)
     }
 
+    func markSMARTCompletionUnobservable(_ token: Token) {
+        guard let operation = operations.removeValue(forKey: token),
+              operation.kind == .smart,
+              let physicalBSDName = operation.physicalBSDName else {
+            return
+        }
+        unobservableSMARTTargets.insert(physicalBSDName)
+    }
+
     func inFlightKinds(for physicalBSDName: String) -> Set<Kind> {
         Set(operations.values.compactMap { operation in
             operation.physicalBSDName == physicalBSDName ? operation.kind : nil
@@ -64,10 +80,14 @@ actor DeviceIOTracker {
         globalBarrierCount = max(0, globalBarrierCount - 1)
     }
 
-    fileprivate func isDrained(for physicalBSDName: String) -> Bool {
-        operations.values.contains { operation in
+    fileprivate func quiescence(for physicalBSDName: String) -> TargetQuiescence {
+        if unobservableSMARTTargets.contains(physicalBSDName) {
+            return .smartCompletionUnobservable
+        }
+        let hasRelevantOperation = operations.values.contains { operation in
             operation.physicalBSDName == nil || operation.physicalBSDName == physicalBSDName
-        } == false
+        }
+        return hasRelevantOperation ? .pending : .drained
     }
 }
 
@@ -111,7 +131,15 @@ private actor DeviceIOBarrier: EjectBarrier {
         do {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask { [tracker, physicalBSDName] in
-                    while await tracker.isDrained(for: physicalBSDName) == false {
+                    while true {
+                        switch await tracker.quiescence(for: physicalBSDName) {
+                        case .drained:
+                            return
+                        case .smartCompletionUnobservable:
+                            throw DeviceIOQuiescenceError.legacySMARTCompletionUnobservable
+                        case .pending:
+                            break
+                        }
                         try Task.checkCancellation()
                         try await Task.sleep(for: .milliseconds(2))
                     }

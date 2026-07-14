@@ -96,7 +96,7 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
                 title: EjectLocalization.failureTitle(target: target),
                 primaryText: EjectLocalization.failurePrimaryText(failure),
                 reason: EjectLocalization.failureReason(failure),
-                guidance: nil,
+                guidance: EjectLocalization.failureGuidance(failure),
                 technicalDetail: EjectLocalization.technicalDetail(failure),
                 actions: [],
                 isOperationActive: false,
@@ -153,6 +153,14 @@ enum EjectLocalization {
         String(localized: "eject.recovery.operationInProgress")
     }
 
+    static var smartCompletionUnobservableReason: String {
+        String(localized: "eject.error.smartCompletionUnobservable")
+    }
+
+    static var smartCompletionUnobservableGuidance: String {
+        String(localized: "eject.error.smartCompletionUnobservableGuidance")
+    }
+
     static func actionTitle(for action: EjectRecoveryAction) -> String {
         switch action {
         case .cancel: String(localized: "eject.action.cancel")
@@ -200,6 +208,12 @@ enum EjectLocalization {
             ?? categoryName(failure.category)
     }
 
+    static func failureGuidance(_ failure: EjectFailure) -> String? {
+        failure.category == .smartCompletionUnobservable
+            ? smartCompletionUnobservableGuidance
+            : nil
+    }
+
     static func technicalDetail(_ failure: EjectFailure) -> String? {
         guard let rawStatus = failure.rawStatus else { return nil }
         return format(
@@ -242,6 +256,7 @@ enum EjectLocalization {
         case .notReady: String(localized: "eject.error.notReady")
         case .io: String(localized: "eject.error.io")
         case .timedOut: String(localized: "eject.error.timedOut")
+        case .smartCompletionUnobservable: smartCompletionUnobservableReason
         case .unknown: String(localized: "eject.error.unknown")
         }
     }

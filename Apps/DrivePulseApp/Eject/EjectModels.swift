@@ -10,7 +10,7 @@ enum EjectOperationStage: String, Codable, Equatable, Sendable {
 
 enum EjectFailureCategory: String, Codable, Equatable, Sendable {
     case busy, exclusiveAccess, notFound, notMounted, notPermitted
-    case notReady, io, timedOut, unknown
+    case notReady, io, timedOut, smartCompletionUnobservable, unknown
 }
 
 enum OccupancyType: String, Codable, CaseIterable, Equatable, Sendable {

@@ -30,6 +30,24 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(releaseCount, 1)
     }
 
+    func testUnobservableSMARTCompletionFailsExplicitlyWithoutEject() async throws {
+        let fixture = Fixture(barrierError: .legacySMARTCompletionUnobservable)
+
+        fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: "T7",
+            topologyGeneration: 9
+        )
+
+        try await waitUntil {
+            fixture.coordinator.state.failure?.category == .smartCompletionUnobservable
+        }
+        let normalCalls = await fixture.ejecter.normalCalls()
+        let releases = await fixture.barrier.releases()
+        XCTAssertEqual(normalCalls, [])
+        XCTAssertEqual(releases, 1)
+    }
+
     func testBarrierAcquisitionTimeoutFailsWithoutDispatchingEject() async throws {
         let fixture = Fixture(quiescerError: .timedOut)
 
