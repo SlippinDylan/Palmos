@@ -91,7 +91,13 @@ validate_disposable_volume() {
 record_holder() {
   local kind="$1"
   local pid="$2"
-  printf '%s\n' "$pid" >"$STATE_DIR/${device}-${kind}.pid"
+  local identity
+  identity="$(ps -p "$pid" -o lstart= -o command= 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  if [[ -z "$identity" ]]; then
+    kill "$pid" 2>/dev/null || true
+    fail "could not capture holder process identity"
+  fi
+  printf '%s\n%s\n' "$pid" "$identity" >"$STATE_DIR/${device}-${kind}.pid"
   echo "Started $kind holder with PID $pid"
 }
 
@@ -107,14 +113,14 @@ case "$command_name" in
     validate_disposable_volume
     holder_file="$volume/.drivepulse-safe-eject-holder"
     : >"$holder_file"
-    nohup /bin/sh -c 'exec 3<"$1"; exec sleep 86400' drivepulse-holder "$holder_file" >/dev/null 2>&1 &
+    nohup /usr/bin/perl -e 'open my $holder, "<", $ARGV[0] or die $!; sleep 86400' "$holder_file" >/dev/null 2>&1 &
     record_holder open-file "$!"
     printf '%s\n' "$holder_file" >"$STATE_DIR/${device}-holder-file.path"
     ;;
   working-directory-holder)
     check_device >/dev/null
     validate_disposable_volume
-    nohup /bin/sh -c 'cd "$1"; exec sleep 86400' drivepulse-holder "$volume" >/dev/null 2>&1 &
+    nohup /usr/bin/perl -e 'chdir $ARGV[0] or die $!; sleep 86400' "$volume" >/dev/null 2>&1 &
     record_holder working-directory "$!"
     ;;
   device-node-holder)
@@ -122,7 +128,7 @@ case "$command_name" in
     validate_disposable_volume
     node="/dev/r${device}"
     [[ -r "$node" ]] || fail "$node is not readable by the current user"
-    nohup /bin/sh -c 'exec 3<"$1"; exec sleep 86400' drivepulse-holder "$node" >/dev/null 2>&1 &
+    nohup /usr/bin/perl -e 'open my $holder, "<", $ARGV[0] or die $!; sleep 86400' "$node" >/dev/null 2>&1 &
     record_holder device-node "$!"
     ;;
   release-holders)
@@ -131,10 +137,16 @@ case "$command_name" in
     for pid_file in "$STATE_DIR/${device}-"*.pid; do
       [[ -e "$pid_file" ]] || continue
       found=true
-      pid="$(<"$pid_file")"
+      pid="$(sed -n '1p' "$pid_file")"
+      recorded_identity="$(sed -n '2p' "$pid_file")"
       if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-        kill "$pid"
-        echo "Released holder PID $pid"
+        current_identity="$(ps -p "$pid" -o lstart= -o command= 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true)"
+        if [[ -n "$recorded_identity" && "$current_identity" == "$recorded_identity" ]]; then
+          kill "$pid"
+          echo "Released holder PID $pid"
+        else
+          echo "Skipped PID $pid because it no longer matches the recorded holder" >&2
+        fi
       fi
       rm -f "$pid_file"
     done
