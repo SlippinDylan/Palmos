@@ -243,6 +243,35 @@ final class HelperOccupancySecurityTests: XCTestCase {
         XCTAssertEqual(maximumWorkers, 1)
     }
 
+    func testSameWorkflowDifferentDiskIsBusyWithoutCancellingActiveWorker() async throws {
+        let snapshot = ControlledSnapshotProvider()
+        let endpoint = HelperOccupancyEndpoint(
+            snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: snapshot.scope),
+            scanner: HelperOccupancyScanner(
+                inspector: FixtureHelperProcessInspector(candidateCount: 0, holderPerPID: false)
+            )
+        )
+        let workflowID = UUID()
+        let firstRequest = try occupancyRequest(workflowID, disk: "disk4")
+        let first = Task { await endpoint.handle(firstRequest) }
+        await snapshot.waitUntilFirstStarted()
+
+        let otherDisk = await endpoint.handle(try occupancyRequest(workflowID, disk: "disk5"))
+
+        let callCount = await snapshot.callCountValue()
+        let maximumWorkers = await snapshot.maximumActiveWorkers()
+        XCTAssertEqual(otherDisk.error?.code, HelperOccupancyError.helperBusy.rawValue)
+        XCTAssertEqual(callCount, 1)
+        XCTAssertEqual(maximumWorkers, 1)
+        await snapshot.releaseFirst()
+        let firstResult = await first.value
+        XCTAssertTrue(
+            try DrivePulseXPCMessages.decodeOccupancyResponse(
+                from: XCTUnwrap(firstResult.data)
+            ).isComplete
+        )
+    }
+
     func testEndpointReturnsWithinFullDeadlineEvenWhenSnapshotWorkerIgnoresCancellation() async throws {
         let endpoint = HelperOccupancyEndpoint(
             snapshotProvider: HelperAuthoritativeSnapshotProvider(snapshot: { _, _, _ in

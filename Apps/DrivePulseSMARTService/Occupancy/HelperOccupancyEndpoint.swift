@@ -9,6 +9,7 @@ actor HelperOccupancyEndpoint {
     private struct ActiveRequest {
         let generation: UInt64
         let workflowID: UUID
+        let physicalDeviceBSDName: String
         let cancellation: HelperOperationCancellation
     }
 
@@ -39,10 +40,10 @@ actor HelperOccupancyEndpoint {
         }
 
         if let active {
-            guard active.workflowID == request.workflowID else {
+            guard active.workflowID == request.workflowID,
+                  active.physicalDeviceBSDName == request.physicalDeviceBSDName else {
                 return failure(.helperBusy)
             }
-            nextGeneration &+= 1
             active.cancellation.cancel()
             return encode(.incomplete, workflowID: request.workflowID)
         }
@@ -53,6 +54,7 @@ actor HelperOccupancyEndpoint {
         active = ActiveRequest(
             generation: generation,
             workflowID: request.workflowID,
+            physicalDeviceBSDName: request.physicalDeviceBSDName,
             cancellation: cancellation
         )
 
