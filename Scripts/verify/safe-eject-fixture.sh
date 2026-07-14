@@ -92,7 +92,7 @@ record_holder() {
   local kind="$1"
   local pid="$2"
   local identity
-  identity="$(ps -p "$pid" -o lstart= -o command= 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  identity="$(/bin/ps -ww -p "$pid" -o lstart= -o command= 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   if [[ -z "$identity" ]]; then
     kill "$pid" 2>/dev/null || true
     fail "could not capture holder process identity"
@@ -140,7 +140,7 @@ case "$command_name" in
       pid="$(sed -n '1p' "$pid_file")"
       recorded_identity="$(sed -n '2p' "$pid_file")"
       if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-        current_identity="$(ps -p "$pid" -o lstart= -o command= 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true)"
+        current_identity="$(/bin/ps -ww -p "$pid" -o lstart= -o command= 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true)"
         if [[ -n "$recorded_identity" && "$current_identity" == "$recorded_identity" ]]; then
           kill "$pid"
           echo "Released holder PID $pid"
