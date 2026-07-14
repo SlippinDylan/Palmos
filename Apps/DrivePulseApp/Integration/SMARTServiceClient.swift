@@ -139,6 +139,7 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
             )
             let requestData = try encodeReadRequest(request)
             token = try await deviceIOTracker?.beginTargetOperation(
+                deviceID: device.id,
                 physicalBSDName: device.physicalStoreBSDName,
                 kind: .smart
             )

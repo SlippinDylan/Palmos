@@ -1,5 +1,7 @@
 import Foundation
 
+import DrivePulseCore
+
 actor DeviceIOTracker {
     fileprivate enum TargetQuiescence {
         case drained
@@ -21,29 +23,43 @@ actor DeviceIOTracker {
     }
 
     private struct Operation: Sendable {
+        let deviceID: DeviceID?
         let physicalBSDName: String?
         let kind: Kind
     }
 
+    private struct SMARTSafetyScope: Hashable, Sendable {
+        let deviceID: DeviceID?
+        let physicalBSDName: String
+    }
+
     private var operations: [Token: Operation] = [:]
-    private var unobservableSMARTTargets: Set<String> = []
+    private var unobservableSMARTScopes: Set<SMARTSafetyScope> = []
     private var targetBarriers: [String: Int] = [:]
     private var globalBarrierCount = 0
 
-    func beginTargetOperation(physicalBSDName: String, kind: Kind) throws -> Token {
+    func beginTargetOperation(
+        deviceID: DeviceID? = nil,
+        physicalBSDName: String,
+        kind: Kind
+    ) throws -> Token {
         guard physicalBSDName.isEmpty == false else { throw RegistrationError.invalidScope }
         guard targetBarriers[physicalBSDName, default: 0] == 0 else {
             throw RegistrationError.paused
         }
         let token = Token(id: UUID())
-        operations[token] = Operation(physicalBSDName: physicalBSDName, kind: kind)
+        operations[token] = Operation(
+            deviceID: deviceID,
+            physicalBSDName: physicalBSDName,
+            kind: kind
+        )
         return token
     }
 
     func beginGlobalOperation(kind: Kind) throws -> Token {
         guard globalBarrierCount == 0 else { throw RegistrationError.paused }
         let token = Token(id: UUID())
-        operations[token] = Operation(physicalBSDName: nil, kind: kind)
+        operations[token] = Operation(deviceID: nil, physicalBSDName: nil, kind: kind)
         return token
     }
 
@@ -57,7 +73,10 @@ actor DeviceIOTracker {
               let physicalBSDName = operation.physicalBSDName else {
             return
         }
-        unobservableSMARTTargets.insert(physicalBSDName)
+        unobservableSMARTScopes.insert(.init(
+            deviceID: operation.deviceID,
+            physicalBSDName: physicalBSDName
+        ))
     }
 
     func inFlightKinds(for physicalBSDName: String) -> Set<Kind> {
@@ -80,8 +99,20 @@ actor DeviceIOTracker {
         globalBarrierCount = max(0, globalBarrierCount - 1)
     }
 
-    fileprivate func quiescence(for physicalBSDName: String) -> TargetQuiescence {
-        if unobservableSMARTTargets.contains(physicalBSDName) {
+    fileprivate func quiescence(
+        deviceID: DeviceID,
+        physicalBSDName: String
+    ) -> TargetQuiescence {
+        let exactScope = SMARTSafetyScope(
+            deviceID: deviceID,
+            physicalBSDName: physicalBSDName
+        )
+        let legacyScope = SMARTSafetyScope(
+            deviceID: nil,
+            physicalBSDName: physicalBSDName
+        )
+        if unobservableSMARTScopes.contains(exactScope)
+            || unobservableSMARTScopes.contains(legacyScope) {
             return .smartCompletionUnobservable
         }
         let hasRelevantOperation = operations.values.contains { operation in
@@ -109,6 +140,7 @@ struct DeviceIOQuiescer: DeviceIOQuiescing, Sendable {
         await tracker.installBarrier(for: target.physicalBSDName)
         return DeviceIOBarrier(
             tracker: tracker,
+            deviceID: target.deviceID,
             physicalBSDName: target.physicalBSDName,
             timeout: timeout
         )
@@ -117,12 +149,19 @@ struct DeviceIOQuiescer: DeviceIOQuiescing, Sendable {
 
 private actor DeviceIOBarrier: EjectBarrier {
     private let tracker: DeviceIOTracker
+    private let deviceID: DeviceID
     private let physicalBSDName: String
     private let timeout: Duration
     private var isReleased = false
 
-    init(tracker: DeviceIOTracker, physicalBSDName: String, timeout: Duration) {
+    init(
+        tracker: DeviceIOTracker,
+        deviceID: DeviceID,
+        physicalBSDName: String,
+        timeout: Duration
+    ) {
         self.tracker = tracker
+        self.deviceID = deviceID
         self.physicalBSDName = physicalBSDName
         self.timeout = timeout
     }
@@ -130,9 +169,12 @@ private actor DeviceIOBarrier: EjectBarrier {
     func waitUntilReady() async throws {
         do {
             try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask { [tracker, physicalBSDName] in
+                group.addTask { [tracker, deviceID, physicalBSDName] in
                     while true {
-                        switch await tracker.quiescence(for: physicalBSDName) {
+                        switch await tracker.quiescence(
+                            deviceID: deviceID,
+                            physicalBSDName: physicalBSDName
+                        ) {
                         case .drained:
                             return
                         case .smartCompletionUnobservable:

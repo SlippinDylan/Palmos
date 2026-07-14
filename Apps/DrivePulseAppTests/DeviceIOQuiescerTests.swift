@@ -171,6 +171,36 @@ final class DeviceIOQuiescerTests: XCTestCase {
         await retryBarrier.release()
     }
 
+    func testUnobservableSMARTCompletionDoesNotBlockReplacementUsingSameBSDName() async throws {
+        let tracker = DeviceIOTracker()
+        let handshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.0.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.currentMinor
+        ))
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            readSMARTData: { _ in Data() },
+            readSMARTDataWithCompletion: { _ in Data("{}".utf8) },
+            deviceIOTracker: tracker
+        )
+        _ = await client.refreshSMART(for: makeDevice("disk4"))
+        let replacement = EjectWorkflowTarget(
+            deviceID: DeviceID(rawValue: "serial:replacement"),
+            physicalBSDName: "disk4",
+            mediaRegistryEntryID: 9_999,
+            displayName: "Replacement",
+            topologyGeneration: 2
+        )
+
+        let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
+            for: replacement,
+            timeout: .milliseconds(100)
+        )
+        try await barrier.waitUntilReady()
+        await barrier.release()
+    }
+
     func testSMARTCancellationKeepsTokenUntilAcknowledgedReplyThenReleasesExactlyOnce() async throws {
         let tracker = DeviceIOTracker()
         let replyGate = AsyncSuspensionGate()

@@ -64,8 +64,10 @@ final class EjectCoordinator: ObservableObject {
     }
 
     func retry() {
-        guard case .awaitingRecovery = state,
+        guard case .awaitingRecovery(let recovery) = state,
               let activeWorkflow else { return }
+        retainedRecovery = recovery
+        state = .working(target: activeWorkflow.target, stage: .preparing)
         startOperation(workflowID: activeWorkflow.id) { [weak self] in
             await self?.revalidateAndPerformNormalEject(workflowID: activeWorkflow.id)
         }
@@ -82,8 +84,10 @@ final class EjectCoordinator: ObservableObject {
     }
 
     func confirmForce() {
-        guard case .awaitingForceConfirmation = state,
+        guard case .awaitingForceConfirmation(let recovery) = state,
               let activeWorkflow else { return }
+        retainedRecovery = recovery
+        state = .working(target: activeWorkflow.target, stage: .preparing)
         startOperation(workflowID: activeWorkflow.id) { [weak self] in
             await self?.revalidateAndPerformForceEject(workflowID: activeWorkflow.id)
         }

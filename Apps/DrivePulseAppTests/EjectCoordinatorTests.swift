@@ -189,6 +189,32 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertNil(fixture.coordinator.retainedRecovery)
     }
 
+    func testRetryImmediatelyEntersWorkingStateDuringRevalidation() async throws {
+        let revalidationGate = AsyncGate()
+        let fixture = Fixture(
+            normalResults: [.failure(Fixture.failure(.busy)), .success(())]
+        )
+        fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: "T7",
+            topologyGeneration: 9
+        )
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        await fixture.resolver.setRevalidationGates([revalidationGate])
+
+        fixture.coordinator.retry()
+        fixture.coordinator.retry()
+
+        guard case .working(_, .preparing) = fixture.coordinator.state else {
+            return XCTFail("Retry must show progress before revalidation completes")
+        }
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 2 }
+        let retryRevalidations = await fixture.resolver.revalidationCalls()
+        XCTAssertEqual(retryRevalidations.count, 2)
+        await revalidationGate.open()
+        try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
+    }
+
     func testForceRequestOnlyChangesConfirmationState() async throws {
         let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))])
         fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
@@ -257,6 +283,31 @@ final class EjectCoordinatorTests: XCTestCase {
         await forceGate.open()
         try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
         XCTAssertNil(fixture.coordinator.retainedRecovery)
+    }
+
+    func testConfirmedForceImmediatelyEntersWorkingStateDuringRevalidation() async throws {
+        let revalidationGate = AsyncGate()
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))])
+        fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: "T7",
+            topologyGeneration: 9
+        )
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        fixture.coordinator.requestForce()
+        await fixture.resolver.setRevalidationGates([revalidationGate])
+
+        fixture.coordinator.confirmForce()
+        fixture.coordinator.confirmForce()
+
+        guard case .working(_, .preparing) = fixture.coordinator.state else {
+            return XCTFail("Force eject must show progress before revalidation completes")
+        }
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 2 }
+        let forceRevalidations = await fixture.resolver.revalidationCalls()
+        XCTAssertEqual(forceRevalidations.count, 2)
+        await revalidationGate.open()
+        try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
     }
 
     func testForceFailureIsTerminalAndNeverSucceeds() async throws {
