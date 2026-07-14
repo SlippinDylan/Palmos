@@ -36,7 +36,6 @@ actor DeviceIOTracker {
     private var operations: [Token: Operation] = [:]
     private var unobservableSMARTScopes: Set<SMARTSafetyScope> = []
     private var targetBarriers: [String: Int] = [:]
-    private var globalBarrierCount = 0
 
     func beginTargetOperation(
         deviceID: DeviceID? = nil,
@@ -57,7 +56,6 @@ actor DeviceIOTracker {
     }
 
     func beginGlobalOperation(kind: Kind) throws -> Token {
-        guard globalBarrierCount == 0 else { throw RegistrationError.paused }
         let token = Token(id: UUID())
         operations[token] = Operation(deviceID: nil, physicalBSDName: nil, kind: kind)
         return token
@@ -87,7 +85,6 @@ actor DeviceIOTracker {
 
     fileprivate func installBarrier(for physicalBSDName: String) {
         targetBarriers[physicalBSDName, default: 0] += 1
-        globalBarrierCount += 1
     }
 
     fileprivate func removeBarrier(for physicalBSDName: String) {
@@ -96,7 +93,6 @@ actor DeviceIOTracker {
         } else if let count = targetBarriers[physicalBSDName] {
             targetBarriers[physicalBSDName] = count - 1
         }
-        globalBarrierCount = max(0, globalBarrierCount - 1)
     }
 
     fileprivate func quiescence(
@@ -116,7 +112,7 @@ actor DeviceIOTracker {
             return .smartCompletionUnobservable
         }
         let hasRelevantOperation = operations.values.contains { operation in
-            operation.physicalBSDName == nil || operation.physicalBSDName == physicalBSDName
+            operation.physicalBSDName == physicalBSDName
         }
         return hasRelevantOperation ? .pending : .drained
     }

@@ -70,26 +70,17 @@ final class DeviceIOQuiescerTests: XCTestCase {
         await tracker.finish(resumed)
     }
 
-    func testGlobalOperationDrainsAndLaunchesResumeAfterRelease() async throws {
+    func testTargetBarrierDoesNotWaitForOrPauseGlobalSystemProfilerWork() async throws {
         let tracker = DeviceIOTracker()
         let global = try await tracker.beginGlobalOperation(kind: .systemProfiler)
         let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
             for: makeTarget("disk4"), timeout: .seconds(1)
         )
-        let readiness = Task { try await barrier.waitUntilReady() }
-
-        do {
-            _ = try await tracker.beginGlobalOperation(kind: .systemProfiler)
-            XCTFail("Global launches must pause during preparation")
-        } catch {
-            XCTAssertEqual(error as? DeviceIOTracker.RegistrationError, .paused)
-        }
-        await tracker.finish(global)
-        try await readiness.value
+        try await barrier.waitUntilReady()
+        let concurrentGlobal = try await tracker.beginGlobalOperation(kind: .systemProfiler)
+        await tracker.finish(concurrentGlobal)
         await barrier.release()
-
-        let resumed = try await tracker.beginGlobalOperation(kind: .systemProfiler)
-        await tracker.finish(resumed)
+        await tracker.finish(global)
     }
 
     func testBarrierTimesOutWhileTargetWorkRemainsInFlight() async throws {
@@ -589,7 +580,7 @@ final class DeviceIOQuiescerTests: XCTestCase {
         XCTAssertEqual(arguments.values, [["info", "-plist", "disk10"]])
     }
 
-    func testEverySystemProfilerSpawnIsGloballyDrained() async throws {
+    func testSystemProfilerSpawnsDoNotDelayTargetBarrier() async throws {
         let tracker = DeviceIOTracker()
         let gate = AsyncSuspensionGate()
         let provider = LiveSystemProfilerProvider(
@@ -604,15 +595,9 @@ final class DeviceIOQuiescerTests: XCTestCase {
         let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
             for: makeTarget("disk4"), timeout: .milliseconds(20)
         )
-        do {
-            try await barrier.waitUntilReady()
-            XCTFail("All spawned system_profiler processes must drain")
-        } catch {
-            XCTAssertEqual(error as? DeviceIOQuiescenceError, .timedOut)
-        }
+        try await barrier.waitUntilReady()
         await gate.releaseAll()
         await refresh.value
-        try await barrier.waitUntilReady()
         await barrier.release()
     }
 

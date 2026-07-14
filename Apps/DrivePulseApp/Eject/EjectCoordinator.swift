@@ -71,7 +71,7 @@ final class EjectCoordinator: ObservableObject {
         retainedRecovery = recovery
         state = .working(target: activeWorkflow.target, stage: .preparing)
         startOperation(workflowID: activeWorkflow.id) { [weak self] in
-            await self?.revalidateAndPerformNormalEject(workflowID: activeWorkflow.id)
+            await self?.prepareExistingAttempt(workflowID: activeWorkflow.id, force: false)
         }
     }
 
@@ -91,7 +91,7 @@ final class EjectCoordinator: ObservableObject {
         retainedRecovery = recovery
         state = .working(target: activeWorkflow.target, stage: .preparing)
         startOperation(workflowID: activeWorkflow.id) { [weak self] in
-            await self?.revalidateAndPerformForceEject(workflowID: activeWorkflow.id)
+            await self?.prepareExistingAttempt(workflowID: activeWorkflow.id, force: true)
         }
     }
 
@@ -173,6 +173,37 @@ final class EjectCoordinator: ObservableObject {
             let result = await ejecter.performNormalEject(bsdName: workflow.target.physicalBSDName)
             guard isCurrent(id) else { return }
             await handleNormalResult(result, workflow: workflow)
+        } catch {
+            await handleRevalidationError(error, target: workflow.target, workflowID: id)
+        }
+    }
+
+    private func prepareExistingAttempt(workflowID id: UUID, force: Bool) async {
+        guard let workflow = activeWorkflow, workflow.id == id else { return }
+        do {
+            let barrier = try await quiescer.acquireBarrier(
+                for: workflow.target,
+                timeout: preparationTimeout
+            )
+            guard isCurrent(id) else {
+                await barrier.release()
+                return
+            }
+            workflow.setBarrier(barrier)
+            try await barrier.waitUntilReady()
+            guard isCurrent(id) else { return }
+            if force {
+                await revalidateAndPerformForceEject(workflowID: id)
+            } else {
+                await revalidateAndPerformNormalEject(workflowID: id)
+            }
+        } catch let error as DeviceIOQuiescenceError {
+            guard isCurrent(id) else { return }
+            await finishFailure(
+                preparationFailure(error, target: workflow.target),
+                target: workflow.target,
+                workflowID: id
+            )
         } catch {
             await handleRevalidationError(error, target: workflow.target, workflowID: id)
         }
@@ -265,6 +296,8 @@ final class EjectCoordinator: ObservableObject {
                 failure: diagnosedFailure,
                 holders: scan.holders
             )
+            await releaseBarrier(workflowID: workflow.id)
+            guard isCurrent(workflow.id) else { return }
             retainedRecovery = recovery
             state = .awaitingRecovery(recovery)
         case .failure(let failure):
@@ -352,9 +385,10 @@ final class EjectCoordinator: ObservableObject {
             await releaseTask.value
             return
         }
-        guard let workflow = activeWorkflow, workflow.id == id else { return }
-        activeWorkflow = nil
-        let task = Task { await workflow.barrier.release() }
+        guard let workflow = activeWorkflow,
+              workflow.id == id,
+              let barrier = workflow.takeBarrier() else { return }
+        let task = Task { await barrier.release() }
         releaseWorkflowID = id
         releaseTask = task
         await task.value
@@ -425,7 +459,7 @@ private final class ActiveWorkflow {
     let target: EjectWorkflowTarget
     var scope: OccupancyTargetScope
     private(set) var scopeGeneration: Int
-    let barrier: any EjectBarrier
+    private var barrier: (any EjectBarrier)?
 
     init(
         id: UUID,
@@ -444,5 +478,15 @@ private final class ActiveWorkflow {
         guard generation >= scopeGeneration else { return }
         self.scope = scope
         scopeGeneration = generation
+    }
+
+    func setBarrier(_ barrier: any EjectBarrier) {
+        precondition(self.barrier == nil)
+        self.barrier = barrier
+    }
+
+    func takeBarrier() -> (any EjectBarrier)? {
+        defer { barrier = nil }
+        return barrier
     }
 }

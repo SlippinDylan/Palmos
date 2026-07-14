@@ -141,16 +141,24 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(forceCalls, [])
     }
 
-    func testBusyFailureKeepsBarrierScansAndPersistsRecovery() async throws {
+    func testBusyFailureScansBeforeReleasingBarrierAndPublishingRecovery() async throws {
         let holder = OccupancyHolder(pid: 42, executableName: "Finder", displayName: nil, type: .openFileOrDirectory)
-        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))], holders: [holder])
+        let releaseGate = AsyncGate()
+        let fixture = Fixture(
+            normalResults: [.failure(Fixture.failure(.busy))],
+            holders: [holder],
+            releaseGate: releaseGate
+        )
 
         fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
 
+        try await waitUntil { await fixture.barrier.releases() == 1 }
+        XCTAssertNil(fixture.coordinator.state.recovery)
+        await releaseGate.open()
         try await waitUntil { fixture.coordinator.state.recovery?.holders == [holder] }
         let releaseCount = await fixture.barrier.releases()
         let scopes = await fixture.scanner.scannedScopes()
-        XCTAssertEqual(releaseCount, 0)
+        XCTAssertEqual(releaseCount, 1)
         XCTAssertEqual(scopes, [fixture.scope])
     }
 
@@ -202,7 +210,7 @@ final class EjectCoordinatorTests: XCTestCase {
         let releaseCount = await fixture.barrier.releases()
         XCTAssertEqual(scopes.last, retryScope)
         XCTAssertEqual(normalBSDNames, ["disk4", "disk4"])
-        XCTAssertEqual(releaseCount, 0)
+        XCTAssertEqual(releaseCount, 2)
     }
 
     func testRetryRetainsRecoveryWhileNormalEjectIsInFlight() async throws {
@@ -275,7 +283,7 @@ final class EjectCoordinatorTests: XCTestCase {
         let forceBSDNames = await fixture.ejecter.forceCalls()
         let releaseCount = await fixture.barrier.releases()
         XCTAssertEqual(forceBSDNames, [])
-        XCTAssertEqual(releaseCount, 0)
+        XCTAssertEqual(releaseCount, 1)
     }
 
     func testConfirmedForceRevalidatesThenForcesAndReleasesOnSuccess() async throws {
@@ -297,7 +305,7 @@ final class EjectCoordinatorTests: XCTestCase {
         let releaseCount = await fixture.barrier.releases()
         XCTAssertEqual(forceBSDNames, ["disk4"])
         XCTAssertEqual(revalidatedTargets.count, 2)
-        XCTAssertEqual(releaseCount, 1)
+        XCTAssertEqual(releaseCount, 2)
     }
 
     func testConfirmedForceRetainsRecoveryWhileForceEjectIsInFlight() async throws {
@@ -372,7 +380,7 @@ final class EjectCoordinatorTests: XCTestCase {
 
         try await waitUntil { fixture.coordinator.state.failure == forceFailure }
         let releaseCount = await fixture.barrier.releases()
-        XCTAssertEqual(releaseCount, 1)
+        XCTAssertEqual(releaseCount, 2)
     }
 
     func testSelectionChangesCannotRetargetCapturedWorkflow() async throws {
@@ -408,7 +416,7 @@ final class EjectCoordinatorTests: XCTestCase {
         let releaseCount = await fixture.barrier.releases()
         XCTAssertEqual(normalBSDNames, ["disk4"])
         XCTAssertEqual(forceBSDNames, [])
-        XCTAssertEqual(releaseCount, 1)
+        XCTAssertEqual(releaseCount, 2)
     }
 
     func testTopologyChangeRevalidatesAndDisappearanceEndsNeutrally() async throws {
@@ -510,7 +518,7 @@ final class EjectCoordinatorTests: XCTestCase {
 
         try await waitUntil { fixture.coordinator.state.recovery != nil }
         let releases = await fixture.barrier.releases()
-        XCTAssertEqual(releases, 0)
+        XCTAssertEqual(releases, 1)
     }
 
     func testInvalidTopologyDuringNormalEjectEndsNeutrallyWithoutReplacementAction() async throws {
@@ -671,7 +679,7 @@ final class EjectCoordinatorTests: XCTestCase {
 
         let releases = await fixture.barrier.releases()
         XCTAssertNotNil(fixture.coordinator.state.recovery)
-        XCTAssertEqual(releases, 1)
+        XCTAssertEqual(releases, 2)
         fixture.coordinator.cancel()
     }
 
@@ -691,9 +699,8 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(releases, 1)
     }
 
-    func testCancelDuringSuspendedDisappearanceReleasePreventsStaleTerminalOverwrite() async throws {
-        let releaseGate = AsyncGate()
-        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))], releaseGate: releaseGate)
+    func testCancellationAfterRecoveryDisappearanceDoesNotOverwriteTerminalState() async throws {
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))])
         await fixture.resolver.setRevalidations([
             .success(fixture.resolved()),
             .failure(EjectTargetResolutionError.deviceNotFound)
@@ -701,15 +708,12 @@ final class EjectCoordinatorTests: XCTestCase {
         fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
         try await waitUntil { fixture.coordinator.state.recovery != nil }
         fixture.coordinator.deviceTopologyDidChange(generation: 10)
-        try await waitUntil { await fixture.barrier.releases() == 1 }
-
+        try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
         fixture.coordinator.cancel()
-        await releaseGate.open()
-        try await waitUntil { fixture.coordinator.state == .idle }
         try await Task.sleep(for: .milliseconds(20))
 
         let releases = await fixture.barrier.releases()
-        XCTAssertEqual(fixture.coordinator.state, .idle)
+        XCTAssertEqual(fixture.coordinator.state, .disappeared(fixture.target))
         XCTAssertEqual(releases, 1)
     }
 

@@ -1064,7 +1064,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let pausedSystemProfilerCallCount = await probe.systemProfilerCallCount()
         let pausedDisk4DiskUtilCallCount = await probe.diskUtilCallCount(for: "disk4")
         XCTAssertEqual(pausedSMARTReadCount, 0)
-        XCTAssertEqual(pausedSystemProfilerCallCount, 0)
+        XCTAssertEqual(pausedSystemProfilerCallCount, 3)
         XCTAssertEqual(pausedDisk4DiskUtilCallCount, 0)
         XCTAssertEqual(capacityProbe.count(for: "disk4s1"), 0)
 
@@ -1105,7 +1105,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let resumedSystemProfilerCallCount = await probe.systemProfilerCallCount()
         let resumedDisk4DiskUtilCallCount = await probe.diskUtilCallCount(for: "disk4")
         XCTAssertEqual(resumedSMARTReadCount, 1)
-        XCTAssertEqual(resumedSystemProfilerCallCount, 3)
+        XCTAssertEqual(resumedSystemProfilerCallCount, 6)
         XCTAssertGreaterThan(resumedDisk4DiskUtilCallCount, 0)
 
         let leakCheckBarrier = try await controller.deviceIOQuiescer.acquireBarrier(
