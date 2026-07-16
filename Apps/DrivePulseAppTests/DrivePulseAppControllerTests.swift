@@ -822,6 +822,104 @@ final class DrivePulseAppControllerTests: XCTestCase {
         await ejecter.finishNormalEject()
     }
 
+    func testSparseObservationDoesNotClearVolumesForWorkingEjectTarget() async throws {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let unmountedDevice = makeDevice(id: "disk21", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let ejecter = BlockingDiskEjecter()
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: mountedDevice),
+            ejecter: ejecter
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
+        controller.perform(action)
+        await ejecter.waitUntilNormalEjectStarts()
+
+        discovery.emit([unmountedDevice])
+
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(controller.state.selectedDevice?.volumes, mountedDevice.volumes)
+        await ejecter.finishNormalEject()
+    }
+
+    func testConfirmedExternalUnmountClearsVolumesForRecoveryEjectTarget() async throws {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let unmountedDevice = makeDevice(id: "disk21", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let failure = EjectFailure(
+            stage: .unmounting,
+            category: .busy,
+            rawStatus: nil,
+            systemMessage: "busy",
+            physicalBSDName: "disk21",
+            holders: []
+        )
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(
+                device: mountedDevice,
+                unmountsAfterInitialRevalidation: true
+            ),
+            ejecter: ImmediateDiskEjecter(normalResult: .failure(failure))
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
+        controller.perform(action)
+        await waitUntil {
+            if case .awaitingRecovery = coordinator.state { return true }
+            return false
+        }
+
+        discovery.emit([unmountedDevice])
+
+        await waitUntil { controller.state.selectedDevice?.volumes.isEmpty == true }
+        if case .externallyUnmounted = coordinator.state {
+            // Expected neutral terminal state after confirmed Finder unmount.
+        } else {
+            XCTFail("Expected confirmed external unmount state")
+        }
+    }
+
+    func testSuccessfulEjectClearsMountedVolumesWithoutPoisoningLaterSparseObservations() async throws {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let remountedDevice = makeDevice(id: "disk21", volumes: ["disk21s2"])
+        let sparseDevice = makeDevice(id: "disk21", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: mountedDevice),
+            ejecter: ImmediateDiskEjecter(normalResult: .success(()))
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
+
+        controller.perform(action)
+
+        await waitUntil {
+            if case .succeeded = coordinator.state { return true }
+            return false
+        }
+        XCTAssertTrue(controller.state.selectedDevice?.volumes.isEmpty == true)
+
+        discovery.emit([remountedDevice])
+        await waitUntil { controller.state.selectedDevice?.volumes == remountedDevice.volumes }
+        discovery.emit([sparseDevice])
+
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(controller.state.selectedDevice?.volumes, remountedDevice.volumes)
+    }
+
     func testActiveEjectWorkflowDisablesActionsAfterSelectingAnotherDiskButKeepsThroughputSampling() async throws {
         let firstDevice = makeDevice(id: "disk21", volumes: [])
         let secondDevice = makeDevice(id: "disk42", volumes: [])
@@ -2153,11 +2251,16 @@ private actor RecordingEjectTargetResolver: EjectTargetResolving {
     }
 
     private let device: ExternalDevice
+    private let unmountsAfterInitialRevalidation: Bool
     private var resolveRequests: [ResolveRequest] = []
     private var revalidationCount = 0
 
-    init(device: ExternalDevice) {
+    init(
+        device: ExternalDevice,
+        unmountsAfterInitialRevalidation: Bool = false
+    ) {
         self.device = device
+        self.unmountsAfterInitialRevalidation = unmountsAfterInitialRevalidation
     }
 
     func resolve(
@@ -2182,7 +2285,8 @@ private actor RecordingEjectTargetResolver: EjectTargetResolving {
         return resolvedTarget(
             deviceID: target.deviceID,
             displayName: target.displayName,
-            topologyGeneration: target.topologyGeneration
+            topologyGeneration: target.topologyGeneration,
+            isMounted: unmountsAfterInitialRevalidation == false || revalidationCount == 1
         )
     }
 
@@ -2197,7 +2301,8 @@ private actor RecordingEjectTargetResolver: EjectTargetResolving {
     private func resolvedTarget(
         deviceID: DeviceID,
         displayName: String,
-        topologyGeneration: Int
+        topologyGeneration: Int,
+        isMounted: Bool = true
     ) -> ResolvedEjectTarget {
         ResolvedEjectTarget(
             target: EjectWorkflowTarget(
@@ -2210,7 +2315,9 @@ private actor RecordingEjectTargetResolver: EjectTargetResolving {
             scope: OccupancyTargetScope(
                 physicalBSDName: device.physicalStoreBSDName,
                 deviceNodes: ["/dev/\(device.physicalStoreBSDName)"],
-                mountURLs: []
+                mountURLs: isMounted && device.volumes.isEmpty == false
+                    ? [URL(fileURLWithPath: "/Volumes/\(device.volumes[0].bsdName)")]
+                    : []
             )
         )
     }
@@ -2273,7 +2380,10 @@ private actor BlockingDiskEjecter: DiskEjecting {
         self.result = result
     }
 
-    func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure> {
+    func performNormalEject(
+        bsdName: String,
+        scope: OccupancyTargetScope
+    ) async -> Result<Void, EjectFailure> {
         didStart = true
         startContinuations.forEach { $0.resume() }
         startContinuations.removeAll()
@@ -2340,7 +2450,10 @@ private final class LockedCapacityProbe: @unchecked Sendable {
 private struct ImmediateDiskEjecter: DiskEjecting {
     let normalResult: Result<Void, EjectFailure>
 
-    func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure> {
+    func performNormalEject(
+        bsdName: String,
+        scope: OccupancyTargetScope
+    ) async -> Result<Void, EjectFailure> {
         normalResult
     }
 

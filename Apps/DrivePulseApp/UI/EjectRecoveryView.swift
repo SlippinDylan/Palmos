@@ -17,12 +17,6 @@ struct EjectRecoveryView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            if presentation.reason != presentation.primaryText {
-                Text(presentation.reason)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
             if let guidance = presentation.guidance {
                 Text(guidance)
                     .font(.footnote)

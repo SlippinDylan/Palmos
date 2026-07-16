@@ -85,6 +85,7 @@ enum EjectWorkflowState: Equatable, Sendable {
     case awaitingRecovery(EjectRecoveryState)
     case awaitingForceConfirmation(EjectRecoveryState)
     case succeeded(EjectWorkflowTarget)
+    case externallyUnmounted(EjectWorkflowTarget)
     case disappeared(EjectWorkflowTarget)
     case resolutionFailed(request: EjectWorkflowRequest, failure: EjectFailure)
     case failed(target: EjectWorkflowTarget, failure: EjectFailure)

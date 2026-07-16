@@ -64,7 +64,9 @@ final class EjectCoordinatorTests: XCTestCase {
 
         try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
         let events = await fixture.events.snapshot()
+        let scopes = await fixture.ejecter.normalScopes()
         XCTAssertEqual(events, ["resolve", "acquire", "drain", "revalidate", "normal:disk4", "release"])
+        XCTAssertEqual(scopes, [refreshed.scope])
     }
 
     func testPreparationTimeoutNeverCallsEjectAndReleasesBarrier() async throws {
@@ -160,6 +162,43 @@ final class EjectCoordinatorTests: XCTestCase {
         let scopes = await fixture.scanner.scannedScopes()
         XCTAssertEqual(releaseCount, 1)
         XCTAssertEqual(scopes, [fixture.scope])
+    }
+
+    func testBusyFailureWithDissentingHolderSkipsOccupancyScan() async throws {
+        let holder = OccupancyHolder(
+            pid: 501,
+            executableName: "Finder",
+            displayName: "Finder",
+            type: .unknown
+        )
+        let failure = EjectFailure(
+            stage: .unmounting,
+            category: .busy,
+            rawStatus: EBUSY,
+            systemMessage: "Volume is in use",
+            physicalBSDName: "disk4",
+            holders: [holder]
+        )
+        let fixture = Fixture(normalResults: [.failure(failure)])
+
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        XCTAssertEqual(fixture.coordinator.state.recovery?.holders, [holder])
+        XCTAssertEqual(fixture.coordinator.state.recovery?.failure.holders, [holder])
+        let scannedScopes = await fixture.scanner.scannedScopes()
+        XCTAssertEqual(scannedScopes, [])
+    }
+
+    func testEjectingStageBusyFailureEntersRecovery() async throws {
+        let failure = Fixture.failure(.busy, stage: .ejecting)
+        let fixture = Fixture(normalResults: [.failure(failure)])
+
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+
+        try await waitUntil { fixture.coordinator.state.recovery?.failure == failure }
+        fixture.coordinator.requestForce()
+        XCTAssertNotNil(fixture.coordinator.state.forceConfirmation)
     }
 
     func testNonBusyFailureReleasesBarrierAndNeverOffersForce() async throws {
@@ -433,6 +472,77 @@ final class EjectCoordinatorTests: XCTestCase {
         try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
         let releaseCount = await fixture.barrier.releases()
         XCTAssertEqual(releaseCount, 1)
+    }
+
+    func testRecoveryTopologyRevalidationFromMountedToUnmountedEndsIdle() async throws {
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))])
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .success(fixture.resolvedWithNoMounts())
+        ])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+
+        try await waitUntil { fixture.coordinator.state == .externallyUnmounted(fixture.target) }
+        XCTAssertNil(fixture.coordinator.retainedRecovery)
+    }
+
+    func testUnmountObservedDuringOccupancyScanPreventsStaleRecoveryPublication() async throws {
+        let scanGate = AsyncGate()
+        let fixture = Fixture(
+            normalResults: [.failure(Fixture.failure(.busy))],
+            scanGate: scanGate
+        )
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .success(fixture.resolvedWithNoMounts())
+        ])
+        fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: "T7",
+            topologyGeneration: 9
+        )
+        try await waitUntil { (await fixture.scanner.scannedScopes()).count == 1 }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 2 }
+        await scanGate.open()
+
+        try await waitUntil { fixture.coordinator.state == .externallyUnmounted(fixture.target) }
+        XCTAssertNil(fixture.coordinator.retainedRecovery)
+    }
+
+    func testForceConfirmationTopologyRevalidationFromMountedToUnmountedEndsIdle() async throws {
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))])
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .success(fixture.resolvedWithNoMounts())
+        ])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+        fixture.coordinator.requestForce()
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+
+        try await waitUntil { fixture.coordinator.state == .externallyUnmounted(fixture.target) }
+        XCTAssertNil(fixture.coordinator.retainedRecovery)
+    }
+
+    func testRecoveryTopologyRevalidationWithMountedScopeKeepsRecoveryVisible() async throws {
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))])
+        await fixture.resolver.setRevalidations([
+            .success(fixture.resolved()),
+            .success(fixture.resolved(scopePath: "/Volumes/Renamed"))
+        ])
+        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        try await waitUntil { fixture.coordinator.state.recovery != nil }
+
+        fixture.coordinator.deviceTopologyDidChange(generation: 10)
+
+        try await waitUntil { (await fixture.resolver.revalidationCalls()).count == 2 }
+        XCTAssertNotNil(fixture.coordinator.state.recovery)
     }
 
     func testValidTopologyChangeDuringBarrierDrainDoesNotCancelNormalFlow() async throws {
@@ -860,6 +970,17 @@ private final class Fixture {
         .init(target: target, scope: scope(path: scopePath))
     }
 
+    func resolvedWithNoMounts() -> ResolvedEjectTarget {
+        .init(
+            target: target,
+            scope: .init(
+                physicalBSDName: "disk4",
+                deviceNodes: ["/dev/disk4"],
+                mountURLs: []
+            )
+        )
+    }
+
     static func failure(
         _ category: EjectFailureCategory,
         stage: EjectOperationStage = .unmounting
@@ -989,6 +1110,7 @@ private actor EjecterSpy: DiskEjecting {
     private let forceGate: AsyncGate?
     private var normalGates: [AsyncGate?]
     private(set) var normalBSDNames: [String] = []
+    private(set) var scopes: [OccupancyTargetScope] = []
     private(set) var forceBSDNames: [String] = []
 
     init(
@@ -1007,8 +1129,12 @@ private actor EjecterSpy: DiskEjecting {
         self.events = events
     }
 
-    func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure> {
+    func performNormalEject(
+        bsdName: String,
+        scope: OccupancyTargetScope
+    ) async -> Result<Void, EjectFailure> {
         normalBSDNames.append(bsdName)
+        scopes.append(scope)
         await events.append("normal:\(bsdName)")
         let gate = normalGates.isEmpty ? normalGate : normalGates.removeFirst()
         await gate?.wait()
@@ -1023,6 +1149,7 @@ private actor EjecterSpy: DiskEjecting {
     }
 
     func normalCalls() -> [String] { normalBSDNames }
+    func normalScopes() -> [OccupancyTargetScope] { scopes }
     func forceCalls() -> [String] { forceBSDNames }
 }
 

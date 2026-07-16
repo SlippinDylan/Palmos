@@ -170,7 +170,10 @@ final class EjectCoordinator: ObservableObject {
         do {
             guard try await revalidateForOperation(workflow: workflow) != nil else { return }
             state = .working(target: workflow.target, stage: .unmounting)
-            let result = await ejecter.performNormalEject(bsdName: workflow.target.physicalBSDName)
+            let result = await ejecter.performNormalEject(
+                bsdName: workflow.target.physicalBSDName,
+                scope: workflow.scope
+            )
             guard isCurrent(id) else { return }
             await handleNormalResult(result, workflow: workflow)
         } catch {
@@ -234,6 +237,11 @@ final class EjectCoordinator: ObservableObject {
             guard isCurrent(id), latestTopologyGeneration == generation else { return }
             validatedTopologyGeneration = generation
             workflow.refreshScope(refreshed.scope, generation: generation)
+            if shouldEndRecoveryAfterExternalUnmount(workflow: workflow) {
+                operationTask?.cancel()
+                await finishExternalUnmount(workflowID: id)
+                return
+            }
         } catch {
             guard isCurrent(id), latestTopologyGeneration == generation else { return }
             if isDisappearance(error) {
@@ -285,24 +293,47 @@ final class EjectCoordinator: ObservableObject {
         switch result {
         case .success:
             await finishSuccess(workflow: workflow)
-        case .failure(let failure) where failure.category == .busy && failure.stage == .unmounting:
-            state = .working(target: workflow.target, stage: .diagnosingOccupancy)
-            let scan = await occupancyScanner.scan(workflowID: workflow.id, scope: workflow.scope)
-            guard isCurrent(workflow.id) else { return }
-            var diagnosedFailure = failure
-            diagnosedFailure.holders = scan.holders
-            let recovery = EjectRecoveryState(
-                target: workflow.target,
-                failure: diagnosedFailure,
-                holders: scan.holders
-            )
-            await releaseBarrier(workflowID: workflow.id)
-            guard isCurrent(workflow.id) else { return }
-            retainedRecovery = recovery
-            state = .awaitingRecovery(recovery)
+        case .failure(let failure) where failure.category == .busy:
+            await beginRecovery(failure: failure, workflow: workflow)
         case .failure(let failure):
             await finishFailure(failure, target: workflow.target, workflowID: workflow.id)
         }
+    }
+
+    private func beginRecovery(
+        failure: EjectFailure,
+        workflow: ActiveWorkflow
+    ) async {
+        let holders: [OccupancyHolder]
+        if failure.holders.isEmpty {
+            state = .working(target: workflow.target, stage: .diagnosingOccupancy)
+            let scan = await occupancyScanner.scan(workflowID: workflow.id, scope: workflow.scope)
+            guard isCurrent(workflow.id) else { return }
+            holders = scan.holders
+        } else {
+            holders = failure.holders
+        }
+
+        if workflow.hasObservedExternalUnmount {
+            await finishExternalUnmount(workflowID: workflow.id)
+            return
+        }
+
+        var diagnosedFailure = failure
+        diagnosedFailure.holders = holders
+        let recovery = EjectRecoveryState(
+            target: workflow.target,
+            failure: diagnosedFailure,
+            holders: holders
+        )
+        await releaseBarrier(workflowID: workflow.id)
+        guard isCurrent(workflow.id) else { return }
+        if workflow.hasObservedExternalUnmount {
+            await finishExternalUnmount(workflowID: workflow.id)
+            return
+        }
+        retainedRecovery = recovery
+        state = .awaitingRecovery(recovery)
     }
 
     private func handleRevalidationError(
@@ -372,6 +403,14 @@ final class EjectCoordinator: ObservableObject {
         clearWorkflow(id)
     }
 
+    private func finishExternalUnmount(workflowID id: UUID) async {
+        guard let target = activeWorkflow?.target else { return }
+        await releaseBarrier(workflowID: id)
+        guard canCommitTerminal(id) else { return }
+        state = .externallyUnmounted(target)
+        clearWorkflow(id)
+    }
+
     private func finishCancellation(workflowID id: UUID) async {
         guard isCurrent(id) else { return }
         await releaseBarrier(workflowID: id)
@@ -433,6 +472,16 @@ final class EjectCoordinator: ObservableObject {
         return error == .deviceNotFound || error == .targetChanged
     }
 
+    private func shouldEndRecoveryAfterExternalUnmount(workflow: ActiveWorkflow) -> Bool {
+        guard workflow.hasObservedExternalUnmount else { return false }
+        switch state {
+        case .awaitingRecovery(let recovery), .awaitingForceConfirmation(let recovery):
+            return recovery.target == workflow.target
+        default:
+            return false
+        }
+    }
+
     private func preparationFailure(
         _ error: DeviceIOQuiescenceError,
         target: EjectWorkflowTarget
@@ -459,6 +508,7 @@ private final class ActiveWorkflow {
     let target: EjectWorkflowTarget
     var scope: OccupancyTargetScope
     private(set) var scopeGeneration: Int
+    private(set) var hasObservedExternalUnmount = false
     private var barrier: (any EjectBarrier)?
 
     init(
@@ -476,6 +526,9 @@ private final class ActiveWorkflow {
 
     func refreshScope(_ scope: OccupancyTargetScope, generation: Int) {
         guard generation >= scopeGeneration else { return }
+        if self.scope.mountURLs.isEmpty == false, scope.mountURLs.isEmpty {
+            hasObservedExternalUnmount = true
+        }
         self.scope = scope
         scopeGeneration = generation
     }

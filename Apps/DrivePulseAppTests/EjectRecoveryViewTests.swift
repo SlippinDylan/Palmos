@@ -127,7 +127,7 @@ final class EjectRecoveryViewTests: XCTestCase {
         ])
     }
 
-    func testNonBusyFailureHasNoForceAndIncludesStageAwareTechnicalDetail() {
+    func testNonBusyFailureUsesSingleBodyAndIncludesTechnicalDetail() {
         let failure = EjectFailure(
             stage: .ejecting,
             category: .io,
@@ -142,9 +142,59 @@ final class EjectRecoveryViewTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation?.actions, [])
-        XCTAssertFalse(presentation?.primaryText.isEmpty == true)
+        XCTAssertEqual(presentation?.primaryText, presentation?.reason)
+        XCTAssertTrue(presentation?.reason.contains(failure.systemMessage ?? "") == true)
         XCTAssertNotEqual(presentation?.primaryText, failure.systemMessage)
         XCTAssertTrue(presentation?.technicalDetail?.contains("0xFEDCBA98") == true)
+    }
+
+    func testBusyTerminalFailureUsesSingleBodyWhenSystemMessageRepeatsReason() {
+        let baseline = EjectFailure(
+            stage: .ejecting,
+            category: .busy,
+            rawStatus: EBUSY,
+            systemMessage: nil,
+            physicalBSDName: "disk4",
+            holders: []
+        )
+        let localizedReason = EjectLocalization.failureReason(baseline)
+        let failure = EjectFailure(
+            stage: .ejecting,
+            category: .busy,
+            rawStatus: EBUSY,
+            systemMessage: localizedReason,
+            physicalBSDName: "disk4",
+            holders: []
+        )
+
+        let presentation = EjectRecoveryPresentation(
+            state: .failed(target: target, failure: failure),
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertEqual(presentation?.primaryText, presentation?.reason)
+        XCTAssertNotEqual(presentation?.primaryText, localizedReason)
+        XCTAssertTrue(presentation?.primaryText.contains(localizedReason) == true)
+    }
+
+    func testTerminalFailureCollapsesSystemMessageLineBreaksIntoSingleBody() {
+        let failure = EjectFailure(
+            stage: .ejecting,
+            category: .io,
+            rawStatus: EIO,
+            systemMessage: "First line\nSecond line\rThird line",
+            physicalBSDName: "disk4",
+            holders: []
+        )
+
+        let presentation = EjectRecoveryPresentation(
+            state: .failed(target: target, failure: failure),
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertFalse(presentation?.primaryText.contains("\n") == true)
+        XCTAssertFalse(presentation?.primaryText.contains("\r") == true)
+        XCTAssertTrue(presentation?.primaryText.contains("First line Second line Third line") == true)
     }
 
     func testUnobservableSMARTCompletionExplainsRestartRecovery() {

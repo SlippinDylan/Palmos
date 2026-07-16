@@ -356,10 +356,13 @@ final class DrivePulseAppController: ObservableObject {
         setEjectWorkflowActive(state.isActiveWorkflow)
         switch state {
         case .succeeded(let target):
+            clearMountedVolumes(for: target.deviceID)
             presentActionFeedback(
                 EjectLocalization.successFeedback(target: target),
                 clearsAfter: actionSuccessFeedbackDuration
             )
+        case .externallyUnmounted(let target):
+            clearMountedVolumes(for: target.deviceID)
         case .disappeared(let target):
             presentActionFeedback(
                 EjectLocalization.disappearanceFeedback(target: target),
@@ -373,6 +376,12 @@ final class DrivePulseAppController: ObservableObject {
 
     private func updateActionControlState() {
         isPerformingSystemAction = isSystemActionInFlight || isEjectWorkflowActive
+    }
+
+    private func clearMountedVolumes(for deviceID: DeviceID) {
+        guard let index = state.devices.firstIndex(where: { $0.id == deviceID }) else { return }
+        state.devices[index].volumes.removeAll()
+        updateCapacityRefresher(from: state.devices)
     }
 
     private func presentActionFeedback(_ message: String, clearsAfter duration: TimeInterval) {
@@ -920,7 +929,7 @@ private extension EjectWorkflowState {
         switch self {
         case .preparing, .working, .awaitingRecovery, .awaitingForceConfirmation:
             return true
-        case .idle, .succeeded, .disappeared, .resolutionFailed, .failed:
+        case .idle, .succeeded, .externallyUnmounted, .disappeared, .resolutionFailed, .failed:
             return false
         }
     }

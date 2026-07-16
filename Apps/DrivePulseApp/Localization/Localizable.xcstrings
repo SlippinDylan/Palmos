@@ -1,53 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "eject.accessibility.cancel" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel eject recovery" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "取消弹出恢复" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "取消退出恢復" } } } },
-    "eject.accessibility.confirmForce" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Confirm destructive force eject" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "确认破坏性强制弹出" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "確認破壞性強制退出" } } } },
-    "eject.accessibility.requestForce" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Review force eject warning" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "查看强制弹出警告" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "檢視強制退出警告" } } } },
-    "eject.accessibility.retry" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Retry safe eject" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试安全弹出" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "重試安全退出" } } } },
-    "eject.action.cancel" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "取消" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "取消" } } } },
-    "eject.action.confirmForce" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Force Eject" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "强制弹出" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "強制退出" } } } },
-    "eject.action.requestForce" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Force Eject…" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "强制弹出…" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "強制退出…" } } } },
-    "eject.action.retry" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Retry Eject" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试弹出" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "重試退出" } } } },
-    "eject.error.busy" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "The disk is in use." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘正在使用中。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟正在使用中。" } } } },
-    "eject.error.exclusiveAccess" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "macOS could not get exclusive access to the disk." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "macOS 无法独占访问此磁盘。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "macOS 無法獨佔存取此磁碟。" } } } },
-    "eject.error.io" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "An input/output error occurred." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "发生了输入/输出错误。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "發生輸入/輸出錯誤。" } } } },
-    "eject.error.message" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ %2$@" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ %2$@" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ %2$@" } } } },
-    "eject.error.notFound" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "The disk is no longer available." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘已不可用。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟已無法使用。" } } } },
-    "eject.error.notMounted" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "The disk was not mounted." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘未挂载。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟未掛載。" } } } },
-    "eject.error.notPermitted" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "DrivePulse does not have permission to complete this operation." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "DrivePulse 没有完成此操作的权限。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "DrivePulse 沒有完成此操作的權限。" } } } },
-    "eject.error.notReady" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "The disk is not ready." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘尚未就绪。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟尚未就緒。" } } } },
-    "eject.error.smartCompletionUnobservable" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "DrivePulse could not confirm that its SMART process stopped." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "DrivePulse 无法确认其 SMART 进程已停止。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "DrivePulse 無法確認其 SMART 程序已停止。" } } } },
-    "eject.error.smartCompletionUnobservableGuidance" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "To keep the disk safe, quit and reopen DrivePulse, then try ejecting again." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "为确保磁盘安全，请退出并重新打开 DrivePulse，然后再次尝试弹出。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "為確保磁碟安全，請退出並重新開啟 DrivePulse，然後再次嘗試退出。" } } } },
-    "eject.error.technicalDetail" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Status 0x%1$08X on %2$@" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "状态代码 0x%1$08X，设备 %2$@" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "狀態代碼 0x%1$08X，裝置 %2$@" } } } },
-    "eject.error.timedOut" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "The operation timed out." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "操作超时。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "操作逾時。" } } } },
-    "eject.error.unknown" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "macOS returned an unknown error." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "macOS 返回了未知错误。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "macOS 傳回未知錯誤。" } } } },
-    "eject.forceConfirmation.message" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Active writes may be interrupted. Unsaved data may be lost, and the disk's filesystem may be damaged. Confirm that copying, backups, and file writes have stopped." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在进行的写入可能会中断。未保存的数据可能丢失，磁盘文件系统也可能损坏。请确认复制、备份和文件写入均已停止。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "進行中的寫入可能會中斷。未儲存的資料可能遺失，磁碟檔案系統也可能損壞。請確認複製、備份和檔案寫入均已停止。" } } } },
-    "eject.forceConfirmation.title" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Force eject “%@”?" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "强制弹出“%@”？" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "強制退出「%@」？" } } } },
-    "eject.occupancy.deviceNode" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "direct disk access" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "直接磁盘访问" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "直接磁碟存取" } } } },
-    "eject.occupancy.openFileOrDirectory" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "open file or folder" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开的文件或文件夹" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開啟的檔案或資料夾" } } } },
-    "eject.occupancy.unknown" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "unknown disk use" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未知磁盘占用" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "未知磁碟佔用" } } } },
-    "eject.occupancy.workingDirectory" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "working folder" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "工作目录" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "工作目錄" } } } },
-    "eject.recovery.guidance" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Close related files or stop transfers, then try again." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请关闭相关文件或停止传输，然后重试。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請關閉相關檔案或停止傳輸，然後重試。" } } } },
-    "eject.recovery.knownHolders" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "This disk is being used by %@." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此磁盘正由 %@ 使用。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "此磁碟正由 %@ 使用。" } } } },
-    "eject.recovery.operationInProgress" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Eject operation in progress…" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在执行弹出操作…" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在執行退出操作…" } } } },
-    "eject.recovery.title" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't eject “%@”." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法弹出“%@”。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "無法退出「%@」。" } } } },
-    "eject.recovery.unknownHolder" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "macOS reports that this disk is in use, but DrivePulse couldn't identify the process." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "macOS 报告此磁盘正在使用中，但 DrivePulse 无法识别占用进程。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "macOS 回報此磁碟正在使用中，但 DrivePulse 無法識別佔用程序。" } } } },
-    "eject.result.deviceDisappeared" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "“%@” is no longer available." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "“%@”已不可用。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "「%@」已無法使用。" } } } },
-    "eject.result.safeToRemove" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "“%@” is safe to remove." } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "现在可以安全移除“%@”。" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "現在可以安全移除「%@」。" } } } },
-    "eject.stage.awaitingForceConfirmation" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "While awaiting force confirmation:" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "等待强制弹出确认时：" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "等待強制退出確認時：" } } } },
-    "eject.stage.awaitingRecoveryChoice" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "While awaiting recovery:" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "等待恢复操作时：" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "等待恢復操作時：" } } } },
-    "eject.stage.deviceDisappeared" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "After the disk disappeared:" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘消失后：" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟消失後：" } } } },
-    "eject.stage.diagnosingOccupancy" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "While checking disk use:" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "检查磁盘占用时：" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "檢查磁碟佔用時：" } } } },
-    "eject.stage.ejectedSuccessfully" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "After eject completed:" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "弹出完成后：" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "退出完成後：" } } } },
-    "eject.stage.ejecting" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "During eject:" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "弹出时：" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "退出時：" } } } },
-    "eject.stage.forceUnmounting" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "During forced unmount:" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "强制卸载时：" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "強制卸載時：" } } } },
-    "eject.stage.preparing" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "While preparing to eject:" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "准备弹出时：" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "準備退出時：" } } } },
-    "eject.stage.unmounting" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "During unmount:" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "卸载时：" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "卸載時：" } } } },
-    "eject.technicalDetails.label" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Technical Details" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "技术详情" } }, "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "技術詳細資訊" } } } },
-    "Action couldn't be completed (status 0x%08X)." : {
-
-    },
     "Action couldn't be completed." : {
       "localizations" : {
         "en" : {
@@ -69,9 +22,6 @@
           }
         }
       }
-    },
-    "Action timed out." : {
-
     },
     "APFS Container" : {
       "localizations" : {
@@ -432,9 +382,6 @@
         }
       }
     },
-    "Couldn't find that disk. It may have been disconnected or reassigned." : {
-
-    },
     "Critical Temp Time" : {
       "localizations" : {
         "en" : {
@@ -681,9 +628,6 @@
         }
       }
     },
-    "DrivePulse doesn't have permission to complete this action." : {
-
-    },
     "DrivePulse needs to install the privileged SMART helper to read drive health data." : {
       "localizations" : {
         "en" : {
@@ -768,6 +712,974 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "推出磁碟"
+          }
+        }
+      }
+    },
+    "eject.accessibility.cancel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel eject recovery"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消弹出恢复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消退出恢復"
+          }
+        }
+      }
+    },
+    "eject.accessibility.confirmForce" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm destructive force eject"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认破坏性强制弹出"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認破壞性強制退出"
+          }
+        }
+      }
+    },
+    "eject.accessibility.requestForce" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review force eject warning"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看强制弹出警告"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢視強制退出警告"
+          }
+        }
+      }
+    },
+    "eject.accessibility.retry" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry safe eject"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试安全弹出"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重試安全退出"
+          }
+        }
+      }
+    },
+    "eject.action.cancel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        }
+      }
+    },
+    "eject.action.confirmForce" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Force Eject"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "强制弹出"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "強制退出"
+          }
+        }
+      }
+    },
+    "eject.action.requestForce" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Force Eject…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "强制弹出…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "強制退出…"
+          }
+        }
+      }
+    },
+    "eject.action.retry" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry Eject"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试弹出"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重試退出"
+          }
+        }
+      }
+    },
+    "eject.error.busy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The disk is in use."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁盘正在使用中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁碟正在使用中。"
+          }
+        }
+      }
+    },
+    "eject.error.exclusiveAccess" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS could not get exclusive access to the disk."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 无法独占访问此磁盘。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 無法獨佔存取此磁碟。"
+          }
+        }
+      }
+    },
+    "eject.error.io" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An input/output error occurred."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发生了输入/输出错误。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發生輸入/輸出錯誤。"
+          }
+        }
+      }
+    },
+    "eject.error.message" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "eject.error.notFound" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The disk is no longer available."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁盘已不可用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁碟已無法使用。"
+          }
+        }
+      }
+    },
+    "eject.error.notMounted" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The disk was not mounted."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁盘未挂载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁碟未掛載。"
+          }
+        }
+      }
+    },
+    "eject.error.notPermitted" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse does not have permission to complete this operation."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse 没有完成此操作的权限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse 沒有完成此操作的權限。"
+          }
+        }
+      }
+    },
+    "eject.error.notReady" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The disk is not ready."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁盘尚未就绪。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁碟尚未就緒。"
+          }
+        }
+      }
+    },
+    "eject.error.smartCompletionUnobservable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse could not confirm that its SMART process stopped."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse 无法确认其 SMART 进程已停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse 無法確認其 SMART 程序已停止。"
+          }
+        }
+      }
+    },
+    "eject.error.smartCompletionUnobservableGuidance" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To keep the disk safe, quit and reopen DrivePulse, then try ejecting again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为确保磁盘安全，请退出并重新打开 DrivePulse，然后再次尝试弹出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為確保磁碟安全，請退出並重新開啟 DrivePulse，然後再次嘗試退出。"
+          }
+        }
+      }
+    },
+    "eject.error.technicalDetail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Status 0x%1$08X on %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态代码 0x%1$08X，设备 %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "狀態代碼 0x%1$08X，裝置 %2$@"
+          }
+        }
+      }
+    },
+    "eject.error.timedOut" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The operation timed out."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作超时。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作逾時。"
+          }
+        }
+      }
+    },
+    "eject.error.unknown" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS returned an unknown error."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 返回了未知错误。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 傳回未知錯誤。"
+          }
+        }
+      }
+    },
+    "eject.forceConfirmation.message" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Active writes may be interrupted. Unsaved data may be lost, and the disk's filesystem may be damaged. Confirm that copying, backups, and file writes have stopped."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在进行的写入可能会中断。未保存的数据可能丢失，磁盘文件系统也可能损坏。请确认复制、备份和文件写入均已停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進行中的寫入可能會中斷。未儲存的資料可能遺失，磁碟檔案系統也可能損壞。請確認複製、備份和檔案寫入均已停止。"
+          }
+        }
+      }
+    },
+    "eject.forceConfirmation.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Force eject “%@”?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "强制弹出“%@”？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "強制退出「%@」？"
+          }
+        }
+      }
+    },
+    "eject.occupancy.deviceNode" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "direct disk access"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直接磁盘访问"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直接磁碟存取"
+          }
+        }
+      }
+    },
+    "eject.occupancy.openFileOrDirectory" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "open file or folder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开的文件或文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟的檔案或資料夾"
+          }
+        }
+      }
+    },
+    "eject.occupancy.unknown" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "unknown disk use"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知磁盘占用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知磁碟佔用"
+          }
+        }
+      }
+    },
+    "eject.occupancy.workingDirectory" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "working folder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作目录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作目錄"
+          }
+        }
+      }
+    },
+    "eject.recovery.guidance" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close related files or stop transfers, then try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请关闭相关文件或停止传输，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請關閉相關檔案或停止傳輸，然後重試。"
+          }
+        }
+      }
+    },
+    "eject.recovery.knownHolders" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This disk is being used by %@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此磁盘正由 %@ 使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此磁碟正由 %@ 使用。"
+          }
+        }
+      }
+    },
+    "eject.recovery.operationInProgress" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eject operation in progress…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在执行弹出操作…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在執行退出操作…"
+          }
+        }
+      }
+    },
+    "eject.recovery.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't eject “%@”."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法弹出“%@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法退出「%@」。"
+          }
+        }
+      }
+    },
+    "eject.recovery.unknownHolder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS reports that this disk is in use, but DrivePulse couldn't identify the process."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 报告此磁盘正在使用中，但 DrivePulse 无法识别占用进程。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 回報此磁碟正在使用中，但 DrivePulse 無法識別佔用程序。"
+          }
+        }
+      }
+    },
+    "eject.result.deviceDisappeared" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” is no longer available."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”已不可用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」已無法使用。"
+          }
+        }
+      }
+    },
+    "eject.result.safeToRemove" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” is safe to remove."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现在可以安全移除“%@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在可以安全移除「%@」。"
+          }
+        }
+      }
+    },
+    "eject.stage.awaitingForceConfirmation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "While awaiting force confirmation:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待强制弹出确认时："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待強制退出確認時："
+          }
+        }
+      }
+    },
+    "eject.stage.awaitingRecoveryChoice" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "While awaiting recovery:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待恢复操作时："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待恢復操作時："
+          }
+        }
+      }
+    },
+    "eject.stage.deviceDisappeared" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "After the disk disappeared:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁盘消失后："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "磁碟消失後："
+          }
+        }
+      }
+    },
+    "eject.stage.diagnosingOccupancy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "While checking disk use:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查磁盘占用时："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢查磁碟佔用時："
+          }
+        }
+      }
+    },
+    "eject.stage.ejectedSuccessfully" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "After eject completed:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "弹出完成后："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出完成後："
+          }
+        }
+      }
+    },
+    "eject.stage.ejecting" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "During eject:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "弹出时："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出時："
+          }
+        }
+      }
+    },
+    "eject.stage.forceUnmounting" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "During forced unmount:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "强制卸载时："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "強制卸載時："
+          }
+        }
+      }
+    },
+    "eject.stage.preparing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "While preparing to eject:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备弹出时："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備退出時："
+          }
+        }
+      }
+    },
+    "eject.stage.unmounting" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "During unmount:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "卸载时："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "卸載時："
+          }
+        }
+      }
+    },
+    "eject.technicalDetails.label" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technical Details"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技术详情"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技術詳細資訊"
           }
         }
       }
@@ -2481,15 +3393,6 @@
           }
         }
       }
-    },
-    "The disk couldn't be accessed exclusively — another process has it open." : {
-
-    },
-    "The disk is busy — something may still be reading or writing to it." : {
-
-    },
-    "The disk isn't ready yet — try again in a moment." : {
-
     },
     "Throughput" : {
       "extractionState" : "stale",

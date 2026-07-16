@@ -1,4 +1,6 @@
+import AppKit
 @preconcurrency import DiskArbitration
+import Darwin
 import Foundation
 
 protocol DiskArbitrationOperating: Sendable {
@@ -6,8 +8,19 @@ protocol DiskArbitrationOperating: Sendable {
     func eject(_ bsdName: String) async -> DiskArbitrationOperationResult
 }
 
+protocol VolumeUnmounting: Sendable {
+    func unmountVolume(at url: URL, options: FileManager.UnmountOptions) async -> (any Error)?
+}
+
+protocol DissentingProcessIdentifying: Sendable {
+    func holder(for pid: Int32) -> OccupancyHolder
+}
+
 protocol DiskEjecting: Sendable {
-    func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure>
+    func performNormalEject(
+        bsdName: String,
+        scope: OccupancyTargetScope
+    ) async -> Result<Void, EjectFailure>
     func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure>
 }
 
@@ -20,35 +33,52 @@ enum DiskArbitrationOperationResult: Equatable, Sendable {
 
 struct DiskArbitrationEjectClient: DiskEjecting {
     private let operations: any DiskArbitrationOperating
+    private let volumeUnmounter: any VolumeUnmounting
+    private let dissentingProcessIdentifier: any DissentingProcessIdentifying
     private let classifier: DiskArbitrationErrorClassifier
 
     init(
         operations: any DiskArbitrationOperating = LiveDiskArbitrationOperating(),
+        volumeUnmounter: any VolumeUnmounting = LiveVolumeUnmounter(),
+        dissentingProcessIdentifier: any DissentingProcessIdentifying = LiveDissentingProcessIdentifier(),
         classifier: DiskArbitrationErrorClassifier = DiskArbitrationErrorClassifier()
     ) {
         self.operations = operations
+        self.volumeUnmounter = volumeUnmounter
+        self.dissentingProcessIdentifier = dissentingProcessIdentifier
         self.classifier = classifier
     }
 
-    func performNormalEject(bsdName: String) async -> Result<Void, EjectFailure> {
-        await performEject(bsdName: bsdName, force: false)
+    func performNormalEject(
+        bsdName: String,
+        scope: OccupancyTargetScope
+    ) async -> Result<Void, EjectFailure> {
+        guard let mountURL = scope.mountURLs.sorted(by: { $0.path < $1.path }).first else {
+            return await performPhysicalEject(bsdName: bsdName)
+        }
+
+        let error = await volumeUnmounter.unmountVolume(
+            at: mountURL,
+            options: [.allPartitionsAndEjectDisk, .withoutUI]
+        )
+        guard let error else { return .success(()) }
+        return .failure(failure(from: error as NSError, bsdName: bsdName))
     }
 
     func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
-        await performEject(bsdName: bsdName, force: true)
-    }
-
-    private func performEject(bsdName: String, force: Bool) async -> Result<Void, EjectFailure> {
-        let unmountStage: EjectOperationStage = force ? .forceUnmounting : .unmounting
-        let unmountResult = await operations.unmountWhole(bsdName, force: force)
+        let unmountResult = await operations.unmountWhole(bsdName, force: true)
 
         if case .failure(let status, _) = unmountResult,
            classifier.classify(status) == .notMounted {
             // An already-unmounted whole disk is ready for the eject phase.
-        } else if let failure = failure(from: unmountResult, stage: unmountStage, bsdName: bsdName) {
+        } else if let failure = failure(from: unmountResult, stage: .forceUnmounting, bsdName: bsdName) {
             return .failure(failure)
         }
 
+        return await performPhysicalEject(bsdName: bsdName)
+    }
+
+    private func performPhysicalEject(bsdName: String) async -> Result<Void, EjectFailure> {
         let ejectResult = await operations.eject(bsdName)
         if let failure = failure(from: ejectResult, stage: .ejecting, bsdName: bsdName) {
             return .failure(failure)
@@ -92,6 +122,89 @@ struct DiskArbitrationEjectClient: DiskEjecting {
                 holders: []
             )
         }
+    }
+
+    private func failure(from error: NSError, bsdName: String) -> EjectFailure {
+        let pid = dissentingProcessPID(from: error)
+        return EjectFailure(
+            stage: .unmounting,
+            category: pid == nil ? category(from: error) : .busy,
+            rawStatus: Int32(exactly: error.code),
+            systemMessage: error.localizedDescription,
+            physicalBSDName: bsdName,
+            holders: pid.map { [dissentingProcessIdentifier.holder(for: $0)] } ?? []
+        )
+    }
+
+    private func category(from error: NSError) -> EjectFailureCategory {
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+            let underlyingCategory = category(from: underlying)
+            if underlyingCategory != .unknown { return underlyingCategory }
+        }
+
+        if error.domain == NSCocoaErrorDomain {
+            return switch error.code {
+            case CocoaError.fileNoSuchFile.rawValue: .notFound
+            case CocoaError.fileReadNoPermission.rawValue,
+                 CocoaError.fileWriteNoPermission.rawValue: .notPermitted
+            case CocoaError.fileReadUnknown.rawValue,
+                 CocoaError.fileWriteUnknown.rawValue: .io
+            default: .unknown
+            }
+        }
+
+        guard error.domain == NSPOSIXErrorDomain else { return .unknown }
+        return switch Int32(error.code) {
+        case EBUSY: .busy
+        case EACCES, EPERM: .notPermitted
+        case ENOENT, ENODEV: .notFound
+        case ENXIO: .notReady
+        case EIO: .io
+        case ETIMEDOUT: .timedOut
+        default: .unknown
+        }
+    }
+
+    private func dissentingProcessPID(from error: NSError) -> Int32? {
+        guard let number = error.userInfo[NSFileManagerUnmountDissentingProcessIdentifierErrorKey] as? NSNumber else {
+            return nil
+        }
+        return Int32(exactly: number.int64Value)
+    }
+}
+
+final class LiveVolumeUnmounter: VolumeUnmounting, @unchecked Sendable {
+    private let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    func unmountVolume(at url: URL, options: FileManager.UnmountOptions) async -> (any Error)? {
+        await withCheckedContinuation { continuation in
+            fileManager.unmountVolume(at: url, options: options) { error in
+                continuation.resume(returning: error)
+            }
+        }
+    }
+}
+
+struct LiveDissentingProcessIdentifier: DissentingProcessIdentifying {
+    func holder(for pid: Int32) -> OccupancyHolder {
+        let displayName = NSRunningApplication(processIdentifier: pid)?.localizedName
+        return OccupancyHolder(
+            pid: pid,
+            executableName: executableName(for: pid) ?? displayName ?? "Process \(pid)",
+            displayName: displayName,
+            type: .unknown
+        )
+    }
+
+    private func executableName(for pid: Int32) -> String? {
+        var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        guard proc_pidpath(pid, &path, UInt32(path.count)) > 0 else { return nil }
+        let bytes = path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        return URL(fileURLWithPath: String(decoding: bytes, as: UTF8.self)).lastPathComponent
     }
 }
 

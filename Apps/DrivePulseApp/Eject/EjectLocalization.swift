@@ -108,12 +108,13 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
             )
         case .failed(let target, let failure):
             guard target.deviceID == selectedDeviceID else { return nil }
+            let reason = EjectLocalization.failureBody(failure)
             self.init(
                 deviceID: target.deviceID,
                 displayName: target.displayName,
                 title: EjectLocalization.failureTitle(target: target),
-                primaryText: EjectLocalization.failurePrimaryText(failure),
-                reason: EjectLocalization.failureReason(failure),
+                primaryText: reason,
+                reason: reason,
                 guidance: EjectLocalization.failureGuidance(failure),
                 technicalDetail: EjectLocalization.technicalDetail(failure),
                 actions: [],
@@ -237,17 +238,31 @@ enum EjectLocalization {
         format(String(localized: "eject.result.deviceDisappeared"), target.displayName)
     }
 
-    static func failurePrimaryText(_ failure: EjectFailure) -> String {
+    static func failureReason(_ failure: EjectFailure) -> String {
+        failure.systemMessage?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? categoryName(failure.category)
+    }
+
+    static func failureBody(_ failure: EjectFailure) -> String {
+        let reason = categoryName(failure.category)
+        if failure.category == .smartCompletionUnobservable {
+            return reason
+        }
+        let primaryText = failurePrimaryText(failure)
+        guard let systemMessage = failure.systemMessage.map(singleLineMessage)?.nilIfEmpty,
+              normalizedMessage(systemMessage) != normalizedMessage(reason),
+              normalizedMessage(systemMessage) != normalizedMessage(primaryText) else {
+            return primaryText
+        }
+        return "\(primaryText) \(systemMessage)"
+    }
+
+    private static func failurePrimaryText(_ failure: EjectFailure) -> String {
         format(
             String(localized: "eject.error.message"),
             stageName(failure.stage),
             categoryName(failure.category)
         )
-    }
-
-    static func failureReason(_ failure: EjectFailure) -> String {
-        failure.systemMessage?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-            ?? categoryName(failure.category)
     }
 
     static func failureGuidance(_ failure: EjectFailure) -> String? {
@@ -305,6 +320,19 @@ enum EjectLocalization {
 
     private static func format(_ format: String, _ arguments: CVarArg...) -> String {
         String(format: format, locale: .current, arguments: arguments)
+    }
+
+    private static func normalizedMessage(_ message: String) -> String {
+        message
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    }
+
+    private static func singleLineMessage(_ message: String) -> String {
+        message
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
     }
 }
 
