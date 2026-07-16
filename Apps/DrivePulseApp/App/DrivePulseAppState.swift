@@ -51,10 +51,16 @@ struct DrivePulseAppState: Equatable {
 
     var selectedDevice: ExternalDevice? {
         guard let selectedDeviceID else {
-            return devices.first
+            return mountedDevices.first
         }
 
-        return devices.first(where: { $0.id == selectedDeviceID }) ?? devices.first
+        return mountedDevices.first(where: { $0.id == selectedDeviceID }) ?? mountedDevices.first
+    }
+
+    /// Keeps raw topology in `devices` while preventing an unmounted physical
+    /// device from remaining as the panel's selected monitoring target.
+    var mountedDevices: [ExternalDevice] {
+        devices.filter { $0.volumes.isEmpty == false }
     }
 
     var selectedSMARTDetails: SMARTPresentationDetails? {
@@ -92,6 +98,22 @@ struct DrivePulseAppState: Equatable {
         smartDetailsByDeviceID = smartDetailsByDeviceID.filter { presentDeviceIDs.contains($0.key) }
         selectedDeviceID = Self.resolveSelection(
             devices: self.devices,
+            preferredID: selectedDeviceID
+        )
+        if selectedDeviceID != previousSelection {
+            dismissSMARTPrompts()
+        }
+    }
+
+    mutating func markDeviceUnmounted(_ deviceID: DeviceID) {
+        guard let deviceIndex = devices.firstIndex(where: { $0.id == deviceID }) else {
+            return
+        }
+
+        let previousSelection = selectedDeviceID
+        devices[deviceIndex].volumes.removeAll()
+        selectedDeviceID = Self.resolveSelection(
+            devices: devices,
             preferredID: selectedDeviceID
         )
         if selectedDeviceID != previousSelection {
@@ -205,13 +227,15 @@ struct DrivePulseAppState: Equatable {
         devices: [ExternalDevice],
         preferredID: DeviceID?
     ) -> DeviceID? {
+        let mountedDevices = devices.filter { $0.volumes.isEmpty == false }
+
         guard let preferredID else {
-            return devices.first?.id
+            return mountedDevices.first?.id
         }
 
-        return devices.contains(where: { $0.id == preferredID })
+        return mountedDevices.contains(where: { $0.id == preferredID })
             ? preferredID
-            : devices.first?.id
+            : mountedDevices.first?.id
     }
 
     private static func makeSMARTDetails(for device: ExternalDevice?) -> SMARTPresentationDetails? {

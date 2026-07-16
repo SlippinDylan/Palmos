@@ -59,7 +59,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         )
 
         XCTAssertEqual(controller.state.devices, refreshedDevices)
-        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk42"))
+        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
         let refreshInvocationCount = await discovery.invocationCountSnapshot()
         XCTAssertEqual(refreshInvocationCount, 2)
     }
@@ -89,7 +89,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         }
 
         wait(for: [expectation], timeout: 1.0)
-        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
+        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk126"))
     }
 
     func testObserverUpdatePreventsPendingDiscoveryResultFromOverwritingNewerDevices() async {
@@ -116,7 +116,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         await Task.yield()
 
         XCTAssertEqual(controller.state.devices, observedDevices)
-        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
+        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk126"))
     }
 
     func testControllerFetchesSystemProfilerOnceDuringBootstrapAndRefreshesProvidersOnObservedUpdate() async throws {
@@ -217,7 +217,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(diskUtilProvider.refreshCallCount, 2)
     }
 
-    func testObservedSparseSnapshotDoesNotDiscardRicherBootstrapDeviceContext() async throws {
+    func testExternalUnmountClearsVolumesWithoutDiscardingRicherDeviceContext() async throws {
         let bootstrapDevice = makeDevice(
             id: "disk84",
             volumes: ["disk84s2s1"],
@@ -297,7 +297,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
             return device.id == bootstrapDevice.id
                 && device.transportName == "Thunderbolt"
                 && device.apfsContainerBSDName == "disk84s2"
-                && device.volumes == [MountedVolume(bsdName: "disk84s2s1")]
+                && device.volumes.isEmpty
                 && device.apfsContainerDetails?.capacityInUseBytes == 1_500
                 && device.thunderboltInfo?.deviceName == "TB Enclosure"
                 && device.pciInfo?.slot == "Slot-B"
@@ -308,6 +308,8 @@ final class DrivePulseAppControllerTests: XCTestCase {
                     )
                 ]
         }
+        XCTAssertNil(controller.state.selectedDeviceID)
+        XCTAssertEqual(controller.selectedFooterActions.map(\.kind), [.openDiskUtility, .quit])
     }
 
     func testControllerRetriesAPFSEnrichmentAfterInitialDiskUtilFailure() async throws {
@@ -768,7 +770,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
     }
 
     func testEjectRoutesSelectedIdentityAndTopologyGenerationToCoordinator() async throws {
-        let device = makeDevice(id: "disk21", volumes: [])
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let discovery = StubExternalDeviceDiscovery(results: [[device]])
         let resolver = RecordingEjectTargetResolver(device: device)
         let ejecter = BlockingDiskEjecter()
@@ -800,7 +802,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
     }
 
     func testObservedTopologyChangesAreForwardedDuringActiveEjectWorkflow() async throws {
-        let device = makeDevice(id: "disk21", volumes: [])
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let discovery = StubExternalDeviceDiscovery(results: [[device]])
         let resolver = RecordingEjectTargetResolver(device: device)
         let ejecter = BlockingDiskEjecter()
@@ -880,7 +882,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
 
         discovery.emit([unmountedDevice])
 
-        await waitUntil { controller.state.selectedDevice?.volumes.isEmpty == true }
+        await waitUntil { controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true }
         if case .externallyUnmounted = coordinator.state {
             // Expected neutral terminal state after confirmed Finder unmount.
         } else {
@@ -888,7 +890,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         }
     }
 
-    func testSuccessfulEjectClearsMountedVolumesWithoutPoisoningLaterSparseObservations() async throws {
+    func testSuccessfulEjectAllowsLaterRemountAndExternalUnmount() async throws {
         let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let remountedDevice = makeDevice(id: "disk21", volumes: ["disk21s2"])
         let sparseDevice = makeDevice(id: "disk21", volumes: [])
@@ -910,19 +912,145 @@ final class DrivePulseAppControllerTests: XCTestCase {
             if case .succeeded = coordinator.state { return true }
             return false
         }
-        XCTAssertTrue(controller.state.selectedDevice?.volumes.isEmpty == true)
+        XCTAssertTrue(controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true)
+        XCTAssertTrue(controller.panelDevices.isEmpty)
+        XCTAssertNil(controller.selectedPanelDevice)
+        XCTAssertEqual(controller.selectedFooterActions.map(\.kind), [.openDiskUtility, .quit])
 
         discovery.emit([remountedDevice])
         await waitUntil { controller.state.selectedDevice?.volumes == remountedDevice.volumes }
         discovery.emit([sparseDevice])
 
-        try await Task.sleep(for: .milliseconds(50))
-        XCTAssertEqual(controller.state.selectedDevice?.volumes, remountedDevice.volumes)
+        await waitUntil { controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true }
+        XCTAssertNil(controller.state.selectedDeviceID)
+    }
+
+    func testSuccessfulEjectSelectsNextMountedDevice() async throws {
+        let firstDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let secondDevice = makeDevice(id: "disk42", volumes: ["disk42s1"])
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: firstDevice),
+            ejecter: ImmediateDiskEjecter(normalResult: .success(()))
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(
+                devices: [firstDevice, secondDevice],
+                selectedDeviceID: firstDevice.id
+            ),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[firstDevice, secondDevice]]),
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+
+        controller.perform(action)
+
+        await waitUntil {
+            if case .succeeded = coordinator.state { return true }
+            return false
+        }
+        XCTAssertTrue(controller.state.device(id: firstDevice.id)?.volumes.isEmpty == true)
+        XCTAssertEqual(controller.state.selectedDeviceID, secondDevice.id)
+        XCTAssertEqual(controller.selectedPanelDevice?.id, secondDevice.id)
+        XCTAssertEqual(
+            controller.selectedFooterActions.map(\.kind),
+            [.openInFinder, .eject, .openDiskUtility, .quit]
+        )
+    }
+
+    func testSuccessfulEjectInvalidatesPendingEnrichment() async throws {
+        let ejectingDevice = makeDevice(
+            id: "disk21",
+            volumes: ["disk21s2s1"],
+            physicalStoreBSDName: "disk21",
+            apfsContainerBSDName: "disk21s2"
+        )
+        let remainingDevice = makeDevice(
+            id: "disk42",
+            volumes: ["disk42s2s1"],
+            physicalStoreBSDName: "disk42",
+            apfsContainerBSDName: "disk42s2"
+        )
+        let remainingContainer = APFSContainerInfo(
+            bsdName: "disk42s2",
+            totalCapacityBytes: 2_000,
+            capacityInUseBytes: 1_000,
+            capacityNotAllocatedBytes: 1_000,
+            volumes: []
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[ejectingDevice, remainingDevice]])
+        let diskUtilProvider = BlockingDiskUtilAPFSProvider(
+            containerInfoByBSDName: ["disk42s2": remainingContainer]
+        )
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: ejectingDevice),
+            ejecter: ImmediateDiskEjecter(normalResult: .success(()))
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(
+                devices: [ejectingDevice, remainingDevice],
+                selectedDeviceID: ejectingDevice.id
+            ),
+            deviceDiscovery: discovery,
+            diskUtilAPFSProvider: diskUtilProvider,
+            ejectCoordinator: coordinator
+        )
+
+        discovery.emit([ejectingDevice, remainingDevice])
+        await diskUtilProvider.waitUntilFirstRefreshStarts()
+
+        let action = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+        controller.perform(action)
+        await waitUntil {
+            if case .succeeded = coordinator.state { return true }
+            return false
+        }
+
+        await diskUtilProvider.waitUntilSecondRefreshReturns()
+        await waitUntil {
+            controller.state.device(id: remainingDevice.id)?.apfsContainerDetails == remainingContainer
+        }
+
+        await diskUtilProvider.finishFirstRefresh()
+        await diskUtilProvider.waitUntilFirstRefreshReturns()
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+
+        XCTAssertTrue(controller.state.device(id: ejectingDevice.id)?.volumes.isEmpty == true)
+        XCTAssertEqual(controller.state.selectedDeviceID, remainingDevice.id)
+        XCTAssertEqual(
+            controller.state.device(id: remainingDevice.id)?.apfsContainerDetails,
+            remainingContainer
+        )
+    }
+
+    func testPanelPresentationFallsBackToFirstMountedDevice() {
+        let unmountedDevice = makeDevice(id: "disk21", volumes: [])
+        let mountedDevice = makeDevice(id: "disk42", volumes: ["disk42s1"])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(
+                devices: [unmountedDevice, mountedDevice],
+                selectedDeviceID: unmountedDevice.id
+            ),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[unmountedDevice, mountedDevice]])
+        )
+
+        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
+        XCTAssertEqual(controller.selectedPanelDevice?.id, mountedDevice.id)
+        XCTAssertEqual(controller.selectedPanelDeviceID, mountedDevice.id)
+        XCTAssertEqual(
+            controller.selectedFooterActions.map(\.kind),
+            [.openInFinder, .eject, .openDiskUtility, .quit]
+        )
     }
 
     func testActiveEjectWorkflowDisablesActionsAfterSelectingAnotherDiskButKeepsThroughputSampling() async throws {
-        let firstDevice = makeDevice(id: "disk21", volumes: [])
-        let secondDevice = makeDevice(id: "disk42", volumes: [])
+        let firstDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let secondDevice = makeDevice(id: "disk42", volumes: ["disk42s1"])
         let resolver = RecordingEjectTargetResolver(device: firstDevice)
         let ejecter = BlockingDiskEjecter()
         let coordinator = makeEjectCoordinator(resolver: resolver, ejecter: ejecter)
@@ -958,7 +1086,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
     }
 
     func testBusyRecoveryDoesNotBecomeTransientActionFeedbackOrClearAfterFailureDuration() async throws {
-        let device = makeDevice(id: "disk21", volumes: [])
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let resolver = RecordingEjectTargetResolver(device: device)
         let failure = EjectFailure(
             stage: .unmounting,
@@ -997,7 +1125,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
     }
 
     func testSuccessfulEjectPublishesSafeRemovalFeedbackAndAutoDismisses() async throws {
-        let device = makeDevice(id: "disk21", volumes: [])
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let coordinator = makeEjectCoordinator(
             resolver: RecordingEjectTargetResolver(device: device),
             ejecter: ImmediateDiskEjecter(normalResult: .success(()))
@@ -1006,7 +1134,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
             state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
             deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
             ejectCoordinator: coordinator,
-            actionSuccessFeedbackDuration: 0.01
+            ejectSuccessFeedbackDuration: 0.01
         )
         let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
 
@@ -1023,7 +1151,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
     }
 
     func testDisappearancePublishesNeutralFeedbackAndAutoDismisses() async throws {
-        let device = makeDevice(id: "disk21", volumes: [])
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let coordinator = makeEjectCoordinator(
             resolver: DisappearingEjectTargetResolver(device: device),
             ejecter: ImmediateDiskEjecter(normalResult: .success(()))
@@ -1264,7 +1392,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         )
         let action = SystemAction(
             kind: .openDiskUtility,
-            intent: .openDiskUtility(bsdName: "disk21")
+            intent: .openDiskUtility
         )
 
         controller.perform(action)
@@ -1300,6 +1428,20 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertFalse(controller.isPerformingSystemAction)
     }
 
+    func testQuitCommandInvokesQuitHandlerImmediately() {
+        let quitRecorder = MainActorQuitRecorder()
+        let controller = DrivePulseAppController(
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[]]),
+            quitHandler: {
+                quitRecorder.recordInvocation()
+            }
+        )
+
+        controller.quit()
+
+        XCTAssertEqual(quitRecorder.invocationCount, 1)
+    }
+
     func testPerformIgnoresSecondActionWhileAnotherActionIsInFlight() async {
         let actionPerformer = StubSystemActionPerformer()
         let controller = DrivePulseAppController(
@@ -1308,7 +1450,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         )
         let firstAction = SystemAction(
             kind: .openDiskUtility,
-            intent: .openDiskUtility(bsdName: "disk21")
+            intent: .openDiskUtility
         )
         let secondAction = SystemAction(
             kind: .openInFinder,
@@ -2725,6 +2867,72 @@ private final class DelayedStubDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unc
 
     func physicalPartitions(forDiskBSDName bsdName: String) async -> [PhysicalPartitionInfo] {
         physicalPartitionsByDiskBSDName[bsdName] ?? []
+    }
+}
+
+private actor BlockingDiskUtilAPFSProvider: DiskUtilAPFSProviding {
+    private let containerInfoByBSDName: [String: APFSContainerInfo]
+    private var refreshCallCount = 0
+    private var didReturnFirstRefresh = false
+    private var firstRefreshContinuation: CheckedContinuation<Void, Never>?
+    private var firstStartContinuations: [CheckedContinuation<Void, Never>] = []
+    private var firstReturnContinuations: [CheckedContinuation<Void, Never>] = []
+    private var secondReturnContinuations: [CheckedContinuation<Void, Never>] = []
+
+    init(containerInfoByBSDName: [String: APFSContainerInfo]) {
+        self.containerInfoByBSDName = containerInfoByBSDName
+    }
+
+    func refresh() async {
+        refreshCallCount += 1
+        if refreshCallCount == 1 {
+            firstStartContinuations.forEach { $0.resume() }
+            firstStartContinuations.removeAll()
+            await withCheckedContinuation { continuation in
+                firstRefreshContinuation = continuation
+            }
+            didReturnFirstRefresh = true
+            firstReturnContinuations.forEach { $0.resume() }
+            firstReturnContinuations.removeAll()
+            return
+        }
+
+        secondReturnContinuations.forEach { $0.resume() }
+        secondReturnContinuations.removeAll()
+    }
+
+    func containerInfo(forContainerBSDName bsdName: String) async -> APFSContainerInfo? {
+        containerInfoByBSDName[bsdName]
+    }
+
+    func physicalPartitions(forDiskBSDName bsdName: String) async -> [PhysicalPartitionInfo] {
+        []
+    }
+
+    func waitUntilFirstRefreshStarts() async {
+        guard refreshCallCount == 0 else { return }
+        await withCheckedContinuation { continuation in
+            firstStartContinuations.append(continuation)
+        }
+    }
+
+    func finishFirstRefresh() {
+        firstRefreshContinuation?.resume()
+        firstRefreshContinuation = nil
+    }
+
+    func waitUntilFirstRefreshReturns() async {
+        guard didReturnFirstRefresh == false else { return }
+        await withCheckedContinuation { continuation in
+            firstReturnContinuations.append(continuation)
+        }
+    }
+
+    func waitUntilSecondRefreshReturns() async {
+        guard refreshCallCount < 2 else { return }
+        await withCheckedContinuation { continuation in
+            secondReturnContinuations.append(continuation)
+        }
     }
 }
 

@@ -22,59 +22,18 @@ struct MenuBarRootView: View {
 
             Divider()
 
-            DevicePickerView(
-                devices: controller.state.devices,
-                selectedDeviceID: Binding(
-                    get: { controller.state.selectedDeviceID },
-                    set: { controller.selectDevice($0) }
-                )
-            )
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(.regularMaterial)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 12) {
-                OverviewCardView(
-                    device: controller.state.selectedDevice,
-                    smartDetails: controller.state.selectedSMARTDetails,
-                    settings: controller.settings
-                )
-                ThroughputCardView(device: controller.state.selectedDevice)
-
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HealthSMARTCardView(
-                            helperPrompt: helperPrompt,
-                            smartDetails: controller.state.selectedSMARTDetails,
-                            onInstallHelper: { controller.performSMARTPrimaryAction() },
-                            onConfirmHelperInstall: { controller.installSMARTHelper() },
-                            onDismissHelperPrompt: { controller.dismissSMARTPrompts() },
-                            onRefresh: { controller.refreshSelectedDeviceSMART() }
-                        )
-                        TemperatureCardView(
-                            smartDetails: controller.state.selectedSMARTDetails,
-                            settings: controller.settings
-                        )
-                        VolumesPartitionsCardView(device: controller.state.selectedDevice)
-                        ConnectionNVMeCardView(device: controller.state.selectedDevice)
-                        DeviceIdentityCardView(device: controller.state.selectedDevice)
-                    }
-                }
-            }
-            .padding(14)
-            .frame(height: contentAreaHeight)
+            panelContent
 
             Divider()
 
             ActionBarView(
                 actions: controller.selectedFooterActions,
+                mode: controller.selectedPanelDevice == nil ? .empty : .device,
                 isPerformingAction: controller.isPerformingSystemAction,
                 message: controller.actionFeedback,
                 ejectState: ejectCoordinator.state,
                 retainedRecovery: ejectCoordinator.retainedRecovery,
-                selectedDeviceID: controller.state.selectedDeviceID,
+                selectedDeviceID: controller.selectedPanelDeviceID,
                 onAction: controller.perform,
                 onCancelEject: controller.cancelEject,
                 onRetryEject: controller.retryEject,
@@ -87,10 +46,72 @@ struct MenuBarRootView: View {
         .containerBackground(.regularMaterial, for: .window)
         .ejectForceConfirmation(
             state: ejectCoordinator.state,
-            selectedDeviceID: controller.state.selectedDeviceID,
+            selectedDeviceID: controller.selectedPanelDeviceID,
             onCancel: controller.cancelForceConfirmation,
             onConfirm: controller.confirmForceEject
         )
+    }
+
+    @ViewBuilder
+    private var panelContent: some View {
+        if let device = controller.selectedPanelDevice {
+            mountedDeviceContent(device)
+        } else {
+            NoMountedDeviceView()
+                .frame(height: 280)
+        }
+    }
+
+    private func mountedDeviceContent(_ device: ExternalDevice) -> some View {
+        VStack(spacing: 0) {
+            DevicePickerView(
+                devices: controller.panelDevices,
+                selectedDeviceID: Binding(
+                    get: { controller.selectedPanelDeviceID },
+                    set: { controller.selectDevice($0) }
+                )
+            )
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.regularMaterial)
+
+            Divider()
+
+            deviceDetails(device)
+        }
+    }
+
+    private func deviceDetails(_ device: ExternalDevice) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            OverviewCardView(
+                device: device,
+                smartDetails: controller.selectedPanelSMARTDetails,
+                settings: controller.settings
+            )
+            ThroughputCardView(device: device)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HealthSMARTCardView(
+                        helperPrompt: helperPrompt,
+                        smartDetails: controller.selectedPanelSMARTDetails,
+                        onInstallHelper: { controller.performSMARTPrimaryAction() },
+                        onConfirmHelperInstall: { controller.installSMARTHelper() },
+                        onDismissHelperPrompt: { controller.dismissSMARTPrompts() },
+                        onRefresh: { controller.refreshSelectedDeviceSMART() }
+                    )
+                    TemperatureCardView(
+                        smartDetails: controller.selectedPanelSMARTDetails,
+                        settings: controller.settings
+                    )
+                    VolumesPartitionsCardView(device: device)
+                    ConnectionNVMeCardView(device: device)
+                    DeviceIdentityCardView(device: device)
+                }
+            }
+        }
+        .padding(14)
+        .frame(height: contentAreaHeight)
     }
 
     private var contentAreaHeight: CGFloat {
@@ -107,6 +128,28 @@ struct MenuBarRootView: View {
         }
 
         return nil
+    }
+}
+
+private struct NoMountedDeviceView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "externaldrive.badge.plus")
+                .font(.system(size: 36, weight: .regular))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            Text("No Mounted External Drives")
+                .font(.headline)
+
+            Text("Connect and mount an external drive to start monitoring.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 260)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

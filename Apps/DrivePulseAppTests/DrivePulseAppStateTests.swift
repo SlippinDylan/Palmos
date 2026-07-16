@@ -4,6 +4,51 @@ import XCTest
 import DrivePulseCore
 
 final class DrivePulseAppStateTests: XCTestCase {
+    func testSelectionIgnoresUnmountedDevices() {
+        let unmountedDevice = ExternalDevice(
+            physicalStoreBSDName: "disk4",
+            apfsContainerBSDName: "disk4s2",
+            volumes: []
+        )
+        let mountedDevice = ExternalDevice.preview(id: "disk8")
+        let state = DrivePulseAppState(
+            devices: [unmountedDevice, mountedDevice],
+            selectedDeviceID: unmountedDevice.id
+        )
+
+        XCTAssertEqual(state.devices.map(\.id), [unmountedDevice.id, mountedDevice.id])
+        XCTAssertEqual(state.mountedDevices.map(\.id), [mountedDevice.id])
+        XCTAssertEqual(state.selectedDeviceID, mountedDevice.id)
+        XCTAssertEqual(state.selectedDevice?.id, mountedDevice.id)
+    }
+
+    func testMarkDeviceUnmountedSelectsNextMountedDevice() {
+        let firstDevice = ExternalDevice.preview(id: "disk4")
+        let secondDevice = ExternalDevice.preview(id: "disk8")
+        var state = DrivePulseAppState(
+            devices: [firstDevice, secondDevice],
+            selectedDeviceID: firstDevice.id
+        )
+
+        state.markDeviceUnmounted(firstDevice.id)
+
+        XCTAssertTrue(state.device(id: firstDevice.id)?.volumes.isEmpty == true)
+        XCTAssertEqual(state.selectedDeviceID, secondDevice.id)
+        XCTAssertEqual(state.selectedDevice?.id, secondDevice.id)
+    }
+
+    func testMarkOnlyDeviceUnmountedClearsPresentationSelection() {
+        let device = ExternalDevice.preview(id: "disk4")
+        var state = DrivePulseAppState(devices: [device], selectedDeviceID: device.id)
+
+        state.markDeviceUnmounted(device.id)
+
+        XCTAssertEqual(state.devices.map(\.id), [device.id])
+        XCTAssertTrue(state.mountedDevices.isEmpty)
+        XCTAssertNil(state.selectedDeviceID)
+        XCTAssertNil(state.selectedDevice)
+    }
+
     func testAppStateDefaultsToFirstDeviceWhenSelectionMissing() {
         let devices = [
             ExternalDevice.preview(id: "disk4"),

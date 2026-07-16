@@ -51,6 +51,7 @@ final class DrivePulseAppController: ObservableObject {
     private var ejectStateObservation: AnyCancellable?
     private var isSystemActionInFlight = false
     private var isEjectWorkflowActive = false
+    private var ejectWorkflowDeviceID: DeviceID?
     private var lastDiskCountersByDeviceID: [DeviceID: DiskIOCounters] = [:]
     private var sessionMetricsReducersByDeviceID: [DeviceID: SessionMetricsReducer] = [:]
     private let deviceDiscovery: any ExternalDeviceDiscovering
@@ -64,6 +65,7 @@ final class DrivePulseAppController: ObservableObject {
     let deviceIOTracker: DeviceIOTracker
     let deviceIOQuiescer: DeviceIOQuiescer
     private let actionSuccessFeedbackDuration: TimeInterval
+    private let ejectSuccessFeedbackDuration: TimeInterval
     private let actionFailureFeedbackDuration: TimeInterval
     private let quitFeedbackDuration: TimeInterval
     private let quitHandler: @MainActor @Sendable () -> Void
@@ -83,6 +85,7 @@ final class DrivePulseAppController: ObservableObject {
         deviceIOTracker: DeviceIOTracker = DeviceIOTracker(),
         ejectCoordinator: EjectCoordinator? = nil,
         actionSuccessFeedbackDuration: TimeInterval = 1.2,
+        ejectSuccessFeedbackDuration: TimeInterval = 4.0,
         actionFailureFeedbackDuration: TimeInterval = 2.8,
         quitFeedbackDuration: TimeInterval = 0.75,
         quitHandler: @escaping @MainActor @Sendable () -> Void = {
@@ -118,6 +121,7 @@ final class DrivePulseAppController: ObservableObject {
             deviceIOTracker: deviceIOTracker
         )
         self.actionSuccessFeedbackDuration = actionSuccessFeedbackDuration
+        self.ejectSuccessFeedbackDuration = ejectSuccessFeedbackDuration
         self.actionFailureFeedbackDuration = actionFailureFeedbackDuration
         self.quitFeedbackDuration = quitFeedbackDuration
         self.quitHandler = quitHandler
@@ -164,7 +168,7 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     func refreshSelectedDeviceSMART() {
-        guard let device = state.selectedDevice else {
+        guard let device = selectedPanelDevice else {
             return
         }
         let deviceID = device.id
@@ -184,7 +188,7 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     func performSMARTPrimaryAction() {
-        guard let details = state.selectedSMARTDetails else {
+        guard let details = selectedPanelSMARTDetails else {
             return
         }
         guard details.isRefreshing == false else {
@@ -237,8 +241,25 @@ final class DrivePulseAppController: ObservableObject {
         }
     }
 
+    var panelDevices: [ExternalDevice] {
+        state.mountedDevices
+    }
+
+    var selectedPanelDevice: ExternalDevice? {
+        state.selectedDevice
+    }
+
+    var selectedPanelDeviceID: DeviceID? {
+        selectedPanelDevice?.id
+    }
+
+    var selectedPanelSMARTDetails: SMARTPresentationDetails? {
+        guard let selectedPanelDeviceID else { return nil }
+        return state.smartDetails(for: selectedPanelDeviceID)
+    }
+
     var selectedFooterActions: [SystemAction] {
-        SystemAction.footerActions(for: state.selectedDevice)
+        SystemAction.footerActions(for: selectedPanelDevice)
     }
 
     func perform(_ action: SystemAction) {
@@ -247,8 +268,9 @@ final class DrivePulseAppController: ObservableObject {
         }
 
         if case .ejectPhysicalDevice = action.intent {
-            guard let device = state.selectedDevice else { return }
+            guard let device = selectedPanelDevice else { return }
             clearActionFeedback()
+            ejectWorkflowDeviceID = device.id
             setEjectWorkflowActive(true)
             ejectCoordinator.begin(
                 deviceID: device.id,
@@ -357,19 +379,23 @@ final class DrivePulseAppController: ObservableObject {
         switch state {
         case .succeeded(let target):
             clearMountedVolumes(for: target.deviceID)
+            ejectWorkflowDeviceID = nil
             presentActionFeedback(
                 EjectLocalization.successFeedback(target: target),
-                clearsAfter: actionSuccessFeedbackDuration
+                clearsAfter: ejectSuccessFeedbackDuration
             )
         case .externallyUnmounted(let target):
             clearMountedVolumes(for: target.deviceID)
+            ejectWorkflowDeviceID = nil
         case .disappeared(let target):
+            ejectWorkflowDeviceID = nil
             presentActionFeedback(
                 EjectLocalization.disappearanceFeedback(target: target),
                 clearsAfter: actionFailureFeedbackDuration
             )
-        case .idle, .preparing, .working, .awaitingRecovery, .awaitingForceConfirmation,
-             .resolutionFailed, .failed:
+        case .idle, .resolutionFailed, .failed:
+            ejectWorkflowDeviceID = nil
+        case .preparing, .working, .awaitingRecovery, .awaitingForceConfirmation:
             break
         }
     }
@@ -379,9 +405,22 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     private func clearMountedVolumes(for deviceID: DeviceID) {
-        guard let index = state.devices.firstIndex(where: { $0.id == deviceID }) else { return }
-        state.devices[index].volumes.removeAll()
+        invalidatePendingDeviceEnrichment()
+        state.markDeviceUnmounted(deviceID)
         updateCapacityRefresher(from: state.devices)
+        scheduleAPFSEnrichment(
+            for: state.devices,
+            generation: discoveryWriteGeneration
+        )
+    }
+
+    private func invalidatePendingDeviceEnrichment() {
+        // Enrichment tasks capture pre-eject snapshots. Letting one commit
+        // after the terminal state would restore volumes that were just cleared.
+        discoveryLoadTask?.cancel()
+        observationEnrichmentTask?.cancel()
+        apfsRetryTask?.cancel()
+        discoveryWriteGeneration += 1
     }
 
     private func presentActionFeedback(_ message: String, clearsAfter duration: TimeInterval) {
@@ -483,7 +522,6 @@ final class DrivePulseAppController: ObservableObject {
         discoveryWriteGeneration += 1
         ejectCoordinator.deviceTopologyDidChange(generation: discoveryWriteGeneration)
         let generation = discoveryWriteGeneration
-        let diskUtilAPFSProvider = diskUtilAPFSProvider
         let mergedDevices = mergeDevicesPreservingKnownContext(devices)
         // Apply unenriched devices immediately so UI is responsive before system_profiler finishes
         state.replaceDevices(mergedDevices)
@@ -491,9 +529,23 @@ final class DrivePulseAppController: ObservableObject {
         updateCapacityRefresher(from: mergedDevices)
         triggerInitialSMARTForNewDevices(mergedDevices)
         scheduleSystemProfilerEnrichment(.refresh)
+        scheduleAPFSEnrichment(for: mergedDevices, generation: generation)
+    }
+
+    private func scheduleAPFSEnrichment(
+        for devices: [ExternalDevice],
+        generation: Int
+    ) {
+        observationEnrichmentTask?.cancel()
+        guard devices.isEmpty == false else {
+            observationEnrichmentTask = nil
+            return
+        }
+
+        let diskUtilAPFSProvider = diskUtilAPFSProvider
         observationEnrichmentTask = Task { [weak self] in
             guard let self else { return }
-            await diskUtilAPFSProvider.refresh(targets: mergedDevices.map {
+            await diskUtilAPFSProvider.refresh(targets: devices.map {
                 APFSTopologyTarget(
                     physicalBSDName: $0.physicalStoreBSDName,
                     containerBSDName: $0.apfsContainerBSDName
@@ -501,7 +553,7 @@ final class DrivePulseAppController: ObservableObject {
             })
             guard !Task.isCancelled else { return }
             let apfsEnriched = await self.enrichDevicesWithAPFS(
-                mergedDevices,
+                devices,
                 diskUtilAPFSProvider: diskUtilAPFSProvider
             )
             guard generation == self.discoveryWriteGeneration, !Task.isCancelled else { return }
@@ -656,7 +708,9 @@ final class DrivePulseAppController: ObservableObject {
         if merged.apfsContainerBSDName == nil {
             merged.apfsContainerBSDName = existing.apfsContainerBSDName
         }
-        if merged.volumes.isEmpty {
+        if merged.volumes.isEmpty,
+           isEjectWorkflowActive,
+           ejectWorkflowDeviceID == incoming.id {
             merged.volumes = existing.volumes
         }
         if merged.nvmeInfo == nil {

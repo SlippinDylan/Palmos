@@ -62,6 +62,11 @@ enum FooterActionLabelLayout: Equatable {
     case stacked
 }
 
+enum FooterActionBarMode: Equatable {
+    case device
+    case empty
+}
+
 struct FooterActionLayoutMetrics: Equatable {
     let labelLayout: FooterActionLabelLayout
     let controlSpacing: CGFloat
@@ -71,9 +76,11 @@ struct FooterActionLayoutMetrics: Equatable {
     let iconFontSize: CGFloat
     let titleFontSize: CGFloat
     let minHeight: CGFloat
+    let fixedWidth: CGFloat?
 
-    static func forActionCount(_ count: Int) -> Self {
-        if count >= 4 {
+    static func forMode(_ mode: FooterActionBarMode) -> Self {
+        switch mode {
+        case .device:
             return Self(
                 labelLayout: .stacked,
                 controlSpacing: 6,
@@ -82,20 +89,22 @@ struct FooterActionLayoutMetrics: Equatable {
                 labelSpacing: 4,
                 iconFontSize: 12,
                 titleFontSize: 10,
-                minHeight: 46
+                minHeight: 46,
+                fixedWidth: nil
+            )
+        case .empty:
+            return Self(
+                labelLayout: .horizontal,
+                controlSpacing: 10,
+                horizontalPadding: 12,
+                verticalPadding: 7,
+                labelSpacing: 6,
+                iconFontSize: 11,
+                titleFontSize: 11,
+                minHeight: 34,
+                fixedWidth: 132
             )
         }
-
-        return Self(
-            labelLayout: .horizontal,
-            controlSpacing: 10,
-            horizontalPadding: 12,
-            verticalPadding: 7,
-            labelSpacing: 6,
-            iconFontSize: 11,
-            titleFontSize: 11,
-            minHeight: 0
-        )
     }
 }
 
@@ -110,6 +119,7 @@ private struct PanelFooterButtonStyle: ButtonStyle {
             .padding(.horizontal, metrics.horizontalPadding)
             .padding(.vertical, metrics.verticalPadding)
             .frame(maxWidth: .infinity, minHeight: metrics.minHeight)
+            .contentShape(Capsule())
             .modifier(
                 PanelControlSurfaceModifier(
                     usesLiquidGlass: usesLiquidGlass,
@@ -147,6 +157,7 @@ private struct PanelControlSurfaceModifier<S: InsettableShape>: ViewModifier {
 
 struct ActionBarView: View {
     let actions: [SystemAction]
+    let mode: FooterActionBarMode
     let isPerformingAction: Bool
     let message: String?
     let ejectState: EjectWorkflowState
@@ -162,13 +173,17 @@ struct ActionBarView: View {
     }
 
     private var layoutMetrics: FooterActionLayoutMetrics {
-        .forActionCount(actions.count)
+        .forMode(mode)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             PanelControlCluster(usesLiquidGlass: visualStyle.usesLiquidGlass) {
                 HStack(spacing: layoutMetrics.controlSpacing) {
+                    if mode == .empty {
+                        Spacer(minLength: 0)
+                    }
+
                     ForEach(actions) { action in
                         Button {
                             onAction(action)
@@ -184,7 +199,16 @@ struct ActionBarView: View {
                                 metrics: layoutMetrics
                             )
                         )
-                        .frame(maxWidth: .infinity)
+                        .frame(width: layoutMetrics.fixedWidth)
+                        .frame(
+                            maxWidth: mode == .device
+                                ? .infinity
+                                : layoutMetrics.fixedWidth
+                        )
+                    }
+
+                    if mode == .empty {
+                        Spacer(minLength: 0)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -248,6 +272,5 @@ private struct FooterActionButtonLabel: View {
             .font(.system(size: metrics.titleFontSize, weight: .semibold))
             .lineLimit(1)
             .minimumScaleFactor(0.85)
-            .frame(maxWidth: .infinity)
     }
 }

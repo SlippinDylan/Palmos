@@ -15,7 +15,7 @@ struct SystemAction: Identifiable, Equatable {
     enum Intent: Equatable {
         case revealInFinder(volumeBSDName: String)
         case ejectPhysicalDevice(bsdName: String)
-        case openDiskUtility(bsdName: String)
+        case openDiskUtility
         case quit
     }
 
@@ -89,8 +89,11 @@ struct SystemAction: Identifiable, Equatable {
     }
 
     static func footerActions(for device: ExternalDevice?) -> [Self] {
-        guard let device else {
-            return [Self(kind: .quit, intent: .quit)]
+        guard let device, device.volumes.isEmpty == false else {
+            return [
+                Self(kind: .openDiskUtility, intent: .openDiskUtility),
+                Self(kind: .quit, intent: .quit)
+            ]
         }
 
         var actions: [Self] = []
@@ -113,7 +116,7 @@ struct SystemAction: Identifiable, Equatable {
         actions.append(
             Self(
                 kind: .openDiskUtility,
-                intent: .openDiskUtility(bsdName: device.physicalStoreBSDName)
+                intent: .openDiskUtility
             )
         )
         actions.append(Self(kind: .quit, intent: .quit))

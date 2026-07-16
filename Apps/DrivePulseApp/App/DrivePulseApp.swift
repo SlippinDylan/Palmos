@@ -72,6 +72,14 @@ struct DrivePulseApp: App {
         }
         .menuBarExtraAccess(isPresented: $controller.isMenuBarPanelPresented)
         .menuBarExtraStyle(.window)
+        .commands {
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit DrivePulse") {
+                    controller.quit()
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
+        }
 
         Settings {
             SettingsView(

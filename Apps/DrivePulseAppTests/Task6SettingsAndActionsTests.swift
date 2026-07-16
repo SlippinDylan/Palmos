@@ -73,6 +73,29 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertEqual(actions.last?.kind, .quit)
     }
 
+    func testFooterActionsWithoutMountedDeviceShowOnlyDiskUtilityAndQuit() {
+        XCTAssertEqual(
+            SystemAction.footerActions(for: nil).map(\.kind),
+            [.openDiskUtility, .quit]
+        )
+
+        let unmountedDevice = ExternalDevice(
+            id: DeviceID(rawValue: "selected-device"),
+            displayName: "Sample Drive",
+            transportName: "USB-C",
+            smartSnapshot: .notRequested,
+            sessionMetrics: .empty(historyLimit: 0),
+            physicalStoreBSDName: "disk42",
+            apfsContainerBSDName: "disk42s2",
+            volumes: []
+        )
+
+        XCTAssertEqual(
+            SystemAction.footerActions(for: unmountedDevice).map(\.kind),
+            [.openDiskUtility, .quit]
+        )
+    }
+
     func testFinderAndDiskUtilityActionsDismissMenuBarPanelButEjectAndQuitDoNot() {
         let device = ExternalDevice(
             id: DeviceID(rawValue: "selected-device"),
@@ -137,8 +160,8 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         )
     }
 
-    func testFooterActionLayoutUsesCompactStackedMetricsForFourActions() {
-        let metrics = FooterActionLayoutMetrics.forActionCount(4)
+    func testDeviceFooterLayoutUsesStableStackedCapsules() {
+        let metrics = FooterActionLayoutMetrics.forMode(.device)
 
         XCTAssertEqual(metrics.labelLayout, .stacked)
         XCTAssertEqual(metrics.controlSpacing, 6)
@@ -146,6 +169,15 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertEqual(metrics.verticalPadding, 8)
         XCTAssertEqual(metrics.titleFontSize, 10)
         XCTAssertEqual(metrics.minHeight, 46)
+        XCTAssertNil(metrics.fixedWidth)
+    }
+
+    func testEmptyFooterLayoutUsesCenteredHorizontalCapsules() {
+        let metrics = FooterActionLayoutMetrics.forMode(.empty)
+
+        XCTAssertEqual(metrics.labelLayout, .horizontal)
+        XCTAssertEqual(metrics.minHeight, 34)
+        XCTAssertEqual(metrics.fixedWidth, 132)
     }
 
     func testRevealActionUsesNativeVolumeLookup() async throws {
@@ -174,7 +206,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         )
 
         try await actions.perform(
-            SystemAction(kind: .openDiskUtility, intent: .openDiskUtility(bsdName: "disk42"))
+            SystemAction(kind: .openDiskUtility, intent: .openDiskUtility)
         )
 
         XCTAssertEqual(workspace.openedApplicationBundleIdentifiers, ["com.apple.DiskUtility"])

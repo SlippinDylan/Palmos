@@ -249,6 +249,28 @@
         }
       }
     },
+    "Connect and mount an external drive to start monitoring." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect and mount an external drive to start monitoring."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接并挂载外接硬盘后，DrivePulse 将自动开始监控。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接並掛載外接硬碟後，DrivePulse 將自動開始監控。"
+          }
+        }
+      }
+    },
     "Connection" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2354,6 +2376,28 @@
         }
       }
     },
+    "No Mounted External Drives" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Mounted External Drives"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未检测到已挂载的外接硬盘"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未偵測到已掛載的外接硬碟"
+          }
+        }
+      }
+    },
     "No mounted volume available." : {
       "localizations" : {
         "en" : {
@@ -3068,6 +3112,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "退出"
+          }
+        }
+      }
+    },
+    "Quit DrivePulse" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit DrivePulse"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出 DrivePulse"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出 DrivePulse"
           }
         }
       }
