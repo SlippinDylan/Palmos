@@ -149,7 +149,7 @@ struct SystemActions: SystemActionPerforming {
             let volumeURL = try await runOnActionQueue {
                 try mountedVolumeURL(for: volumeBSDName)
             }
-            await workspace.reveal([volumeURL])
+            try await workspace.open(volumeURL)
         case .ejectPhysicalDevice:
             return
         case .openDiskUtility:
@@ -203,7 +203,7 @@ protocol DiskVolumeLocating: Sendable {
 
 protocol WorkspaceClient: Sendable {
     @MainActor
-    func reveal(_ urls: [URL]) async
+    func open(_ url: URL) async throws
 
     @MainActor
     func openApplication(bundleIdentifier: String) async throws
@@ -211,12 +211,24 @@ protocol WorkspaceClient: Sendable {
 
 private struct LiveWorkspaceClient: WorkspaceClient {
     @MainActor
-    func reveal(_ urls: [URL]) async {
+    func open(_ url: URL) async throws {
         // The app runs with an accessory activation policy (no Dock icon), so
-        // without an explicit activate() the window server can leave Finder's
-        // reveal noticeably slow to come forward.
+        // without an explicit activate() the window server can leave Finder
+        // noticeably slow to come forward.
         NSApp.activate(ignoringOtherApps: true)
-        NSWorkspace.shared.activateFileViewerSelecting(urls)
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            NSWorkspace.shared.open(url, configuration: configuration) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     @MainActor

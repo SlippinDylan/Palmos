@@ -180,7 +180,119 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertEqual(metrics.fixedWidth, 132)
     }
 
-    func testRevealActionUsesNativeVolumeLookup() async throws {
+    func testPanelContentHeightNeverExceedsVisibleScreenAfterFixedShell() {
+        let availableHeight: CGFloat = 768
+        let contentHeight = MenuBarPanelLayout.contentAreaHeight(
+            availableHeight: availableHeight
+        )
+
+        XCTAssertEqual(contentHeight, 561)
+        XCTAssertLessThanOrEqual(
+            contentHeight + MenuBarPanelLayout.fixedShellHeight,
+            MenuBarPanelLayout.usablePanelHeight(availableHeight: availableHeight)
+        )
+        let recoverySupplement = MenuBarPanelLayout.footerSupplementHeight(
+            availableHeight: availableHeight,
+            showsFeedback: true,
+            showsRecovery: true
+        )
+        let recoveryContentHeight = MenuBarPanelLayout.contentAreaHeight(
+            availableHeight: availableHeight,
+            showsFeedback: true,
+            showsRecovery: true
+        )
+        XCTAssertLessThanOrEqual(
+            recoveryContentHeight
+                + MenuBarPanelLayout.fixedShellHeight
+                + recoverySupplement,
+            MenuBarPanelLayout.usablePanelHeight(availableHeight: availableHeight)
+        )
+        XCTAssertGreaterThanOrEqual(
+            recoveryContentHeight,
+            MenuBarPanelLayout.minimumFixedContentHeight
+        )
+        XCTAssertEqual(
+            MenuBarPanelLayout.recoveryViewMaximumHeight(
+                availableHeight: availableHeight,
+                showsFeedback: false
+            ),
+            98
+        )
+        XCTAssertEqual(
+            MenuBarPanelLayout.recoveryViewMaximumHeight(
+                availableHeight: 720,
+                showsFeedback: false
+            ),
+            50
+        )
+    }
+
+    func testPanelExpandsToUseTallScreenInsteadOfApplyingFixedHeightCap() {
+        let availableHeight: CGFloat = 1_440
+        let usableHeight = MenuBarPanelLayout.usablePanelHeight(
+            availableHeight: availableHeight
+        )
+        let contentHeight = MenuBarPanelLayout.contentAreaHeight(
+            availableHeight: availableHeight
+        )
+
+        XCTAssertEqual(usableHeight, 1_428)
+        XCTAssertEqual(contentHeight, 1_233)
+        XCTAssertEqual(
+            contentHeight + MenuBarPanelLayout.fixedShellHeight,
+            usableHeight
+        )
+        XCTAssertGreaterThan(contentHeight, 680)
+    }
+
+    func testPanelUsesNaturalDetailsHeightUntilScreenCapacityIsReached() {
+        let maximumContentHeight: CGFloat = 800
+        let fixedDetailsHeight: CGFloat = 300
+
+        XCTAssertEqual(
+            MenuBarPanelLayout.detailsViewportHeight(
+                maximumContentAreaHeight: maximumContentHeight,
+                fixedDetailsHeight: fixedDetailsHeight,
+                detailsContentHeight: 200
+            ),
+            200
+        )
+        XCTAssertEqual(
+            MenuBarPanelLayout.resolvedContentAreaHeight(
+                maximumContentAreaHeight: maximumContentHeight,
+                fixedDetailsHeight: fixedDetailsHeight,
+                detailsContentHeight: 200
+            ),
+            540
+        )
+
+        XCTAssertEqual(
+            MenuBarPanelLayout.detailsViewportHeight(
+                maximumContentAreaHeight: maximumContentHeight,
+                fixedDetailsHeight: fixedDetailsHeight,
+                detailsContentHeight: 1_000
+            ),
+            460
+        )
+        XCTAssertEqual(
+            MenuBarPanelLayout.resolvedContentAreaHeight(
+                maximumContentAreaHeight: maximumContentHeight,
+                fixedDetailsHeight: fixedDetailsHeight,
+                detailsContentHeight: 1_000
+            ),
+            maximumContentHeight
+        )
+        XCTAssertEqual(
+            MenuBarPanelLayout.resolvedContentAreaHeight(
+                maximumContentAreaHeight: maximumContentHeight,
+                fixedDetailsHeight: fixedDetailsHeight,
+                detailsContentHeight: 0
+            ),
+            328
+        )
+    }
+
+    func testFinderActionOpensNativeVolumeURLWithoutRevealingIt() async throws {
         let diskArbitration = StubDiskArbitrationClient(volumeURLs: [
             "disk42s1": URL(fileURLWithPath: "/Volumes/Field")
         ])
@@ -195,7 +307,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         )
 
         XCTAssertEqual(diskArbitration.lookedUpVolumeBSDNames, ["disk42s1"])
-        XCTAssertEqual(workspace.revealedURLs, [URL(fileURLWithPath: "/Volumes/Field")])
+        XCTAssertEqual(workspace.openedURLs, [URL(fileURLWithPath: "/Volumes/Field")])
     }
 
     func testOpenDiskUtilityActionLaunchesDiskUtilityByBundleIdentifier() async throws {
@@ -234,12 +346,12 @@ private final class StubDiskArbitrationClient: DiskVolumeLocating, @unchecked Se
 }
 
 private final class StubWorkspaceClient: WorkspaceClient, @unchecked Sendable {
-    private(set) var revealedURLs: [URL] = []
+    private(set) var openedURLs: [URL] = []
     private(set) var openedApplicationBundleIdentifiers: [String] = []
 
     @MainActor
-    func reveal(_ urls: [URL]) async {
-        revealedURLs = urls
+    func open(_ url: URL) async throws {
+        openedURLs.append(url)
     }
 
     @MainActor

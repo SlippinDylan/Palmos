@@ -3,11 +3,7 @@ import SwiftUI
 import DrivePulseCore
 
 struct HealthSMARTCardView: View {
-    let helperPrompt: SMARTHelperPrompt?
     let smartDetails: SMARTPresentationDetails?
-    let onInstallHelper: () -> Void
-    let onConfirmHelperInstall: () -> Void
-    let onDismissHelperPrompt: () -> Void
     let onRefresh: () -> Void
 
     var body: some View {
@@ -42,46 +38,11 @@ struct HealthSMARTCardView: View {
                     PanelKeyValueRow("Critical Temp Time", value: criticalTempTimeString, usesMonospacedDigits: true)
                 }
 
-                if requiresHelperInstallOrUpdate {
-                    Button(helperButtonTitle) { onInstallHelper() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
-                } else if !isLoading {
+                if !isLoading && canRefresh {
                     Button("Refresh SMART Data") { onRefresh() }
                         .buttonStyle(.link)
                         .controlSize(.small)
                         .padding(.top, 8)
-                }
-
-                if let helperPrompt {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(helperPrompt.title)
-                            .font(.subheadline.weight(.semibold))
-
-                        Text(helperPrompt.message)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-
-                        HStack(spacing: 8) {
-                            Button(helperPrompt.confirmTitle) {
-                                onConfirmHelperInstall()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-
-                            Button("Cancel", role: .cancel) {
-                                onDismissHelperPrompt()
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.top, 10)
                 }
             }
         }
@@ -98,23 +59,13 @@ struct HealthSMARTCardView: View {
         return false
     }
 
-    private var requiresHelperInstallOrUpdate: Bool {
+    private var canRefresh: Bool {
         guard let snapshot = smartDetails?.snapshot else { return false }
-        if case .helperNotInstalled = snapshot { return true }
-        if case .updateRequired = snapshot { return true }
-        return false
-    }
-
-    private var helperButtonTitle: LocalizedStringKey {
-        guard let snapshot = smartDetails?.snapshot else {
-            return "Install SMART Helper for Complete Health Data"
-        }
-
         switch snapshot {
-        case .updateRequired:
-            return "Update SMART Helper for Complete Health Data"
+        case .helperNotInstalled, .updateRequired:
+            return false
         default:
-            return "Install SMART Helper for Complete Health Data"
+            return true
         }
     }
 
@@ -192,34 +143,42 @@ struct HealthSMARTCardView: View {
     }
 }
 
-enum SMARTHelperPrompt: Equatable {
-    case install
-    case update
+struct SMARTHelperPlaceholderView: View {
+    let requiresUpdate: Bool
+    let onOpenSettings: () -> Void
 
-    var title: LocalizedStringKey {
-        switch self {
-        case .install:
-            return "Install Advanced Monitoring"
-        case .update:
-            return "Update Advanced Monitoring"
+    var body: some View {
+        PanelSection("Advanced Monitoring") {
+            VStack(spacing: 10) {
+                Image(systemName: "stethoscope.circle")
+                    .font(.system(size: 34, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+
+                Text(requiresUpdate ? "Update Required" : "Helper required")
+                    .font(.subheadline.weight(.semibold))
+
+                Text("Open Settings to install or update the SMART helper.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                openSettingsButton
+            }
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
         }
     }
 
-    var message: LocalizedStringKey {
-        switch self {
-        case .install:
-            return "DrivePulse needs to install the privileged SMART helper to read drive health data."
-        case .update:
-            return "DrivePulse needs to update the privileged SMART helper before SMART data can be refreshed."
-        }
-    }
+    @ViewBuilder
+    private var openSettingsButton: some View {
+        let button = Button("Settings", action: onOpenSettings)
+            .controlSize(.small)
 
-    var confirmTitle: LocalizedStringKey {
-        switch self {
-        case .install:
-            return "Install"
-        case .update:
-            return "Update"
+        if #available(macOS 26.0, *) {
+            button.buttonStyle(.glass)
+        } else {
+            button.buttonStyle(.bordered)
         }
     }
 }

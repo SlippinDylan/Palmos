@@ -23,6 +23,38 @@
         }
       }
     },
+    "Advanced Monitoring" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高级监控"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進階監控"
+          }
+        }
+      }
+    },
+    "Always Shown" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "始终显示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "永遠顯示"
+          }
+        }
+      }
+    },
     "APFS Container" : {
       "localizations" : {
         "en" : {
@@ -69,6 +101,7 @@
       }
     },
     "Approval needed in Login Items Settings." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -91,7 +124,6 @@
       }
     },
     "Available" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -161,6 +193,7 @@
 
     },
     "Cancel" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -183,7 +216,6 @@
       }
     },
     "Capacity" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -223,6 +255,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "攝氏"
+          }
+        }
+      }
+    },
+    "Check Again" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次检查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次檢查"
+          }
+        }
+      }
+    },
+    "Checking Status" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在检查状态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在檢查狀態"
+          }
+        }
+      }
+    },
+    "Choose how DrivePulse behaves on this Mac." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择 DrivePulse 在这台 Mac 上的运行方式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇 DrivePulse 在這台 Mac 上的運作方式。"
+          }
+        }
+      }
+    },
+    "Choose which device details appear in the scrollable panel area." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择要在面板滚动区域中显示的设备详情。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇要在面板捲動區域中顯示的裝置詳細資訊。"
           }
         }
       }
@@ -514,6 +610,22 @@
         }
       }
     },
+    "Device Details" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备详情"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "裝置詳細資訊"
+          }
+        }
+      }
+    },
     "Device ID" : {
       "localizations" : {
         "en" : {
@@ -625,6 +737,22 @@
         }
       }
     },
+    "Display" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示"
+          }
+        }
+      }
+    },
     "DrivePulse" : {
 
     },
@@ -650,7 +778,40 @@
         }
       }
     },
+    "DrivePulse could not verify the SMART helper." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse 无法验证 SMART Helper。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse 無法驗證 SMART Helper。"
+          }
+        }
+      }
+    },
+    "DrivePulse is checking the installed helper." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse 正在检查已安装的 Helper。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse 正在檢查已安裝的 Helper。"
+          }
+        }
+      }
+    },
     "DrivePulse needs to install the privileged SMART helper to read drive health data." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -673,6 +834,7 @@
       }
     },
     "DrivePulse needs to update the privileged SMART helper before SMART data can be refreshed." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2015,8 +2177,23 @@
         }
       }
     },
+    "Health and temperature monitoring is available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "健康与温度监控已可用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "健康與溫度監控已可用。"
+          }
+        }
+      }
+    },
     "Helper required" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2064,6 +2241,7 @@
       }
     },
     "Install Advanced Monitoring" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2085,24 +2263,66 @@
         }
       }
     },
-    "Install SMART Helper for Complete Health Data" : {
+    "Install the helper to enable health and temperature data." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Install SMART Helper for Complete Health Data"
-          }
-        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "安装 SMART 助手以获取完整健康数据"
+            "value" : "安装 Helper 后可获取健康与温度数据。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "安裝 SMART 助理以取得完整健康資料"
+            "value" : "安裝 Helper 後可取得健康與溫度資料。"
+          }
+        }
+      }
+    },
+    "Installation Failed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安裝失敗"
+          }
+        }
+      }
+    },
+    "Installed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安裝"
+          }
+        }
+      }
+    },
+    "Installing" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在安裝"
           }
         }
       }
@@ -2192,6 +2412,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "載入中"
+          }
+        }
+      }
+    },
+    "macOS may ask for administrator approval." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 可能会请求管理员授权。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 可能會要求管理員授權。"
+          }
+        }
+      }
+    },
+    "Manage the privileged helper used for health and temperature monitoring." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理用于健康与温度监控的特权 Helper。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理用於健康與溫度監控的特權 Helper。"
           }
         }
       }
@@ -2508,6 +2760,22 @@
         }
       }
     },
+    "Not Installed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安裝"
+          }
+        }
+      }
+    },
     "Not Mounted" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2661,6 +2929,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打開「登入項目」設定"
+          }
+        }
+      }
+    },
+    "Open Settings to install or update the SMART helper." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开设置以安装或更新 SMART Helper。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開設定以安裝或更新 SMART Helper。"
           }
         }
       }
@@ -3393,6 +3677,22 @@
     "SMART" : {
 
     },
+    "SMART Helper" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART Helper"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART Helper"
+          }
+        }
+      }
+    },
     "SMART Status" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3412,6 +3712,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SMART 狀態"
+          }
+        }
+      }
+    },
+    "Status Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法取得狀態"
           }
         }
       }
@@ -3460,8 +3776,39 @@
         }
       }
     },
+    "The helper is installed by macOS with administrator approval and is only used for SMART access and safe-eject occupancy checks." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helper 由 macOS 在管理员授权后安装，仅用于 SMART 访问和安全推出占用检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helper 由 macOS 在管理員授權後安裝，僅用於 SMART 存取和安全推出佔用檢查。"
+          }
+        }
+      }
+    },
+    "The SMART Helper installation did not complete." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART Helper 安装未完成。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART Helper 安裝未完成。"
+          }
+        }
+      }
+    },
     "Throughput" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3640,6 +3987,22 @@
         }
       }
     },
+    "Try Again" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再試一次"
+          }
+        }
+      }
+    },
     "Tunnel Compatible" : {
       "localizations" : {
         "en" : {
@@ -3756,6 +4119,7 @@
       }
     },
     "Update Advanced Monitoring" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3800,7 +4164,24 @@
         }
       }
     },
+    "Update Required" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要更新"
+          }
+        }
+      }
+    },
     "Update SMART Helper for Complete Health Data" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3818,6 +4199,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更新 SMART 助理以取得完整健康資料"
+          }
+        }
+      }
+    },
+    "Update the helper to match this version of DrivePulse." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 Helper 以匹配当前版本的 DrivePulse。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 Helper 以符合目前版本的 DrivePulse。"
           }
         }
       }

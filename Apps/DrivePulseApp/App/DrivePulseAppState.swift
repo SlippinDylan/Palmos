@@ -27,16 +27,9 @@ struct SMARTPresentationDetails: Equatable {
     }
 }
 
-struct SMARTPromptPresentation: Equatable {
-    var showHelperInstallPrompt = false
-    var showHelperUpdatePrompt = false
-    var promptDeviceID: DeviceID?
-}
-
 struct DrivePulseAppState: Equatable {
     var devices: [ExternalDevice]
     var selectedDeviceID: DeviceID?
-    var presentation: SMARTPromptPresentation
     private var smartDetailsByDeviceID: [DeviceID: SMARTPresentationDetails]
 
     init(devices: [ExternalDevice] = [], selectedDeviceID: DeviceID?) {
@@ -45,7 +38,6 @@ struct DrivePulseAppState: Equatable {
             devices: devices,
             preferredID: selectedDeviceID
         )
-        self.presentation = SMARTPromptPresentation()
         self.smartDetailsByDeviceID = [:]
     }
 
@@ -76,7 +68,6 @@ struct DrivePulseAppState: Equatable {
     }
 
     mutating func replaceDevices(_ devices: [ExternalDevice]) {
-        let previousSelection = selectedDeviceID
         let existingDevicesByID = Dictionary(uniqueKeysWithValues: self.devices.map { ($0.id, $0) })
         let presentDeviceIDs = Set(devices.map(\.id))
         self.devices = devices
@@ -100,9 +91,6 @@ struct DrivePulseAppState: Equatable {
             devices: self.devices,
             preferredID: selectedDeviceID
         )
-        if selectedDeviceID != previousSelection {
-            dismissSMARTPrompts()
-        }
     }
 
     mutating func markDeviceUnmounted(_ deviceID: DeviceID) {
@@ -110,15 +98,11 @@ struct DrivePulseAppState: Equatable {
             return
         }
 
-        let previousSelection = selectedDeviceID
         devices[deviceIndex].volumes.removeAll()
         selectedDeviceID = Self.resolveSelection(
             devices: devices,
             preferredID: selectedDeviceID
         )
-        if selectedDeviceID != previousSelection {
-            dismissSMARTPrompts()
-        }
     }
 
     func smartDetails(for deviceID: DeviceID) -> SMARTPresentationDetails? {
@@ -155,21 +139,6 @@ struct DrivePulseAppState: Equatable {
         updateDeviceSnapshot(.loading, for: deviceID)
     }
 
-    mutating func setSMARTHelperInstalling(for deviceID: DeviceID) {
-        guard let details = smartDetails(for: deviceID) else {
-            return
-        }
-
-        dismissSMARTPrompts()
-        smartDetailsByDeviceID[deviceID] = SMARTPresentationDetails(
-            snapshot: details.snapshot,
-            compatibility: details.compatibility,
-            isRefreshing: true,
-            isInstalling: true,
-            lastError: nil
-        )
-    }
-
     mutating func applySMARTResult(
         for deviceID: DeviceID,
         snapshot: SmartSnapshot,
@@ -196,31 +165,6 @@ struct DrivePulseAppState: Equatable {
         }
 
         devices[deviceIndex].sessionMetrics = sessionMetrics
-    }
-
-    mutating func presentSMARTPrompt(for action: SMARTPresentationPrimaryAction) {
-        guard let deviceID = selectedDeviceID else {
-            dismissSMARTPrompts()
-            return
-        }
-
-        presentation.promptDeviceID = deviceID
-        switch action {
-        case .installHelper:
-            presentation.showHelperInstallPrompt = true
-            presentation.showHelperUpdatePrompt = false
-        case .updateHelper:
-            presentation.showHelperInstallPrompt = false
-            presentation.showHelperUpdatePrompt = true
-        case .refresh:
-            dismissSMARTPrompts()
-        }
-    }
-
-    mutating func dismissSMARTPrompts() {
-        presentation.showHelperInstallPrompt = false
-        presentation.showHelperUpdatePrompt = false
-        presentation.promptDeviceID = nil
     }
 
     private static func resolveSelection(

@@ -84,11 +84,15 @@ struct DrivePulseApp: App {
         Settings {
             SettingsView(
                 settings: controller.settings,
-                launchAtLoginController: controller.launchAtLoginController
+                launchAtLoginController: controller.launchAtLoginController,
+                smartHelperManager: controller.smartHelperManager,
+                onInstallOrUpdateHelper: controller.installSMARTHelper,
+                onRefreshHelperStatus: controller.refreshSMARTHelperStatus
             )
             .onDisappear {
                 settingsWindowActivator.settingsWindowDidClose()
             }
         }
+        .windowResizability(.contentSize)
     }
 }

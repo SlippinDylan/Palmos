@@ -163,6 +163,7 @@ struct ActionBarView: View {
     let ejectState: EjectWorkflowState
     let retainedRecovery: EjectRecoveryState?
     let selectedDeviceID: DeviceID?
+    let availableHeight: CGFloat
     let onAction: (SystemAction) -> Void
     let onCancelEject: () -> Void
     let onRetryEject: () -> Void
@@ -229,14 +230,24 @@ struct ActionBarView: View {
                 retainedRecovery: retainedRecovery,
                 selectedDeviceID: selectedDeviceID
             ) {
-                EjectRecoveryView(
-                    presentation: presentation,
-                    onCancel: onCancelEject,
-                    onRetry: onRetryEject,
-                    onRequestForce: onRequestForceEject
-                )
+                ScrollView(.vertical, showsIndicators: true) {
+                    EjectRecoveryView(
+                        presentation: presentation,
+                        onCancel: onCancelEject,
+                        onRetry: onRetryEject,
+                        onRequestForce: onRequestForceEject
+                    )
+                }
+                .frame(maxHeight: recoveryViewMaximumHeight)
             }
         }
+    }
+
+    private var recoveryViewMaximumHeight: CGFloat {
+        MenuBarPanelLayout.recoveryViewMaximumHeight(
+            availableHeight: availableHeight,
+            showsFeedback: message?.isEmpty == false
+        )
     }
 }
 

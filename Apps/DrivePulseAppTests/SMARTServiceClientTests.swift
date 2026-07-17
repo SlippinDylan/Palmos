@@ -222,6 +222,66 @@ final class SMARTServiceClientTests: XCTestCase {
         XCTAssertEqual(result, .degraded)
     }
 
+    func testHelperInspectionReportsNotInstalledWithoutOpeningXPCConnection() async {
+        let handshakeFetchCount = LockedCounter()
+        let client = SMARTServiceClient(
+            isHelperInstalled: { false },
+            fetchHelperHandshake: {
+                handshakeFetchCount.increment()
+                return Data()
+            }
+        )
+
+        let result = await client.inspectSMARTHelper()
+
+        XCTAssertEqual(result, .notInstalled)
+        XCTAssertEqual(handshakeFetchCount.value, 0)
+    }
+
+    func testHelperInspectionUsesHandshakeCompatibility() async throws {
+        let currentHandshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.4.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.currentMinor
+        ))
+        let outdatedHandshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "0.9.0",
+            contractMajor: XPCContractVersion.currentMajor + 1,
+            contractMinor: 0
+        ))
+        let installedClient = SMARTServiceClient(
+            isHelperInstalled: { true },
+            fetchHelperHandshake: { currentHandshake }
+        )
+        let outdatedClient = SMARTServiceClient(
+            isHelperInstalled: { true },
+            fetchHelperHandshake: { outdatedHandshake }
+        )
+
+        let installedResult = await installedClient.inspectSMARTHelper()
+        let outdatedResult = await outdatedClient.inspectSMARTHelper()
+
+        XCTAssertEqual(installedResult, .installed)
+        XCTAssertEqual(outdatedResult, .updateRequired)
+    }
+
+    func testHelperInspectionKeepsInstalledConnectionFailureVisible() async {
+        let client = SMARTServiceClient(
+            isHelperInstalled: { true },
+            fetchHelperHandshake: {
+                throw NSError(
+                    domain: "DrivePulseTests",
+                    code: 17,
+                    userInfo: [NSLocalizedDescriptionKey: "Handshake failed"]
+                )
+            }
+        )
+
+        let result = await client.inspectSMARTHelper()
+
+        XCTAssertEqual(result, .failed("Handshake failed"))
+    }
+
     func testEncodeReadRequestRoundTripsThroughSharedMessageCodec() throws {
         let client = SMARTServiceClient()
         let request = SMARTReadRequest(
@@ -536,6 +596,81 @@ private enum OccupancySessionTestError: Error {
 }
 
 @MainActor
+final class SMARTHelperManagerTests: XCTestCase {
+    func testRefreshPublishesInspectedStatus() async {
+        let manager = SMARTHelperManager(
+            inspector: StubSMARTHelperInspector(result: .updateRequired),
+            installer: StubHelperInstaller()
+        )
+
+        manager.refreshStatus()
+        while manager.status == .checking {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(manager.status, .updateRequired)
+    }
+
+    func testSuccessfulInstallPublishesInstalledWithoutRacingHandshake() async {
+        let installer = StubHelperInstaller()
+        let manager = SMARTHelperManager(
+            inspector: StubSMARTHelperInspector(result: .failed("launchd is starting")),
+            installer: installer
+        )
+
+        let installed = await manager.installOrUpdate()
+        let installCallCount = await installer.installCallCount
+
+        XCTAssertTrue(installed)
+        XCTAssertEqual(manager.status, .installed)
+        XCTAssertEqual(installCallCount, 1)
+    }
+
+    func testFailedInstallPublishesActionableError() async {
+        let manager = SMARTHelperManager(
+            inspector: StubSMARTHelperInspector(result: .notInstalled),
+            installer: FailingSMARTHelperInstaller(message: "Authorization denied")
+        )
+
+        let installed = await manager.installOrUpdate()
+
+        XCTAssertFalse(installed)
+        XCTAssertEqual(manager.status, .installationFailed("Authorization denied"))
+    }
+
+    func testDeviceEvidenceInvalidatesOlderInspectionResult() async {
+        let inspector = ControlledSMARTHelperInspector()
+        let manager = SMARTHelperManager(
+            inspector: inspector,
+            installer: StubHelperInstaller()
+        )
+
+        manager.refreshStatus()
+        await inspector.waitUntilInspectionStarts()
+        manager.record(.installed)
+        await inspector.finish(with: .notInstalled)
+        await Task.yield()
+
+        XCTAssertEqual(manager.status, .installed)
+    }
+
+    func testNormalEvidenceDoesNotRegressStrongerHelperStatus() {
+        let manager = SMARTHelperManager(
+            inspector: StubSMARTHelperInspector(result: .notInstalled),
+            installer: StubHelperInstaller()
+        )
+
+        manager.record(.installed)
+        manager.record(.notInstalled)
+        XCTAssertEqual(manager.status, .installed)
+
+        manager.record(.updateRequired)
+        manager.record(.installed)
+        XCTAssertEqual(manager.status, .updateRequired)
+    }
+}
+
+@MainActor
 final class SMARTPresentationTests: XCTestCase {
     func testRefreshUsesLoadingSnapshotWhileRefreshIsInFlightIncludingRetry() async throws {
         let device = makeDevice(id: "disk6", smartSnapshot: .notRequested)
@@ -571,7 +706,7 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertEqual(controller.state.selectedDevice?.smartSnapshot, .loading)
     }
 
-    func testSelectedDeviceShowsHelperNotInstalledStateBeforeInstall() async throws {
+    func testSelectedDevicePublishesApplicationHelperNotInstalledStatus() async throws {
         let device = makeDevice(id: "disk42", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
         let helperInstaller = StubHelperInstaller()
@@ -592,10 +727,7 @@ final class SMARTPresentationTests: XCTestCase {
         let details = try XCTUnwrap(controller.state.selectedSMARTDetails)
         XCTAssertEqual(details.snapshot, .helperNotInstalled)
         XCTAssertEqual(details.primaryAction, .installHelper)
-
-        controller.performSMARTPrimaryAction()
-
-        XCTAssertTrue(controller.state.presentation.showHelperInstallPrompt)
+        XCTAssertEqual(controller.smartHelperManager.status, .notInstalled)
         let installCallCount = await helperInstaller.installCallCount
         XCTAssertEqual(installCallCount, 0)
     }
@@ -676,13 +808,47 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertEqual(details.snapshot, .available(smartData))
         XCTAssertEqual(details.compatibility, .compatible)
         XCTAssertEqual(details.primaryAction, .refresh)
+        XCTAssertEqual(controller.smartHelperManager.status, .installed)
         let installCallCount = await helperInstaller.installCallCount
         XCTAssertEqual(installCallCount, 1)
         let refreshedDevice = try XCTUnwrap(controller.state.selectedDevice)
         XCTAssertEqual(refreshedDevice.smartSnapshot, .available(smartData))
     }
 
-    func testUpdateRequiredPresentsUpdateAction() async throws {
+    func testInstallSupersedesPreInstallSMARTRefresh() async throws {
+        let device = makeDevice(id: "disk12", smartSnapshot: .notRequested)
+        let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
+        let smartService = SupersedingSMARTService()
+        let helperInstaller = StubHelperInstaller()
+        let controller = makeController(
+            smartService: smartService,
+            helperInstaller: helperInstaller,
+            deviceDiscovery: discovery
+        )
+        let smartData = SmartData(overallHealth: "PASSED", primaryTemperature: 37)
+
+        await discovery.resolveNextDiscovery()
+        await smartService.waitUntilRefreshStarts(count: 1)
+
+        controller.installSMARTHelper()
+        await smartService.waitUntilRefreshStarts(count: 2)
+
+        await smartService.finishRefresh(id: 0, with: .helperNotInstalled)
+        for _ in 0..<5 { await Task.yield() }
+
+        XCTAssertEqual(controller.state.selectedSMARTDetails?.snapshot, .loading)
+        XCTAssertEqual(controller.smartHelperManager.status, .installed)
+
+        await smartService.finishRefresh(
+            id: 1,
+            with: .available(smartData, compatibility: .compatible)
+        )
+        await waitUntilSMARTSnapshot(controller, for: device.id, equals: .available(smartData))
+
+        XCTAssertEqual(controller.smartHelperManager.status, .installed)
+    }
+
+    func testUpdateRequiredPublishesApplicationHelperStatus() async throws {
         let discovery = StubSMARTPresentationDeviceDiscovery(
             results: [[makeDevice(id: "disk13", smartSnapshot: .notRequested)]]
         )
@@ -702,72 +868,9 @@ final class SMARTPresentationTests: XCTestCase {
         let details = try XCTUnwrap(controller.state.selectedSMARTDetails)
         XCTAssertEqual(details.snapshot, .updateRequired)
         XCTAssertEqual(details.primaryAction, .updateHelper)
-
-        controller.performSMARTPrimaryAction()
-
-        XCTAssertTrue(controller.state.presentation.showHelperUpdatePrompt)
+        XCTAssertEqual(controller.smartHelperManager.status, .updateRequired)
         let installCallCount = await helperInstaller.installCallCount
         XCTAssertEqual(installCallCount, 0)
-    }
-
-    func testChangingSelectionDismissesPendingHelperPrompt() async throws {
-        let firstDevice = makeDevice(id: "disk14", smartSnapshot: .notRequested)
-        let secondDevice = makeDevice(id: "disk15", smartSnapshot: .notRequested)
-        let discovery = StubSMARTPresentationDeviceDiscovery(results: [[firstDevice, secondDevice]])
-        let controller = makeController(
-            smartService: StubSMARTService(refreshResult: .helperNotInstalled),
-            helperInstaller: StubHelperInstaller(),
-            deviceDiscovery: discovery
-        )
-
-        await discovery.resolveNextDiscovery()
-        await waitUntilSelectedDevice(controller, equals: firstDevice.id)
-
-        controller.refreshSelectedDeviceSMART()
-        await waitUntilSMARTPresentationSettles(controller)
-        controller.performSMARTPrimaryAction()
-
-        XCTAssertTrue(controller.state.presentation.showHelperInstallPrompt)
-
-        controller.selectDevice(secondDevice.id)
-        await waitUntilSelectedDevice(controller, equals: secondDevice.id)
-
-        XCTAssertFalse(controller.state.presentation.showHelperInstallPrompt)
-        XCTAssertFalse(controller.state.presentation.showHelperUpdatePrompt)
-    }
-
-    func testRediscoverySelectionChangeDismissesPendingHelperPrompt() async throws {
-        let firstDevice = makeDevice(id: "disk16", smartSnapshot: .notRequested)
-        let secondDevice = makeDevice(id: "disk17", smartSnapshot: .notRequested)
-        let discovery = StubSMARTPresentationDeviceDiscovery(
-            results: [
-                [firstDevice, secondDevice],
-                [secondDevice]
-            ]
-        )
-        let controller = makeController(
-            smartService: StubSMARTService(refreshResult: .helperNotInstalled),
-            helperInstaller: StubHelperInstaller(),
-            deviceDiscovery: discovery
-        )
-
-        await discovery.resolveNextDiscovery()
-        await waitUntilSelectedDevice(controller, equals: firstDevice.id)
-
-        controller.refreshSelectedDeviceSMART()
-        await waitUntilSMARTPresentationSettles(controller)
-        controller.performSMARTPrimaryAction()
-
-        XCTAssertTrue(controller.state.presentation.showHelperInstallPrompt)
-        XCTAssertEqual(controller.state.presentation.promptDeviceID, firstDevice.id)
-
-        controller.refresh()
-        await discovery.resolveNextDiscovery()
-        await waitUntilSelectedDevice(controller, equals: secondDevice.id)
-
-        XCTAssertFalse(controller.state.presentation.showHelperInstallPrompt)
-        XCTAssertFalse(controller.state.presentation.showHelperUpdatePrompt)
-        XCTAssertNil(controller.state.presentation.promptDeviceID)
     }
 
     func testRefreshResultStaysWithInitiatingDeviceAfterSelectionChanges() async throws {
@@ -797,7 +900,11 @@ final class SMARTPresentationTests: XCTestCase {
         await smartService.finishCurrentRefresh(
             with: .available(smartData, compatibility: .compatible)
         )
-        await Task.yield()
+        await waitUntilSMARTSnapshot(
+            controller,
+            for: firstDevice.id,
+            equals: .available(smartData)
+        )
 
         XCTAssertEqual(controller.state.selectedDeviceID, secondDevice.id)
         XCTAssertEqual(controller.state.selectedSMARTDetails?.snapshot, .unsupported)
@@ -864,7 +971,7 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertNil(retryDetails.lastError)
     }
 
-    func testStartingHelperInstallClearsLastErrorWhileRetryIsInFlight() async throws {
+    func testStartingHelperInstallPublishesApplicationLevelFailureAndRetryState() async throws {
         let device = makeDevice(id: "disk26", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
         let helperInstaller = ControlledHelperInstaller(
@@ -887,17 +994,15 @@ final class SMARTPresentationTests: XCTestCase {
 
         controller.installSMARTHelper()
         await helperInstaller.waitUntilInstallStarts(count: 1)
-        await waitUntilSMARTPresentationSettles(controller)
+        await waitUntilHelperStatus(controller, equals: .installationFailed("Install failed"))
 
-        XCTAssertEqual(controller.state.selectedSMARTDetails?.lastError, "Install failed")
+        XCTAssertEqual(controller.smartHelperManager.status, .installationFailed("Install failed"))
+        XCTAssertEqual(controller.state.selectedSMARTDetails?.snapshot, .helperNotInstalled)
 
         controller.installSMARTHelper()
         await helperInstaller.waitUntilInstallStarts(count: 2)
 
-        let retryDetails = try XCTUnwrap(controller.state.selectedSMARTDetails)
-        XCTAssertTrue(retryDetails.isRefreshing)
-        XCTAssertTrue(retryDetails.isInstalling)
-        XCTAssertNil(retryDetails.lastError)
+        XCTAssertEqual(controller.smartHelperManager.status, .installing)
     }
 
     func testRediscoveryPreservesFetchedSMARTSnapshotAndCompatibilityForSameDevice() async throws {
@@ -957,7 +1062,11 @@ final class SMARTPresentationTests: XCTestCase {
             for: "disk41",
             with: .available(secondData, compatibility: .compatible)
         )
-        await Task.yield()
+        await waitUntilSMARTSnapshot(
+            controller,
+            for: secondDevice.id,
+            equals: .available(secondData)
+        )
 
         let deviceAfterSecondFinish = try XCTUnwrap(
             controller.state.devices.first(where: { $0.id == secondDevice.id })
@@ -972,7 +1081,11 @@ final class SMARTPresentationTests: XCTestCase {
             for: "disk40",
             with: .available(firstData, compatibility: .degraded)
         )
-        await Task.yield()
+        await waitUntilSMARTSnapshot(
+            controller,
+            for: firstDevice.id,
+            equals: .available(firstData)
+        )
 
         let firstDetails = controller.state.smartDetails(for: firstDevice.id)
         let secondDetails = controller.state.smartDetails(for: secondDevice.id)
@@ -1065,7 +1178,7 @@ final class SMARTPresentationTests: XCTestCase {
             sessionMetrics: .empty(historyLimit: 0),
             physicalStoreBSDName: rawID,
             apfsContainerBSDName: nil,
-            volumes: []
+            volumes: [MountedVolume(bsdName: "\(rawID)s1")]
         )
     }
 
@@ -1094,6 +1207,15 @@ final class SMARTPresentationTests: XCTestCase {
 
     private func waitUntilSMARTPresentationSettles(_ controller: DrivePulseAppController) async {
         while controller.state.selectedSMARTDetails?.isRefreshing == true {
+            await Task.yield()
+        }
+    }
+
+    private func waitUntilHelperStatus(
+        _ controller: DrivePulseAppController,
+        equals expectedStatus: SMARTHelperStatus
+    ) async {
+        while controller.smartHelperManager.status != expectedStatus {
             await Task.yield()
         }
     }
@@ -1135,6 +1257,33 @@ private actor SequencedSMARTService: SMARTServiceProviding {
         let index = min(invocationCount, refreshResults.count - 1)
         invocationCount += 1
         return refreshResults[index]
+    }
+}
+
+private actor SupersedingSMARTService: SMARTServiceProviding {
+    private var nextRefreshID = 0
+    private var continuations: [Int: CheckedContinuation<SMARTServiceRefreshResult, Never>] = [:]
+
+    func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
+        _ = device
+        let refreshID = nextRefreshID
+        nextRefreshID += 1
+        return await withCheckedContinuation { continuation in
+            continuations[refreshID] = continuation
+        }
+    }
+
+    func waitUntilRefreshStarts(count: Int) async {
+        while nextRefreshID < count {
+            await Task.yield()
+        }
+    }
+
+    func finishRefresh(id: Int, with result: SMARTServiceRefreshResult) async {
+        while continuations[id] == nil {
+            await Task.yield()
+        }
+        continuations.removeValue(forKey: id)?.resume(returning: result)
     }
 }
 
@@ -1206,6 +1355,57 @@ private final class StubSMARTDiskUtilAPFSProvider: DiskUtilAPFSProviding, @unche
     func refresh() async {}
     func containerInfo(forContainerBSDName bsdName: String) async -> APFSContainerInfo? { nil }
     func physicalPartitions(forDiskBSDName bsdName: String) async -> [PhysicalPartitionInfo] { [] }
+}
+
+private actor StubSMARTHelperInspector: SMARTHelperInspecting {
+    let result: SMARTHelperInspection
+
+    init(result: SMARTHelperInspection) {
+        self.result = result
+    }
+
+    func inspectSMARTHelper() async -> SMARTHelperInspection {
+        result
+    }
+}
+
+private actor ControlledSMARTHelperInspector: SMARTHelperInspecting {
+    private var continuation: CheckedContinuation<SMARTHelperInspection, Never>?
+    private var didStart = false
+
+    func inspectSMARTHelper() async -> SMARTHelperInspection {
+        didStart = true
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func waitUntilInspectionStarts() async {
+        while didStart == false {
+            await Task.yield()
+        }
+    }
+
+    func finish(with result: SMARTHelperInspection) {
+        continuation?.resume(returning: result)
+        continuation = nil
+    }
+}
+
+private actor FailingSMARTHelperInstaller: HelperInstalling {
+    let message: String
+
+    init(message: String) {
+        self.message = message
+    }
+
+    func install() async throws {
+        throw NSError(
+            domain: "DrivePulseTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
+    }
 }
 
 private actor StubHelperInstaller: HelperInstalling {

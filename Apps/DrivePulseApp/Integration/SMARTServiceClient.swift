@@ -42,7 +42,7 @@ protocol OccupancyXPCSession: Sendable {
     func invalidate()
 }
 
-final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
+final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, HelperOccupancyScanning {
     private let helperMachServiceName: String
     private let isHelperInstalledOperation: @Sendable () -> Bool
     private let fetchHelperHandshakeOperation: @Sendable () async throws -> Data
@@ -111,6 +111,24 @@ final class SMARTServiceClient: SMARTServiceProviding, HelperOccupancyScanning {
 
     func evaluateHandshake(from data: Data) throws -> XPCCompatibilityResult {
         evaluateHandshake(try decodeHandshake(from: data))
+    }
+
+    func inspectSMARTHelper() async -> SMARTHelperInspection {
+        guard isHelperInstalledOperation() else {
+            return .notInstalled
+        }
+
+        do {
+            let handshakeData = try await fetchHelperHandshakeOperation()
+            let handshake = try decodeHandshake(from: handshakeData)
+            return evaluateHandshake(handshake) == .updateRequired
+                ? .updateRequired
+                : .installed
+        } catch {
+            return isHelperInstalledOperation()
+                ? .failed(error.localizedDescription)
+                : .notInstalled
+        }
     }
 
     func decodeHandshake(from data: Data) throws -> HelperHandshake {

@@ -37,6 +37,7 @@ final class DrivePulseAppController: ObservableObject {
     let settings: AppSettings
     let launchAtLoginController: LaunchAtLoginController
     let ejectCoordinator: EjectCoordinator
+    let smartHelperManager: SMARTHelperManager
 
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
     private var discoveryLoadTask: Task<Void, Never>?
@@ -48,6 +49,8 @@ final class DrivePulseAppController: ObservableObject {
     private var throughputSamplingTimer: Timer?
     private var actionFeedbackClearTask: Task<Void, Never>?
     private var quitTask: Task<Void, Never>?
+    private var smartRefreshTasksByDeviceID: [DeviceID: Task<Void, Never>] = [:]
+    private var smartRefreshGenerationsByDeviceID: [DeviceID: Int] = [:]
     private var ejectStateObservation: AnyCancellable?
     private var isSystemActionInFlight = false
     private var isEjectWorkflowActive = false
@@ -57,7 +60,6 @@ final class DrivePulseAppController: ObservableObject {
     private let deviceDiscovery: any ExternalDeviceDiscovering
     private let diskSampler: any DiskSampling
     private let smartService: any SMARTServiceProviding
-    private let helperInstaller: any HelperInstalling
     private let systemActions: any SystemActionPerforming
     private let systemProfilerProvider: any SystemProfilerProviding
     private let diskUtilAPFSProvider: any DiskUtilAPFSProviding
@@ -77,6 +79,7 @@ final class DrivePulseAppController: ObservableObject {
         systemActions: any SystemActionPerforming = SystemActions(),
         smartService: (any SMARTServiceProviding)? = nil,
         helperInstaller: any HelperInstalling = HelperInstaller(),
+        smartHelperManager: SMARTHelperManager? = nil,
         diskSampler: any DiskSampling = IOKitDiskSampler(),
         deviceDiscovery: any ExternalDeviceDiscovering = LiveExternalDeviceDiscovery(),
         systemProfilerProvider: (any SystemProfilerProviding)? = nil,
@@ -100,16 +103,21 @@ final class DrivePulseAppController: ObservableObject {
         self.deviceIOQuiescer = DeviceIOQuiescer(tracker: deviceIOTracker)
         let defaultSMARTService = SMARTServiceClient(deviceIOTracker: deviceIOTracker)
         let resolvedSMARTService = smartService ?? defaultSMARTService
+        let resolvedHelperInspector = (resolvedSMARTService as? any SMARTHelperInspecting)
+            ?? defaultSMARTService
         let resolvedOccupancyHelper = (resolvedSMARTService as? any HelperOccupancyScanning)
             ?? defaultSMARTService
         self.smartService = resolvedSMARTService
+        self.smartHelperManager = smartHelperManager ?? SMARTHelperManager(
+            inspector: resolvedHelperInspector,
+            installer: helperInstaller
+        )
         self.ejectCoordinator = ejectCoordinator ?? EjectCoordinator(
             resolver: LiveEjectTargetResolver(),
             quiescer: DeviceIOQuiescer(tracker: deviceIOTracker),
             ejecter: DiskArbitrationEjectClient(),
             occupancyScanner: OccupancyScanner(helperScanner: resolvedOccupancyHelper)
         )
-        self.helperInstaller = helperInstaller
         self.systemActions = systemActions
         self.systemProfilerProvider = systemProfilerProvider ?? LiveSystemProfilerProvider(
             deviceIOTracker: deviceIOTracker
@@ -155,90 +163,36 @@ final class DrivePulseAppController: ObservableObject {
             throughputSamplingTimer?.invalidate()
             actionFeedbackClearTask?.cancel()
             quitTask?.cancel()
+            smartRefreshTasksByDeviceID.values.forEach { $0.cancel() }
             volumeCapacityRefresher.stop()
         }
     }
 
     func selectDevice(_ id: DeviceID?) {
-        let previousSelection = state.selectedDeviceID
         state.selectDevice(id)
-        if state.selectedDeviceID != previousSelection {
-            state.dismissSMARTPrompts()
-        }
     }
 
     func refreshSelectedDeviceSMART() {
-        guard let device = selectedPanelDevice else {
-            return
-        }
-        let deviceID = device.id
-        guard state.smartDetails(for: deviceID)?.isRefreshing != true else {
-            return
-        }
-
-        state.setSMARTRefreshing(for: deviceID)
-        Task { @MainActor [weak self] in
-            guard let self else {
-                return
-            }
-
-            let result = await smartService.refreshSMART(for: device)
-            applySMARTRefreshResult(result, for: deviceID)
-        }
-    }
-
-    func performSMARTPrimaryAction() {
-        guard let details = selectedPanelSMARTDetails else {
-            return
-        }
-        guard details.isRefreshing == false else {
-            return
-        }
-
-        switch details.primaryAction {
-        case .installHelper, .updateHelper:
-            state.presentSMARTPrompt(for: details.primaryAction)
-        case .refresh:
-            refreshSelectedDeviceSMART()
-        }
-    }
-
-    func dismissSMARTPrompts() {
-        state.dismissSMARTPrompts()
+        guard let device = selectedPanelDevice else { return }
+        refreshSMART(for: device)
     }
 
     func installSMARTHelper() {
-        guard let deviceID = state.presentation.promptDeviceID ?? state.selectedDeviceID,
-              let details = state.smartDetails(for: deviceID) else {
-            return
-        }
-        guard details.isRefreshing == false else {
-            return
-        }
-        guard details.primaryAction == .installHelper || details.primaryAction == .updateHelper else {
-            return
-        }
-
-        state.setSMARTHelperInstalling(for: deviceID)
         Task { @MainActor [weak self] in
-            guard let self else {
-                return
-            }
-
-            do {
-                try await helperInstaller.install()
-            } catch {
-                state.applySMARTResult(
-                    for: deviceID,
-                    snapshot: details.snapshot,
-                    compatibility: details.compatibility,
-                    lastError: error.localizedDescription
+            guard let self else { return }
+            guard await smartHelperManager.installOrUpdate() else { return }
+            state.mountedDevices.forEach {
+                refreshSMART(
+                    for: $0,
+                    supersedingExisting: true,
+                    helperEvidenceAuthority: .authoritative
                 )
-                return
             }
-
-            await refreshSelectedDeviceSMARTAfterInstall(for: deviceID)
         }
+    }
+
+    func refreshSMARTHelperStatus() {
+        smartHelperManager.refreshStatus()
     }
 
     var panelDevices: [ExternalDevice] {
@@ -904,34 +858,71 @@ final class DrivePulseAppController: ObservableObject {
         return containerDetails
     }
 
-    private func refreshSelectedDeviceSMARTAfterInstall(for deviceID: DeviceID) async {
-        guard let device = state.device(id: deviceID) else {
+    private func refreshSMART(
+        for device: ExternalDevice,
+        supersedingExisting: Bool = false,
+        helperEvidenceAuthority: SMARTHelperEvidenceAuthority = .normal
+    ) {
+        let deviceID = device.id
+        if state.smartDetails(for: deviceID)?.isRefreshing == true,
+           supersedingExisting == false {
             return
         }
 
-        let result = await smartService.refreshSMART(for: device)
-        applySMARTRefreshResult(result, for: deviceID)
+        if supersedingExisting {
+            smartRefreshTasksByDeviceID[deviceID]?.cancel()
+        }
+
+        let generation = smartRefreshGenerationsByDeviceID[deviceID, default: 0] + 1
+        smartRefreshGenerationsByDeviceID[deviceID] = generation
+
+        state.setSMARTRefreshing(for: deviceID)
+        smartRefreshTasksByDeviceID[deviceID] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await smartService.refreshSMART(for: device)
+            guard Task.isCancelled == false,
+                  smartRefreshGenerationsByDeviceID[deviceID] == generation else {
+                return
+            }
+            smartRefreshTasksByDeviceID[deviceID] = nil
+            applySMARTRefreshResult(
+                result,
+                for: deviceID,
+                helperEvidenceAuthority: helperEvidenceAuthority
+            )
+        }
     }
 
-    private func applySMARTRefreshResult(_ result: SMARTServiceRefreshResult, for deviceID: DeviceID) {
+    private func applySMARTRefreshResult(
+        _ result: SMARTServiceRefreshResult,
+        for deviceID: DeviceID,
+        helperEvidenceAuthority: SMARTHelperEvidenceAuthority = .normal
+    ) {
         switch result {
         case let .available(smartData, compatibility):
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
             state.applySMARTResult(
                 for: deviceID,
                 snapshot: .available(smartData),
                 compatibility: compatibility
             )
         case .unsupported:
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
             state.applySMARTResult(for: deviceID, snapshot: .unsupported, compatibility: nil)
         case .transportUnsupported:
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
             state.applySMARTResult(for: deviceID, snapshot: .transportUnsupported, compatibility: nil)
         case .helperNotInstalled:
+            smartHelperManager.record(.notInstalled, authority: helperEvidenceAuthority)
             state.applySMARTResult(for: deviceID, snapshot: .helperNotInstalled, compatibility: nil)
         case .updateRequired:
+            smartHelperManager.record(.updateRequired, authority: helperEvidenceAuthority)
             state.applySMARTResult(for: deviceID, snapshot: .updateRequired, compatibility: nil)
         case .permissionRequired:
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
             state.applySMARTResult(for: deviceID, snapshot: .permissionRequired, compatibility: nil)
         case .deviceUnavailable:
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
             state.applySMARTResult(for: deviceID, snapshot: .deviceUnavailable, compatibility: nil)
         case let .failed(message):
             state.applySMARTResult(
@@ -957,20 +948,18 @@ final class DrivePulseAppController: ObservableObject {
 
     private func triggerInitialSMARTForNewDevices(_ devices: [ExternalDevice]) {
         for device in devices {
-            let deviceID = device.id
-            guard state.smartDetails(for: deviceID)?.snapshot == .notRequested else { continue }
-            state.setSMARTRefreshing(for: deviceID)
-            let capturedDevice = device
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let result = await smartService.refreshSMART(for: capturedDevice)
-                applySMARTRefreshResult(result, for: deviceID)
-            }
+            guard state.smartDetails(for: device.id)?.snapshot == .notRequested else { continue }
+            refreshSMART(for: device)
         }
     }
 
     private func pruneSamplingState() {
         let liveDeviceIDs = Set(state.devices.map(\.id))
+        let removedSMARTDeviceIDs = Set(smartRefreshTasksByDeviceID.keys).subtracting(liveDeviceIDs)
+        removedSMARTDeviceIDs.forEach { deviceID in
+            smartRefreshTasksByDeviceID.removeValue(forKey: deviceID)?.cancel()
+            smartRefreshGenerationsByDeviceID.removeValue(forKey: deviceID)
+        }
         lastDiskCountersByDeviceID = lastDiskCountersByDeviceID.filter { liveDeviceIDs.contains($0.key) }
         sessionMetricsReducersByDeviceID = sessionMetricsReducersByDeviceID.filter {
             liveDeviceIDs.contains($0.key)
