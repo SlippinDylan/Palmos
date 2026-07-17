@@ -211,9 +211,9 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
 
         let newContext = registry.register { probe.record($0) }
 
-        XCTAssertNotEqual(UInt(bitPattern: oldContext), UInt(bitPattern: newContext))
-        registry.resolveCallback(context: oldContext, result: .success)
-        registry.resolveCallback(context: newContext, result: .success)
+        XCTAssertNotEqual(oldContext.rawValue, newContext.rawValue)
+        registry.resolveCallback(context: oldContext.unsafeContext, result: .success)
+        registry.resolveCallback(context: newContext.unsafeContext, result: .success)
         XCTAssertEqual(probe.results, [.timedOut, .success])
         XCTAssertEqual(Set(probe.cleanedContextKeys).count, 2)
         XCTAssertEqual(registry.registeredContextCount, 0)
@@ -231,7 +231,7 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         registry.resolveCallback(context: context, result: .success)
 
         XCTAssertEqual(probe.results, [.cancelled])
-        XCTAssertEqual(probe.cleanedContextKeys, [UInt(bitPattern: context)])
+        XCTAssertEqual(probe.cleanedContextKeys, [context.rawValue])
         XCTAssertEqual(registry.registeredContextCount, 0)
     }
 
@@ -243,7 +243,7 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         registry.resolve(context: context, event: .timeout)
 
         XCTAssertEqual(probe.results, [.timedOut])
-        XCTAssertEqual(probe.cleanedContextKeys, [UInt(bitPattern: context)])
+        XCTAssertEqual(probe.cleanedContextKeys, [context.rawValue])
         XCTAssertEqual(probe.resourceCleanupCount, 1)
         XCTAssertEqual(registry.registeredContextCount, 0)
     }
@@ -266,14 +266,14 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         let staleContext = registry.register { probe.record($0) }
         registry.resolve(context: staleContext, event: .timeout)
 
-        var newContexts: [UnsafeMutableRawPointer] = []
+        var newContexts: [DiskArbitrationCallbackToken] = []
         for _ in 0..<1_000 {
             let context = registry.register { probe.record($0) }
             newContexts.append(context)
         }
 
-        XCTAssertFalse(newContexts.contains { UInt(bitPattern: $0) == UInt(bitPattern: staleContext) })
-        registry.resolveCallback(context: staleContext, result: .success)
+        XCTAssertFalse(newContexts.contains { $0.rawValue == staleContext.rawValue })
+        registry.resolveCallback(context: staleContext.unsafeContext, result: .success)
         XCTAssertEqual(probe.results, [.timedOut])
 
         for context in newContexts {
@@ -287,7 +287,6 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
             let probe = CompletionProbe()
             let registry = DiskArbitrationCallbackRegistry()
             let context = registry.register(resume: { probe.record($0) }, cleanup: { probe.recordResourceCleanup() })
-            let contextKey = UInt(bitPattern: context)
             let contendersQueue = DispatchQueue(
                 label: "DiskArbitrationEjectClientTests.contenders",
                 qos: .userInitiated,
@@ -295,9 +294,9 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
             )
             let finished = DispatchGroup()
             let contenders: [@Sendable () -> Void] = [
-                { registry.resolveCallback(context: UnsafeMutableRawPointer(bitPattern: contextKey), result: .success) },
-                { registry.resolve(context: UnsafeMutableRawPointer(bitPattern: contextKey), event: .timeout) },
-                { registry.resolve(context: UnsafeMutableRawPointer(bitPattern: contextKey), event: .cancelled) }
+                { registry.resolveCallback(context: context, result: .success) },
+                { registry.resolve(context: context, event: .timeout) },
+                { registry.resolve(context: context, event: .cancelled) }
             ]
 
             for contender in contenders {
@@ -382,7 +381,7 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         }
 
         XCTAssertEqual(probe.results, [expected])
-        XCTAssertEqual(probe.cleanedContextKeys, [UInt(bitPattern: context)])
+        XCTAssertEqual(probe.cleanedContextKeys, [context.rawValue])
         XCTAssertEqual(registry.registeredContextCount, 0)
     }
 
