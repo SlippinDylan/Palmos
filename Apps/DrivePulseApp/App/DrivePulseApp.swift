@@ -16,14 +16,19 @@ struct DrivePulseApp: App {
         deviceIOTracker: DeviceIOTracker = DeviceIOTracker(),
         smartService: SMARTServiceClient? = nil,
         diskSampler: any DiskSampling = IOKitDiskSampler(),
-        deviceDiscovery: any ExternalDeviceDiscovering = LiveExternalDeviceDiscovery(),
+        deviceDiscovery: (any ExternalDeviceDiscovering)? = nil,
         systemProfilerProvider: (any SystemProfilerProviding)? = nil,
         diskUtilAPFSProvider: (any DiskUtilAPFSProviding)? = nil,
         volumeCapacityRefresher: VolumeCapacityRefresher? = nil,
-        ejectTargetResolver: any EjectTargetResolving = LiveEjectTargetResolver(),
+        ejectTargetResolver: (any EjectTargetResolving)? = nil,
         diskEjecter: any DiskEjecting = DiskArbitrationEjectClient(),
         appOccupancyScanner: any AppOccupancyScanning = AppOccupancyScanner()
     ) -> DrivePulseAppController {
+        let identityMapper = ExternalDeviceDiscoveryMapper()
+        let resolvedDeviceDiscovery = deviceDiscovery ?? LiveExternalDeviceDiscovery(mapper: identityMapper)
+        let resolvedEjectTargetResolver = ejectTargetResolver ?? LiveEjectTargetResolver(
+            snapshotProvider: LiveEjectTargetSnapshotProvider(mapper: identityMapper)
+        )
         let smartService = smartService ?? SMARTServiceClient(deviceIOTracker: deviceIOTracker)
         let systemProfilerProvider = systemProfilerProvider ?? LiveSystemProfilerProvider(
             deviceIOTracker: deviceIOTracker
@@ -35,7 +40,7 @@ struct DrivePulseApp: App {
             deviceIOTracker: deviceIOTracker
         )
         let ejectCoordinator = EjectCoordinator(
-            resolver: ejectTargetResolver,
+            resolver: resolvedEjectTargetResolver,
             quiescer: DeviceIOQuiescer(tracker: deviceIOTracker),
             ejecter: diskEjecter,
             occupancyScanner: OccupancyScanner(
@@ -47,7 +52,7 @@ struct DrivePulseApp: App {
             state: state,
             smartService: smartService,
             diskSampler: diskSampler,
-            deviceDiscovery: deviceDiscovery,
+            deviceDiscovery: resolvedDeviceDiscovery,
             systemProfilerProvider: systemProfilerProvider,
             diskUtilAPFSProvider: diskUtilAPFSProvider,
             volumeCapacityRefresher: volumeCapacityRefresher,

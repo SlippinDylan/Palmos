@@ -10,7 +10,7 @@ final class DeviceIOQuiescerTests: XCTestCase {
             NSStringFromSelector(#selector(DrivePulseSMARTXPCProtocol.readSMARTData(for:withReply:))),
             "readSMARTDataFor:withReply:"
         )
-        XCTAssertEqual(XPCContractVersion.currentMinor, XPCContractVersion.completionAwareSMARTMinor)
+        XCTAssertEqual(XPCContractVersion.currentMinor, XPCContractVersion.smartCancellationMinor)
         let rawJSON = Data(#"{"device":{"name":"/dev/disk4"},"bytes":[0,255]}"#.utf8)
         XCTAssertEqual(DrivePulseXPCMessages.legacySMARTReply(payload: rawJSON), rawJSON)
     }
@@ -18,11 +18,27 @@ final class DeviceIOQuiescerTests: XCTestCase {
     func testMinorFourNegotiatesCompletionSMARTAndOccupancyTogether() {
         XCTAssertEqual(
             XPCFeatureCapabilities.negotiated(helperContractMinor: 3),
-            XPCFeatureCapabilities(completionAwareSMART: false, occupancyScanning: false)
+            XPCFeatureCapabilities(
+                completionAwareSMART: false,
+                smartCancellation: false,
+                occupancyScanning: false
+            )
         )
         XCTAssertEqual(
             XPCFeatureCapabilities.negotiated(helperContractMinor: 4),
-            XPCFeatureCapabilities(completionAwareSMART: true, occupancyScanning: true)
+            XPCFeatureCapabilities(
+                completionAwareSMART: true,
+                smartCancellation: false,
+                occupancyScanning: true
+            )
+        )
+        XCTAssertEqual(
+            XPCFeatureCapabilities.negotiated(helperContractMinor: 5),
+            XPCFeatureCapabilities(
+                completionAwareSMART: true,
+                smartCancellation: true,
+                occupancyScanning: true
+            )
         )
     }
 
@@ -43,6 +59,14 @@ final class DeviceIOQuiescerTests: XCTestCase {
             XPCCompatibilityPolicy.evaluate(appMajor: 1, appMinor: 4, helperMajor: 1, helperMinor: 4),
             .compatible
         ) // new app -> new helper
+        XCTAssertEqual(
+            XPCCompatibilityPolicy.evaluate(appMajor: 1, appMinor: 5, helperMajor: 1, helperMinor: 4),
+            .degraded
+        ) // cancellation-capable app -> completion-only helper
+        XCTAssertEqual(
+            XPCCompatibilityPolicy.evaluate(appMajor: 1, appMinor: 5, helperMajor: 1, helperMinor: 5),
+            .compatible
+        ) // cancellation-capable app -> matching helper
     }
 
     func testBarrierDrainsTargetAndRejectsOnlyNewTargetWork() async throws {
@@ -192,6 +216,30 @@ final class DeviceIOQuiescerTests: XCTestCase {
         await barrier.release()
     }
 
+    func testPruningRemovedDeviceSessionClearsUnobservableSMARTScope() async throws {
+        let tracker = DeviceIOTracker()
+        let handshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.0.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.currentMinor
+        ))
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            readSMARTData: { _ in Data() },
+            readSMARTDataWithCompletion: { _ in Data("{}".utf8) },
+            deviceIOTracker: tracker
+        )
+        let device = makeDevice("disk4")
+        _ = await client.refreshSMART(for: device)
+
+        await tracker.pruneSMARTSafetyScopes(liveDeviceIDs: [], livePhysicalBSDNames: [])
+        let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
+            for: makeTarget("disk4"), timeout: .milliseconds(100)
+        )
+        try await barrier.waitUntilReady()
+        await barrier.release()
+    }
+
     func testSMARTCancellationKeepsTokenUntilAcknowledgedReplyThenReleasesExactlyOnce() async throws {
         let tracker = DeviceIOTracker()
         let replyGate = AsyncSuspensionGate()
@@ -228,6 +276,31 @@ final class DeviceIOQuiescerTests: XCTestCase {
         await replyGate.releaseAll()
         _ = await refresh.value
         try await barrier.waitUntilReady()
+        await barrier.release()
+    }
+
+    func testCompletionSessionCancellationReturnsPromptlyAndRemainsUnsafe() async throws {
+        let tracker = DeviceIOTracker()
+        let session = ControlledSMARTXPCSession()
+        let client = try makeSessionClient(tracker: tracker, session: session)
+        let device = makeDevice("disk4")
+        let refresh = Task { await client.refreshSMART(for: device) }
+        await session.waitUntilHandlerInstalled()
+
+        refresh.cancel()
+        _ = await refresh.value
+        XCTAssertTrue(session.wasInvalidated)
+        session.emit(.reply(Data("late reply".utf8)))
+
+        let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
+            for: makeTarget("disk4"), timeout: .milliseconds(20)
+        )
+        do {
+            try await barrier.waitUntilReady()
+            XCTFail("Cancelled completion cannot imply helper process exit")
+        } catch {
+            XCTAssertEqual(error as? DeviceIOQuiescenceError, .legacySMARTCompletionUnobservable)
+        }
         await barrier.release()
     }
 
@@ -644,6 +717,29 @@ final class DeviceIOQuiescerTests: XCTestCase {
         XCTAssertEqual(data, Data("complete".utf8))
     }
 
+    func testSubprocessEnforcesOutputLimit() async {
+        let start = ContinuousClock.now
+        let data = await SubprocessRunner.run(
+            executable: "/usr/bin/yes",
+            arguments: ["oversized"],
+            maxOutputBytes: 4 * 1024,
+            timeout: .seconds(2)
+        )
+        XCTAssertNil(data)
+        XCTAssertLessThan(start.duration(to: .now), .seconds(2))
+    }
+
+    func testSubprocessEnforcesDeadline() async {
+        let start = ContinuousClock.now
+        let data = await SubprocessRunner.run(
+            executable: "/bin/sleep",
+            arguments: ["10"],
+            timeout: .milliseconds(50)
+        )
+        XCTAssertNil(data)
+        XCTAssertLessThan(start.duration(to: .now), .seconds(2))
+    }
+
     private func makeTarget(_ bsdName: String) -> EjectWorkflowTarget {
         EjectWorkflowTarget(
             deviceID: DeviceID(rawValue: bsdName),
@@ -731,6 +827,9 @@ private actor AsyncSuspensionGate {
 private final class ControlledSMARTXPCSession: SMARTCompletionXPCSession, @unchecked Sendable {
     private let lock = NSLock()
     private var handler: (@Sendable (SMARTXPCSessionEvent) -> Void)?
+    private var invalidated = false
+
+    var wasInvalidated: Bool { lock.withLock { invalidated } }
 
     func readSMARTData(
         requestData: Data,
@@ -745,5 +844,9 @@ private final class ControlledSMARTXPCSession: SMARTCompletionXPCSession, @unche
 
     func emit(_ event: SMARTXPCSessionEvent) {
         lock.withLock { handler }?(event)
+    }
+
+    func invalidate() {
+        lock.withLock { invalidated = true }
     }
 }

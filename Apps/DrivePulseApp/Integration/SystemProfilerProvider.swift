@@ -1,5 +1,7 @@
 import Foundation
 
+import Darwin
+
 import DrivePulseCore
 
 private final class DataBox: @unchecked Sendable {
@@ -20,7 +22,16 @@ private final class DataBox: @unchecked Sendable {
 }
 
 enum SubprocessRunner {
-    static func run(executable: String, arguments: [String]) async -> Data? {
+    static let defaultMaxOutputBytes = 4 * 1024 * 1024
+    static let defaultTimeout: Duration = .seconds(30)
+
+    static func run(
+        executable: String,
+        arguments: [String],
+        maxOutputBytes: Int = defaultMaxOutputBytes,
+        timeout: Duration = defaultTimeout
+    ) async -> Data? {
+        guard maxOutputBytes > 0 else { return nil }
         let processBox = ProcessBox()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
@@ -42,6 +53,15 @@ enum SubprocessRunner {
                     return
                 }
 
+                let timeoutWorkItem = DispatchWorkItem {
+                    processBox.terminateAndEscalate()
+                }
+                let timeoutNanoseconds = timeout.nanosecondsClamped
+                DispatchQueue.global(qos: .utility).asyncAfter(
+                    deadline: .now() + .nanoseconds(timeoutNanoseconds),
+                    execute: timeoutWorkItem
+                )
+
                 let readQueue = DispatchQueue(label: "DrivePulse.SubprocessRunner.read", attributes: .concurrent)
                 let group = DispatchGroup()
                 let stdoutBox = DataBox()
@@ -49,18 +69,27 @@ enum SubprocessRunner {
 
                 group.enter()
                 readQueue.async {
-                    stdoutBox.set(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
+                    stdoutBox.set(readData(
+                        from: stdoutPipe.fileHandleForReading,
+                        maxBytes: maxOutputBytes,
+                        processBox: processBox
+                    ))
                     group.leave()
                 }
 
                 group.enter()
                 readQueue.async {
-                    stderrBox.set(stderrPipe.fileHandleForReading.readDataToEndOfFile())
+                    stderrBox.set(readData(
+                        from: stderrPipe.fileHandleForReading,
+                        maxBytes: maxOutputBytes,
+                        processBox: processBox
+                    ))
                     group.leave()
                 }
 
                 process.waitUntilExit()
                 group.wait()
+                timeoutWorkItem.cancel()
                 let stdoutData = stdoutBox.get()
                 let stderrData = stderrBox.get()
                 let succeeded = processBox.isCancelled == false
@@ -88,8 +117,42 @@ enum SubprocessRunner {
                 }
             }
         } onCancel: {
-            processBox.terminate()
+            processBox.terminateAndEscalate()
         }
+    }
+
+    private static func readData(
+        from fileHandle: FileHandle,
+        maxBytes: Int,
+        processBox: ProcessBox
+    ) -> Data {
+        var output = Data()
+        output.reserveCapacity(min(maxBytes, 64 * 1024))
+        while output.count <= maxBytes {
+            let chunk = fileHandle.readData(ofLength: min(64 * 1024, maxBytes + 1 - output.count))
+            guard chunk.isEmpty == false else { break }
+            output.append(chunk)
+            if output.count > maxBytes {
+                processBox.terminateAndEscalate()
+                return Data()
+            }
+        }
+        return output
+    }
+}
+
+private extension Duration {
+    var nanosecondsClamped: Int {
+        let components = self.components
+        let seconds = components.seconds
+        let attoseconds = components.attoseconds
+        guard seconds >= 0 else { return 0 }
+        let secondsPart = min(seconds, Int64(Int.max) / 1_000_000_000)
+        let fractionalPart = min(attoseconds / 1_000_000_000, Int64(Int.max))
+        let combined = secondsPart.multipliedReportingOverflow(by: 1_000_000_000)
+        guard combined.overflow == false else { return Int.max }
+        let result = combined.partialValue.addingReportingOverflow(fractionalPart)
+        return result.overflow ? Int.max : Int(result.partialValue)
     }
 }
 
@@ -125,6 +188,21 @@ private final class ProcessBox: @unchecked Sendable {
             if process?.isRunning == true { process?.terminate() }
         }
     }
+
+    func terminateAndEscalate() {
+        let pid: pid_t? = lock.withLock {
+            wasCancelled = true
+            guard let process, process.isRunning else { return nil }
+            process.terminate()
+            return process.processIdentifier
+        }
+        guard let pid else { return }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(250)) {
+            if kill(pid, 0) == 0 {
+                _ = kill(pid, SIGKILL)
+            }
+        }
+    }
 }
 
 actor LatestRequestCoordinator {
@@ -137,6 +215,31 @@ actor LatestRequestCoordinator {
 
     func isLatest(_ generation: Int) -> Bool {
         generation == latestGeneration
+    }
+}
+
+private actor SystemProfilerFetchGate {
+    private var isFetching = false
+
+    func acquire() -> Bool {
+        guard isFetching == false else { return false }
+        isFetching = true
+        return true
+    }
+
+    func release() {
+        isFetching = false
+    }
+
+    func waitUntilIdle() async -> Bool {
+        while isFetching {
+            do {
+                try await Task.sleep(for: .milliseconds(5))
+            } catch {
+                return false
+            }
+        }
+        return true
     }
 }
 
@@ -156,8 +259,10 @@ protocol SystemProfilerProviding: AnyObject, Sendable {
 final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Sendable {
     private let cacheBox = SystemProfilerCacheBox()
     private let requestCoordinator = LatestRequestCoordinator()
+    private let fetchGate = SystemProfilerFetchGate()
     private let dataTypeRunner: @Sendable (String) async -> Data?
     private let deviceIOTracker: DeviceIOTracker?
+    private let cacheTTL: TimeInterval
 
     func usesDeviceIOTracker(_ tracker: DeviceIOTracker) -> Bool {
         deviceIOTracker === tracker
@@ -165,26 +270,39 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
 
     init(
         dataTypeRunner: @escaping @Sendable (String) async -> Data? = LiveSystemProfilerProvider.runSystemProfiler,
-        deviceIOTracker: DeviceIOTracker? = nil
+        deviceIOTracker: DeviceIOTracker? = nil,
+        cacheTTL: TimeInterval = 300
     ) {
         self.dataTypeRunner = dataTypeRunner
         self.deviceIOTracker = deviceIOTracker
+        self.cacheTTL = max(cacheTTL, 0)
     }
 
     func fetchIfNeeded() async {
-        guard cacheBox.get() == nil else { return }
+        guard cacheBox.hasFreshValue(maxAge: cacheTTL) == false else { return }
+        guard await fetchGate.acquire() else {
+            _ = await fetchGate.waitUntilIdle()
+            return
+        }
         let generation = await requestCoordinator.beginRequest()
-        guard let cache = await fetchCache() else { return }
-        guard await requestCoordinator.isLatest(generation) else { return }
-        cacheBox.setIfNil(cache)
+        let cache = await fetchCache()
+        if let cache, await requestCoordinator.isLatest(generation) {
+            cacheBox.set(cache)
+        }
+        await fetchGate.release()
     }
 
     func refresh() async {
+        while await fetchGate.acquire() == false {
+            guard await fetchGate.waitUntilIdle() else { return }
+        }
         let generation = await requestCoordinator.beginRequest()
         guard let cache = await fetchCache() else {
+            await fetchGate.release()
             return
         }
 
+        await fetchGate.release()
         guard await requestCoordinator.isLatest(generation) else { return }
         cacheBox.set(cache)
     }
@@ -316,6 +434,7 @@ private extension SystemProfilerCache {
 private final class SystemProfilerCacheBox: @unchecked Sendable {
     private let lock = NSLock()
     private var value: SystemProfilerCache?
+    private var updatedAt: Date?
 
     func get() -> SystemProfilerCache? {
         lock.lock()
@@ -323,16 +442,18 @@ private final class SystemProfilerCacheBox: @unchecked Sendable {
         return value
     }
 
-    func setIfNil(_ newValue: SystemProfilerCache) {
+    func hasFreshValue(maxAge: TimeInterval, now: Date = .now) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        if value == nil { value = newValue }
+        guard value != nil, let updatedAt else { return false }
+        return now.timeIntervalSince(updatedAt) <= maxAge
     }
 
     func set(_ newValue: SystemProfilerCache) {
         lock.lock()
         defer { lock.unlock() }
         value = newValue
+        updatedAt = .now
     }
 }
 

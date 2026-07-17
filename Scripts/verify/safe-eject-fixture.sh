@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+umask 077
 
 readonly STATE_DIR="${TMPDIR:-/tmp}/drivepulse-safe-eject-fixture-${UID}"
 readonly RISK_FLAG="--i-understand-this-volume-is-disposable"
@@ -67,10 +68,13 @@ done
 
 check_device() {
   local info
-  info="$(/usr/sbin/diskutil info "$device")" || fail "diskutil could not resolve $device"
-  grep -qE 'Whole:[[:space:]]+Yes' <<<"$info" || fail "$device is not a whole disk"
-  grep -qE 'Internal:[[:space:]]+No' <<<"$info" || fail "$device is not an external disk"
-  echo "$info"
+  info="$(/usr/sbin/diskutil info -plist "$device")" || fail "diskutil could not resolve $device"
+  local whole internal
+  whole="$(/usr/bin/plutil -extract Whole raw -o - - <<<"$info" 2>/dev/null || true)"
+  internal="$(/usr/bin/plutil -extract Internal raw -o - - <<<"$info" 2>/dev/null || true)"
+  [[ "$whole" == true ]] || fail "$device is not a whole disk"
+  [[ "$internal" == false ]] || fail "$device is not an external disk"
+  /usr/bin/plutil -p - <<<"$info"
 }
 
 validate_disposable_volume() {
@@ -80,12 +84,12 @@ validate_disposable_volume() {
   [[ -d "$volume" ]] || fail "$volume is not a mounted directory"
 
   local volume_info parent_disk
-  volume_info="$(/usr/sbin/diskutil info "$volume")" || fail "diskutil could not resolve $volume"
-  parent_disk="$(awk -F: '/Part of Whole/ { gsub(/[[:space:]]/, "", $2); print $2; exit }' <<<"$volume_info")"
+  volume_info="$(/usr/sbin/diskutil info -plist "$volume")" || fail "diskutil could not resolve $volume"
+  parent_disk="$(/usr/bin/plutil -extract PartOfWhole raw -o - - <<<"$volume_info" 2>/dev/null || true)"
   [[ "$parent_disk" == "$device" ]] || fail "$volume belongs to ${parent_disk:-an unknown disk}, not $device"
 
   echo "WARNING: use only disposable media containing no valuable data." >&2
-  mkdir -p "$STATE_DIR"
+  mkdir -m 700 -p "$STATE_DIR"
 }
 
 record_holder() {
@@ -132,7 +136,7 @@ case "$command_name" in
     record_holder device-node "$!"
     ;;
   release-holders)
-    mkdir -p "$STATE_DIR"
+    mkdir -m 700 -p "$STATE_DIR"
     found=false
     for pid_file in "$STATE_DIR/${device}-"*.pid; do
       [[ -e "$pid_file" ]] || continue
@@ -142,8 +146,18 @@ case "$command_name" in
       if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
         current_identity="$(/bin/ps -ww -p "$pid" -o lstart= -o command= 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true)"
         if [[ -n "$recorded_identity" && "$current_identity" == "$recorded_identity" ]]; then
-          kill "$pid"
+          kill -TERM "$pid"
           echo "Released holder PID $pid"
+          for _ in {1..20}; do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.05
+          done
+          if kill -0 "$pid" 2>/dev/null; then
+            latest_identity="$(/bin/ps -ww -p "$pid" -o lstart= -o command= 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true)"
+            if [[ "$latest_identity" == "$recorded_identity" ]]; then
+              kill -KILL "$pid" 2>/dev/null || true
+            fi
+          fi
         else
           echo "Skipped PID $pid because it no longer matches the recorded holder" >&2
         fi

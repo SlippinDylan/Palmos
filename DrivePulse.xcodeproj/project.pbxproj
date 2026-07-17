@@ -95,6 +95,12 @@
 		10000000000000000000005D /* HelperTopologyCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000056 /* HelperTopologyCommandRunner.swift */; };
 		10000000000000000000005E /* HelperTopologyCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000056 /* HelperTopologyCommandRunner.swift */; };
 		10000000000000000000005F /* HelperAuthoritativeSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000057 /* HelperAuthoritativeSnapshot.swift */; };
+		100000000000000000000070 /* DrivePulseSMARTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000025 /* DrivePulseSMARTService.swift */; };
+		100000000000000000000071 /* SmartctlRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000026 /* SmartctlRunner.swift */; };
+		100000000000000000000072 /* DrivePulseSMARTXPCDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000024 /* DrivePulseSMARTXPCDelegate.swift */; };
+		100000000000000000000073 /* TransportHintResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000027 /* TransportHintResolver.swift */; };
+		100000000000000000000074 /* HelperVersionHandshake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001E /* HelperVersionHandshake.swift */; };
+		100000000000000000000075 /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000004 /* DrivePulseCore */; };
 		100000000000000000000060 /* HelperAuthoritativeSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000057 /* HelperAuthoritativeSnapshot.swift */; };
 		100000000000000000000061 /* OccupancyScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000058 /* OccupancyScannerTests.swift */; };
 		100000000000000000000062 /* OccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000059 /* OccupancyScanner.swift */; };
@@ -275,6 +281,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000059 /* libproc.tbd in Frameworks */,
+				100000000000000000000075 /* DrivePulseCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -605,7 +612,9 @@
 			buildRules = ();
 			dependencies = ();
 			name = DrivePulseSMARTServiceTests;
-			packageProductDependencies = ();
+			packageProductDependencies = (
+				500000000000000000000004 /* DrivePulseCore */,
+			);
 			productName = DrivePulseSMARTServiceTests;
 			productReference = 200000000000000000000054 /* DrivePulseSMARTServiceTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -831,6 +840,11 @@
 				100000000000000000000060 /* HelperAuthoritativeSnapshot.swift in Sources */,
 				100000000000000000000057 /* DrivePulseXPCMessages.swift in Sources */,
 				100000000000000000000058 /* DrivePulseXPCContracts.swift in Sources */,
+				100000000000000000000070 /* DrivePulseSMARTService.swift in Sources */,
+				100000000000000000000071 /* SmartctlRunner.swift in Sources */,
+				100000000000000000000072 /* DrivePulseSMARTXPCDelegate.swift in Sources */,
+				100000000000000000000073 /* TransportHintResolver.swift in Sources */,
+				100000000000000000000074 /* HelperVersionHandshake.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

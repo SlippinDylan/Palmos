@@ -46,7 +46,10 @@ struct ThroughputChartModel {
     }
 
     private static func peakBytesPerSecond(for samples: [Double?]) -> Double {
-        let peak = samples.compactMap { $0 }.max() ?? 0
+        let peak = samples.compactMap { value in
+            guard let value, value.isFinite, value >= 0 else { return nil }
+            return value
+        }.max() ?? 0
         return peak > 0 ? peak : 1
     }
 
@@ -162,7 +165,14 @@ private struct ThroughputChartCanvas: View {
     }
 
     private func rateString(_ bytesPerSecond: Double) -> String {
-        let bytes = Int64(bytesPerSecond.rounded())
+        guard bytesPerSecond.isFinite, bytesPerSecond > 0 else {
+            return "0 B/s"
+        }
+        let maxRepresentable = Double(Int64.max)
+        let bounded = min(bytesPerSecond, maxRepresentable)
+        let bytes = bounded >= maxRepresentable
+            ? Int64.max
+            : Int64(bounded.rounded(.towardZero))
         return "\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))/s"
     }
 }
@@ -278,7 +288,8 @@ private struct ThroughputHalfSeriesLayer: View {
     }
 
     private func y(for value: Double, maxValue: Double, size: CGSize) -> CGFloat {
-        let normalized = CGFloat(max(0, min(value / maxValue, 1)))
+        let rawNormalized = value.isFinite ? value / maxValue : 0
+        let normalized = CGFloat(max(0, min(rawNormalized, 1)))
         let drawableHeight = max(size.height - 1, 1)
 
         switch alignment {

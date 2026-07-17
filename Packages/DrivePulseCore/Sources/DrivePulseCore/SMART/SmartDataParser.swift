@@ -163,23 +163,36 @@ private struct NVMESMARTHealthInformationLog: Decodable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        temperature = try container.decodeIfPresent(Int.self, forKey: .temperature)
+        temperature = container.decodeFlexibleIntIfPresent(forKey: .temperature)
         temperatureSensors = try container.decodeIfPresent([Int].self, forKey: .temperatureSensors) ?? []
-        criticalWarning = try container.decodeIfPresent(Int.self, forKey: .criticalWarning)
-        availableSpare = try container.decodeIfPresent(Int.self, forKey: .availableSpare)
-        availableSpareThreshold = try container.decodeIfPresent(Int.self, forKey: .availableSpareThreshold)
-        percentageUsed = try container.decodeIfPresent(Int.self, forKey: .percentageUsed)
-        dataUnitsRead = try container.decodeIfPresent(Int.self, forKey: .dataUnitsRead)
-        dataUnitsWritten = try container.decodeIfPresent(Int.self, forKey: .dataUnitsWritten)
-        hostReads = try container.decodeIfPresent(Int.self, forKey: .hostReads)
-        hostWrites = try container.decodeIfPresent(Int.self, forKey: .hostWrites)
-        controllerBusyTime = try container.decodeIfPresent(Int.self, forKey: .controllerBusyTime)
-        powerCycles = try container.decodeIfPresent(Int.self, forKey: .powerCycles)
-        powerOnHours = try container.decodeIfPresent(Int.self, forKey: .powerOnHours)
-        unsafeShutdowns = try container.decodeIfPresent(Int.self, forKey: .unsafeShutdowns)
-        mediaErrors = try container.decodeIfPresent(Int.self, forKey: .mediaErrors)
-        numErrLogEntries = try container.decodeIfPresent(Int.self, forKey: .numErrLogEntries)
-        warningTempTime = try container.decodeIfPresent(Int.self, forKey: .warningTempTime)
-        criticalCompTime = try container.decodeIfPresent(Int.self, forKey: .criticalCompTime)
+        criticalWarning = container.decodeFlexibleIntIfPresent(forKey: .criticalWarning)
+        availableSpare = container.decodeFlexibleIntIfPresent(forKey: .availableSpare)
+        availableSpareThreshold = container.decodeFlexibleIntIfPresent(forKey: .availableSpareThreshold)
+        percentageUsed = container.decodeFlexibleIntIfPresent(forKey: .percentageUsed)
+        dataUnitsRead = container.decodeFlexibleIntIfPresent(forKey: .dataUnitsRead)
+        dataUnitsWritten = container.decodeFlexibleIntIfPresent(forKey: .dataUnitsWritten)
+        hostReads = container.decodeFlexibleIntIfPresent(forKey: .hostReads)
+        hostWrites = container.decodeFlexibleIntIfPresent(forKey: .hostWrites)
+        controllerBusyTime = container.decodeFlexibleIntIfPresent(forKey: .controllerBusyTime)
+        powerCycles = container.decodeFlexibleIntIfPresent(forKey: .powerCycles)
+        powerOnHours = container.decodeFlexibleIntIfPresent(forKey: .powerOnHours)
+        unsafeShutdowns = container.decodeFlexibleIntIfPresent(forKey: .unsafeShutdowns)
+        mediaErrors = container.decodeFlexibleIntIfPresent(forKey: .mediaErrors)
+        numErrLogEntries = container.decodeFlexibleIntIfPresent(forKey: .numErrLogEntries)
+        warningTempTime = container.decodeFlexibleIntIfPresent(forKey: .warningTempTime)
+        criticalCompTime = container.decodeFlexibleIntIfPresent(forKey: .criticalCompTime)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeFlexibleIntIfPresent(forKey key: Key) -> Int? {
+        guard contains(key), (try? decodeNil(forKey: key)) != true else { return nil }
+        if let value = try? decode(Int.self, forKey: key) {
+            return value
+        }
+        if let string = try? decode(String.self, forKey: key) {
+            return Int(string.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
     }
 }

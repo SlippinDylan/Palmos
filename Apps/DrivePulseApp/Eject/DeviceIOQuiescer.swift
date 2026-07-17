@@ -77,6 +77,27 @@ actor DeviceIOTracker {
         ))
     }
 
+    /// Drops safety scopes that no longer belong to a live device session.
+    ///
+    /// A completion that was not acknowledged must remain fail-closed while its
+    /// device session is live. Once discovery proves that the session vanished
+    /// (or the BSD name was reassigned), retaining the scope only leaks state and
+    /// can block a later, unrelated eject workflow.
+    func pruneSMARTSafetyScopes(
+        liveDeviceIDs: Set<DeviceID>,
+        livePhysicalBSDNames: Set<String>
+    ) {
+        unobservableSMARTScopes = unobservableSMARTScopes.filter { scope in
+            guard livePhysicalBSDNames.contains(scope.physicalBSDName) else {
+                return false
+            }
+            guard let deviceID = scope.deviceID else {
+                return true
+            }
+            return liveDeviceIDs.contains(deviceID)
+        }
+    }
+
     func inFlightKinds(for physicalBSDName: String) -> Set<Kind> {
         Set(operations.values.compactMap { operation in
             operation.physicalBSDName == physicalBSDName ? operation.kind : nil

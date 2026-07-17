@@ -4,7 +4,7 @@ import XCTest
 import DrivePulseCore
 
 final class DrivePulseAppStateTests: XCTestCase {
-    func testSelectionIgnoresUnmountedDevices() {
+    func testSelectionKeepsUnmountedDevicesAvailable() {
         let unmountedDevice = ExternalDevice(
             physicalStoreBSDName: "disk4",
             apfsContainerBSDName: "disk4s2",
@@ -18,11 +18,16 @@ final class DrivePulseAppStateTests: XCTestCase {
 
         XCTAssertEqual(state.devices.map(\.id), [unmountedDevice.id, mountedDevice.id])
         XCTAssertEqual(state.mountedDevices.map(\.id), [mountedDevice.id])
-        XCTAssertEqual(state.selectedDeviceID, mountedDevice.id)
-        XCTAssertEqual(state.selectedDevice?.id, mountedDevice.id)
+        XCTAssertEqual(state.selectedDeviceID, unmountedDevice.id)
+        XCTAssertEqual(state.selectedDevice?.id, unmountedDevice.id)
+
+        var unmountedSelection = state
+        unmountedSelection.selectDevice(unmountedDevice.id)
+        XCTAssertEqual(unmountedSelection.selectedDeviceID, unmountedDevice.id)
+        XCTAssertEqual(unmountedSelection.selectedDevice?.id, unmountedDevice.id)
     }
 
-    func testMarkDeviceUnmountedSelectsNextMountedDevice() {
+    func testMarkDeviceUnmountedRetainsPhysicalDeviceSelection() {
         let firstDevice = ExternalDevice.preview(id: "disk4")
         let secondDevice = ExternalDevice.preview(id: "disk8")
         var state = DrivePulseAppState(
@@ -33,11 +38,11 @@ final class DrivePulseAppStateTests: XCTestCase {
         state.markDeviceUnmounted(firstDevice.id)
 
         XCTAssertTrue(state.device(id: firstDevice.id)?.volumes.isEmpty == true)
-        XCTAssertEqual(state.selectedDeviceID, secondDevice.id)
-        XCTAssertEqual(state.selectedDevice?.id, secondDevice.id)
+        XCTAssertEqual(state.selectedDeviceID, firstDevice.id)
+        XCTAssertEqual(state.selectedDevice?.id, firstDevice.id)
     }
 
-    func testMarkOnlyDeviceUnmountedClearsPresentationSelection() {
+    func testMarkOnlyDeviceUnmountedKeepsPresentationSelection() {
         let device = ExternalDevice.preview(id: "disk4")
         var state = DrivePulseAppState(devices: [device], selectedDeviceID: device.id)
 
@@ -45,8 +50,8 @@ final class DrivePulseAppStateTests: XCTestCase {
 
         XCTAssertEqual(state.devices.map(\.id), [device.id])
         XCTAssertTrue(state.mountedDevices.isEmpty)
-        XCTAssertNil(state.selectedDeviceID)
-        XCTAssertNil(state.selectedDevice)
+        XCTAssertEqual(state.selectedDeviceID, device.id)
+        XCTAssertEqual(state.selectedDevice?.id, device.id)
     }
 
     func testAppStateDefaultsToFirstDeviceWhenSelectionMissing() {

@@ -236,6 +236,7 @@ struct DiskDiscoveryRecord: Equatable {
     let isWholeMedia: Bool
     let isEjectable: Bool
     let registryEntryID: UInt64?
+    let mediaUUID: String?
     let volumePath: URL?
     let mediaName: String?
     let deviceModel: String?
@@ -256,6 +257,7 @@ struct DiskDiscoveryRecord: Equatable {
         isEjectable: Bool = false,
         registryEntryID: UInt64? = nil,
         volumePath: URL?,
+        mediaUUID: String? = nil,
         mediaName: String?,
         deviceModel: String?,
         deviceVendor: String?,
@@ -273,6 +275,7 @@ struct DiskDiscoveryRecord: Equatable {
         self.isWholeMedia = isWholeMedia
         self.isEjectable = isEjectable
         self.registryEntryID = registryEntryID
+        self.mediaUUID = mediaUUID
         self.volumePath = volumePath
         self.mediaName = mediaName
         self.deviceModel = deviceModel
@@ -298,12 +301,16 @@ struct DiskDiscoveryRecord: Equatable {
     }
 }
 
-struct ExternalDeviceDiscoveryMapper {
+final class ExternalDeviceDiscoveryMapper: @unchecked Sendable {
     private let reducer = DeviceRegistryReducer()
+    private let lock = NSLock()
+    private var sessionIDsByIdentityKey: [String: String] = [:]
 
     func map(_ records: [DiskDiscoveryRecord]) -> [ExternalDevice] {
-        let recordsByBSD = Dictionary(uniqueKeysWithValues: records.map { ($0.bsdName, $0) })
+        lock.lock()
+        defer { lock.unlock() }
 
+        let recordsByBSD = Dictionary(uniqueKeysWithValues: records.map { ($0.bsdName, $0) })
         discoveryLog.debug("Discovery: enumerating \(records.count) IOMedia records")
         for r in records {
             let pass = DeviceIdentityResolver.isExternalPhysicalDevice(r.descriptor)
@@ -332,6 +339,12 @@ struct ExternalDeviceDiscoveryMapper {
 
         discoveryLog.debug("Discovery: \(rootRecords.count) root external device(s) after filtering: \(rootRecords.map(\.bsdName).joined(separator: ", "))")
 
+        let activeIdentityKeys = Set(rootRecords.map(identityKey))
+        sessionIDsByIdentityKey = sessionIDsByIdentityKey.filter {
+            activeIdentityKeys.contains($0.key)
+        }
+
+        var usedIdentityIDs = Set<DeviceID>()
         return rootRecords.map { rootRecord in
             let descendants = descendantRecords(for: rootRecord.bsdName, recordsByBSD: recordsByBSD)
 
@@ -379,10 +392,27 @@ struct ExternalDeviceDiscoveryMapper {
                 }
                 .sorted { $0.bsdName.localizedStandardCompare($1.bsdName) == .orderedAscending }
 
+            var identityEvidence = identityEvidence(for: rootRecord)
+            var resolvedID = identityEvidence.deviceID(for: rootRecord.bsdName)
+            if usedIdentityIDs.contains(resolvedID) {
+                if let registryEntryID = rootRecord.registryEntryID {
+                    identityEvidence = DeviceIdentityEvidence(registryEntryID: registryEntryID)
+                } else {
+                    identityEvidence = DeviceIdentityEvidence(sessionID: UUID().uuidString)
+                }
+                resolvedID = identityEvidence.deviceID(for: rootRecord.bsdName)
+                if usedIdentityIDs.contains(resolvedID) {
+                    identityEvidence = DeviceIdentityEvidence(sessionID: UUID().uuidString)
+                    resolvedID = identityEvidence.deviceID(for: rootRecord.bsdName)
+                }
+            }
+            usedIdentityIDs.insert(resolvedID)
+
             var device = reducer.reduce(
                 physicalBSDName: rootRecord.bsdName,
                 containerBSDName: apfsContainerBSDName,
-                volumes: mountedVolumes
+                volumes: mountedVolumes,
+                identityEvidence: identityEvidence
             )
             device.displayName = displayName(for: rootRecord)
             device.transportName = transportName(for: rootRecord)
@@ -404,6 +434,44 @@ struct ExternalDeviceDiscoveryMapper {
                 .sorted { $0.bsdName.localizedStandardCompare($1.bsdName) == .orderedAscending }
             return device
         }
+    }
+
+    private func identityEvidence(for record: DiskDiscoveryRecord) -> DeviceIdentityEvidence {
+        let identityKey = identityKey(for: record)
+        let sessionID: String
+        if let existing = sessionIDsByIdentityKey[identityKey] {
+            sessionID = existing
+        } else {
+            sessionID = UUID().uuidString.lowercased()
+            sessionIDsByIdentityKey[identityKey] = sessionID
+        }
+
+        if let mediaUUID = record.mediaUUID {
+            return DeviceIdentityEvidence(
+                mediaUUID: mediaUUID,
+                registryEntryID: record.registryEntryID,
+                sessionID: sessionID
+            )
+        }
+
+        if let registryEntryID = record.registryEntryID {
+            return DeviceIdentityEvidence(
+                registryEntryID: registryEntryID,
+                sessionID: sessionID
+            )
+        }
+
+        return DeviceIdentityEvidence(sessionID: sessionID)
+    }
+
+    private func identityKey(for record: DiskDiscoveryRecord) -> String {
+        if let mediaUUID = normalizedString(record.mediaUUID) {
+            return "media:\(mediaUUID.lowercased())"
+        }
+        if let registryEntryID = record.registryEntryID {
+            return "registry:\(String(registryEntryID, radix: 16))"
+        }
+        return "bsd:\(record.bsdName)"
     }
 
     private func topLevelExternalRoot(
@@ -653,6 +721,7 @@ struct DiskDiscoveryEnumerator {
                 ?? false,
             registryEntryID: registryEntryID(for: service),
             volumePath: description?[kDADiskDescriptionVolumePathKey as String] as? URL,
+            mediaUUID: mediaUUID(from: description?[kDADiskDescriptionMediaUUIDKey as String]),
             mediaName: description?[kDADiskDescriptionMediaNameKey as String] as? String,
             deviceModel: description?[kDADiskDescriptionDeviceModelKey as String] as? String,
             deviceVendor: description?[kDADiskDescriptionDeviceVendorKey as String] as? String,
@@ -664,6 +733,16 @@ struct DiskDiscoveryEnumerator {
             mediaContent: description?[kDADiskDescriptionMediaContentKey as String] as? String,
             ioClassPath: ioClassPath(for: service)
         )
+    }
+
+    private func mediaUUID(from value: Any?) -> String? {
+        if let uuid = value as? UUID {
+            return uuid.uuidString
+        }
+        if let uuid = value as? NSUUID {
+            return uuid.uuidString
+        }
+        return nil
     }
 
     private func parentBSDName(for service: io_service_t) -> String? {

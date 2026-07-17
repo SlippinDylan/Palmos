@@ -153,19 +153,17 @@ final class DrivePulseAppController: ObservableObject {
         }
     }
 
-    deinit {
-        MainActor.assumeIsolated {
-            discoveryLoadTask?.cancel()
-            observationEnrichmentTask?.cancel()
-            apfsRetryTask?.cancel()
-            systemProfilerEnrichmentTask?.cancel()
-            discoveryObservation?.cancel()
-            throughputSamplingTimer?.invalidate()
-            actionFeedbackClearTask?.cancel()
-            quitTask?.cancel()
-            smartRefreshTasksByDeviceID.values.forEach { $0.cancel() }
-            volumeCapacityRefresher.stop()
-        }
+    isolated deinit {
+        discoveryLoadTask?.cancel()
+        observationEnrichmentTask?.cancel()
+        apfsRetryTask?.cancel()
+        systemProfilerEnrichmentTask?.cancel()
+        discoveryObservation?.cancel()
+        throughputSamplingTimer?.invalidate()
+        actionFeedbackClearTask?.cancel()
+        quitTask?.cancel()
+        smartRefreshTasksByDeviceID.values.forEach { $0.cancel() }
+        volumeCapacityRefresher.stop()
     }
 
     func selectDevice(_ id: DeviceID?) {
@@ -181,7 +179,7 @@ final class DrivePulseAppController: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard await smartHelperManager.installOrUpdate() else { return }
-            state.mountedDevices.forEach {
+            state.devices.forEach {
                 refreshSMART(
                     for: $0,
                     supersedingExisting: true,
@@ -196,7 +194,7 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     var panelDevices: [ExternalDevice] {
-        state.mountedDevices
+        state.devices
     }
 
     var selectedPanelDevice: ExternalDevice? {
@@ -416,8 +414,14 @@ final class DrivePulseAppController: ObservableObject {
                 continue
             }
 
-            let readDelta = max(0, counters.readBytes - previousCounters.readBytes)
-            let writeDelta = max(0, counters.writeBytes - previousCounters.writeBytes)
+            let readDelta = Self.counterDelta(
+                current: counters.readBytes,
+                previous: previousCounters.readBytes
+            )
+            let writeDelta = Self.counterDelta(
+                current: counters.writeBytes,
+                previous: previousCounters.writeBytes
+            )
             var reducer = sessionMetricsReducersByDeviceID[device.id]
                 ?? SessionMetricsReducer(historyLimit: Self.throughputHistoryLimit)
             reducer.ingest(
@@ -955,6 +959,13 @@ final class DrivePulseAppController: ObservableObject {
 
     private func pruneSamplingState() {
         let liveDeviceIDs = Set(state.devices.map(\.id))
+        let livePhysicalBSDNames = Set(state.devices.map(\.physicalStoreBSDName))
+        Task {
+            await deviceIOTracker.pruneSMARTSafetyScopes(
+                liveDeviceIDs: liveDeviceIDs,
+                livePhysicalBSDNames: livePhysicalBSDNames
+            )
+        }
         let removedSMARTDeviceIDs = Set(smartRefreshTasksByDeviceID.keys).subtracting(liveDeviceIDs)
         removedSMARTDeviceIDs.forEach { deviceID in
             smartRefreshTasksByDeviceID.removeValue(forKey: deviceID)?.cancel()
@@ -964,6 +975,18 @@ final class DrivePulseAppController: ObservableObject {
         sessionMetricsReducersByDeviceID = sessionMetricsReducersByDeviceID.filter {
             liveDeviceIDs.contains($0.key)
         }
+    }
+
+    private static func counterDelta(current: Int64, previous: Int64) -> Int64 {
+        guard current >= 0, previous >= 0 else { return 0 }
+        guard current >= previous else {
+            // A lower counter starts a new epoch. Establish a new baseline
+            // without presenting the absolute counter as one sampling delta.
+            return 0
+        }
+
+        let (delta, overflow) = current.subtractingReportingOverflow(previous)
+        return overflow ? Int64.max : delta
     }
 }
 

@@ -5,7 +5,7 @@ A macOS menu bar app that monitors connected external physical storage devices a
 ## Requirements
 
 - macOS 15 or later
-- Xcode 16 or later (to build from source)
+- Xcode 26.4 or later with the macOS 26 SDK (to build from source)
 
 ## Supported Devices
 
@@ -103,4 +103,12 @@ xcodebuild test -workspace DrivePulse.xcworkspace \
 
 ## Third-Party Licenses
 
-DrivePulse bundles `smartctl` from [smartmontools](https://www.smartmontools.org), which is licensed under the GNU General Public License version 2. See [`Shared/Licensing/smartmontools-COPYING.txt`](Shared/Licensing/smartmontools-COPYING.txt) for the full license text.
+The current source tree does not bundle `smartctl`. The privileged helper only accepts a
+root-owned companion at `/Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl`;
+it never searches Homebrew or other user-writable locations. Until a release artifact has
+installed and verified that companion, SMART is reported as unavailable. A release that ships
+the companion must include the exact smartmontools license text and update packaging
+verification before claiming bundled SMART support.
+
+See [`Shared/Licensing/smartmontools-COPYING.txt`](Shared/Licensing/smartmontools-COPYING.txt)
+for the repository's current licensing status.

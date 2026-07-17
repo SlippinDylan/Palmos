@@ -1,42 +1,58 @@
+import Darwin
 import DrivePulseCore
 import Foundation
 
-final class SmartctlRunner {
-    enum RunnerError: LocalizedError {
+final class SmartctlRunner: @unchecked Sendable {
+    enum RunnerError: LocalizedError, Equatable {
         case invalidDeviceName(String)
-        case executableNotFound
+        case executableUnavailable
         case commandFailed(exitCode: Int32, transportHint: SmartctlTransportHint, output: String)
         case emptyOutput
+        case outputTooLarge
+        case timedOut
 
         var errorDescription: String? {
             switch self {
             case let .invalidDeviceName(deviceName):
                 return "Unsupported SMART device name: \(deviceName)"
-            case .executableNotFound:
-                return "smartctl executable not found in supported install locations."
+            case .executableUnavailable:
+                return "SMART monitoring is unavailable because the trusted smartctl companion is not installed."
             case let .commandFailed(exitCode, transportHint, output):
                 let hintDescription = transportHint.smartctlDeviceArgument ?? "default"
                 return "smartctl failed with exit code \(exitCode) using transport hint \(hintDescription): \(output)"
             case .emptyOutput:
                 return "smartctl returned no SMART payload."
+            case .outputTooLarge:
+                return "smartctl returned a SMART payload that exceeded the configured safety limit."
+            case .timedOut:
+                return "smartctl did not finish before the SMART operation deadline."
             }
         }
     }
 
-    private let fileManager: FileManager
+    static let defaultTimeout: Duration = .seconds(20)
+    static let stdoutLimit = 2 * 1024 * 1024
+    static let stderrLimit = 64 * 1024
+    static let trustedExecutablePath = "/Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl"
 
-    init(fileManager: FileManager = .default) {
-        self.fileManager = fileManager
+    private let executableLocator: @Sendable () throws -> URL
+
+    init(
+        executableLocator: @escaping @Sendable () throws -> URL = SmartctlRunner.trustedExecutable
+    ) {
+        self.executableLocator = executableLocator
     }
 
     func readSMARTData(
         for physicalDeviceBSDName: String,
-        transportHint: SmartctlTransportHint
-    ) throws -> Data {
+        transportHint: SmartctlTransportHint,
+        timeout: Duration = SmartctlRunner.defaultTimeout
+    ) async throws -> Data {
         let sanitizedBSDName = try sanitize(physicalDeviceBSDName)
+        try Task.checkCancellation()
 
         let process = Process()
-        process.executableURL = try smartctlExecutableURL()
+        process.executableURL = try executableLocator()
         process.arguments = arguments(
             for: sanitizedBSDName,
             transportHint: transportHint
@@ -47,37 +63,61 @@ final class SmartctlRunner {
         process.standardOutput = stdout
         process.standardError = stderr
 
-        try process.run()
-        let stdoutReader = PipeReader(fileHandle: stdout.fileHandleForReading)
-        let stderrReader = PipeReader(fileHandle: stderr.fileHandleForReading)
-        stdoutReader.start()
-        stderrReader.start()
+        let controller = RunningProcess(process)
+        let stdoutReader = BoundedPipeReader(stdout.fileHandleForReading, limit: Self.stdoutLimit)
+        let stderrReader = BoundedPipeReader(stderr.fileHandleForReading, limit: Self.stderrLimit)
+        let deadline = ContinuousClock.now.advanced(by: timeout)
 
-        process.waitUntilExit()
-        let stdoutData = stdoutReader.waitForData()
-        let stderrData = stderrReader.waitForData()
-        let combinedOutput = combinedOutput(stdout: stdoutData, stderr: stderrData)
+        return try await withTaskCancellationHandler {
+            try process.run()
+            async let stdoutResult = stdoutReader.read()
+            async let stderrResult = stderrReader.read()
 
-        guard stdoutData.isEmpty == false else {
-            guard process.terminationStatus == 0 else {
+            let monitor = Task {
+                while controller.isRunning {
+                    if ContinuousClock.now >= deadline {
+                        controller.terminateForTimeout()
+                        return
+                    }
+                    try? await Task.sleep(for: .milliseconds(20))
+                }
+            }
+            await controller.waitForExit()
+            monitor.cancel()
+
+            let stdoutData = await stdoutResult
+            let stderrData = await stderrResult
+            if controller.didTimeOut {
+                throw RunnerError.timedOut
+            }
+            try Task.checkCancellation()
+            guard stdoutReader.exceededLimit == false, stderrReader.exceededLimit == false else {
+                throw RunnerError.outputTooLarge
+            }
+
+            let combined = Self.combinedOutput(stdout: stdoutData, stderr: stderrData)
+            guard stdoutData.isEmpty == false else {
+                guard process.terminationStatus == 0 else {
+                    throw RunnerError.commandFailed(
+                        exitCode: process.terminationStatus,
+                        transportHint: transportHint,
+                        output: combined
+                    )
+                }
+                throw RunnerError.emptyOutput
+            }
+
+            guard process.terminationStatus == 0 || Self.isValidJSONPayload(stdoutData) else {
                 throw RunnerError.commandFailed(
                     exitCode: process.terminationStatus,
                     transportHint: transportHint,
-                    output: combinedOutput
+                    output: combined
                 )
             }
-            throw RunnerError.emptyOutput
+            return stdoutData
+        } onCancel: {
+            controller.terminateWithEscalation()
         }
-
-        guard process.terminationStatus == 0 || isValidJSONPayload(stdoutData) else {
-            throw RunnerError.commandFailed(
-                exitCode: process.terminationStatus,
-                transportHint: transportHint,
-                output: combinedOutput
-            )
-        }
-
-        return stdoutData
     }
 
     private func sanitize(_ physicalDeviceBSDName: String) throws -> String {
@@ -87,7 +127,6 @@ final class SmartctlRunner {
         ) != nil else {
             throw RunnerError.invalidDeviceName(physicalDeviceBSDName)
         }
-
         return physicalDeviceBSDName
     }
 
@@ -96,82 +135,124 @@ final class SmartctlRunner {
         transportHint: SmartctlTransportHint
     ) -> [String] {
         var arguments = ["-a", "-j", "--nocheck=standby"]
-
         if let deviceArgument = transportHint.smartctlDeviceArgument {
             arguments.append(contentsOf: ["-d", deviceArgument])
         }
-
         arguments.append("/dev/\(physicalDeviceBSDName)")
         return arguments
     }
 
-    private func smartctlExecutableURL() throws -> URL {
-        let candidatePaths = [
-            "/opt/homebrew/sbin/smartctl",
-            "/usr/local/sbin/smartctl",
-            "/opt/homebrew/bin/smartctl",
-            "/usr/local/bin/smartctl"
-        ]
-
-        for candidatePath in candidatePaths where fileManager.isExecutableFile(atPath: candidatePath) {
-            return URL(fileURLWithPath: candidatePath)
+    private static func trustedExecutable() throws -> URL {
+        let url = URL(fileURLWithPath: trustedExecutablePath)
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard
+            FileManager.default.isExecutableFile(atPath: url.path),
+            (attributes[.type] as? FileAttributeType) == .typeRegular,
+            (attributes[.ownerAccountID] as? NSNumber)?.intValue == 0,
+            let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue,
+            permissions & 0o022 == 0
+        else {
+            throw RunnerError.executableUnavailable
         }
-
-        throw RunnerError.executableNotFound
+        var parent = url.deletingLastPathComponent()
+        while true {
+            let parentAttributes = try FileManager.default.attributesOfItem(atPath: parent.path)
+            guard
+                (parentAttributes[.type] as? FileAttributeType) == .typeDirectory,
+                (parentAttributes[.ownerAccountID] as? NSNumber)?.intValue == 0,
+                let parentPermissions = (parentAttributes[.posixPermissions] as? NSNumber)?.intValue,
+                parentPermissions & 0o022 == 0
+            else {
+                throw RunnerError.executableUnavailable
+            }
+            if parent.path == "/" { break }
+            parent.deleteLastPathComponent()
+        }
+        return url
     }
 
-    private func isValidJSONPayload(_ data: Data) -> Bool {
-        guard data.isEmpty == false else {
-            return false
-        }
-
-        do {
-            _ = try JSONSerialization.jsonObject(with: data)
-            return true
-        } catch {
-            return false
-        }
+    private static func isValidJSONPayload(_ data: Data) -> Bool {
+        guard data.isEmpty == false else { return false }
+        return (try? JSONSerialization.jsonObject(with: data)) != nil
     }
 
-    private func combinedOutput(stdout: Data, stderr: Data) -> String {
+    private static func combinedOutput(stdout: Data, stderr: Data) -> String {
         var sections: [String] = []
-
-        if stdout.isEmpty == false {
-            sections.append(String(decoding: stdout, as: UTF8.self))
-        }
-
-        if stderr.isEmpty == false {
-            sections.append(String(decoding: stderr, as: UTF8.self))
-        }
-
-        return sections.joined(separator: "\n")
+        if stdout.isEmpty == false { sections.append(String(decoding: stdout, as: UTF8.self)) }
+        if stderr.isEmpty == false { sections.append(String(decoding: stderr, as: UTF8.self)) }
+        let output = sections.joined(separator: "\n")
+        return String(output.prefix(8_192))
     }
 }
 
-private final class PipeReader: @unchecked Sendable {
-    private let fileHandle: FileHandle
+private final class RunningProcess: @unchecked Sendable {
+    private let process: Process
     private let lock = NSLock()
-    private let semaphore = DispatchSemaphore(value: 0)
-    private var data = Data()
+    private var timedOut = false
 
-    init(fileHandle: FileHandle) {
-        self.fileHandle = fileHandle
+    init(_ process: Process) { self.process = process }
+    var isRunning: Bool { lock.withLock { process.isRunning } }
+    var didTimeOut: Bool { lock.withLock { timedOut } }
+
+    func terminateForTimeout() {
+        lock.withLock {
+            timedOut = true
+            if process.isRunning { process.terminate() }
+        }
+        scheduleKill()
     }
 
-    func start() {
-        Thread.detachNewThread { [self] in
-            let output = fileHandle.readDataToEndOfFile()
-            lock.lock()
-            data = output
-            lock.unlock()
-            semaphore.signal()
+    func terminateWithEscalation() {
+        lock.withLock {
+            if process.isRunning { process.terminate() }
+        }
+        scheduleKill()
+    }
+
+    func waitForExit() async {
+        await withCheckedContinuation { continuation in
+            Thread.detachNewThread { [process] in
+                process.waitUntilExit()
+                continuation.resume()
+            }
         }
     }
 
-    func waitForData() -> Data {
-        semaphore.wait()
-        lock.lock()
-        defer { lock.unlock() }
-        return data
+    private func scheduleKill() {
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(100)) { [self] in
+            lock.withLock {
+                if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL) }
+            }
+        }
+    }
+}
+
+private final class BoundedPipeReader: @unchecked Sendable {
+    private let fileHandle: FileHandle
+    private let limit: Int
+    private let lock = NSLock()
+    private var overflow = false
+
+    init(_ fileHandle: FileHandle, limit: Int) {
+        self.fileHandle = fileHandle
+        self.limit = limit
+    }
+
+    var exceededLimit: Bool { lock.withLock { overflow } }
+
+    func read() async -> Data {
+        await withCheckedContinuation { continuation in
+            Thread.detachNewThread { [self] in
+                var stored = Data()
+                while true {
+                    let chunk = fileHandle.readData(ofLength: 64 * 1024)
+                    guard chunk.isEmpty == false else { break }
+                    let remaining = max(0, limit - stored.count)
+                    stored.append(chunk.prefix(remaining))
+                    if chunk.count > remaining { lock.withLock { overflow = true } }
+                }
+                continuation.resume(returning: stored)
+            }
+        }
     }
 }

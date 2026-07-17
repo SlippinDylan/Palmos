@@ -90,4 +90,30 @@ final class SessionMetricsReducerTests: XCTestCase {
         XCTAssertEqual(original.metrics.cumulativeReadBytes, 10)
         XCTAssertEqual(original.metrics.cumulativeWriteBytes, 20)
     }
+
+    func testSessionReducerIgnoresNegativeCounterDeltas() {
+        var reducer = SessionMetricsReducer(historyLimit: 3)
+        let start = Date(timeIntervalSince1970: 4_000)
+        let end = Date(timeIntervalSince1970: 4_001)
+
+        reducer.ingest(readBytes: 100, writeBytes: 50, at: start)
+        reducer.ingest(readBytes: -25, writeBytes: -10, at: end)
+
+        XCTAssertEqual(reducer.metrics.cumulativeReadBytes, 100)
+        XCTAssertEqual(reducer.metrics.cumulativeWriteBytes, 50)
+        XCTAssertEqual(reducer.metrics.currentReadBytesPerSecond, 0)
+        XCTAssertEqual(reducer.metrics.currentWriteBytesPerSecond, 0)
+    }
+
+    func testSessionReducerSaturatesCumulativeCountersOnOverflow() {
+        var reducer = SessionMetricsReducer(historyLimit: 3)
+        let start = Date(timeIntervalSince1970: 5_000)
+        let end = Date(timeIntervalSince1970: 5_001)
+
+        reducer.ingest(readBytes: Int64.max, writeBytes: Int64.max, at: start)
+        reducer.ingest(readBytes: 1, writeBytes: 1, at: end)
+
+        XCTAssertEqual(reducer.metrics.cumulativeReadBytes, Int64.max)
+        XCTAssertEqual(reducer.metrics.cumulativeWriteBytes, Int64.max)
+    }
 }

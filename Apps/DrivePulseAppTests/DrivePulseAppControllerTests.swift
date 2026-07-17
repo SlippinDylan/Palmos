@@ -59,7 +59,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         )
 
         XCTAssertEqual(controller.state.devices, refreshedDevices)
-        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
+        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk42"))
         let refreshInvocationCount = await discovery.invocationCountSnapshot()
         XCTAssertEqual(refreshInvocationCount, 2)
     }
@@ -89,7 +89,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         }
 
         wait(for: [expectation], timeout: 1.0)
-        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk126"))
+        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
     }
 
     func testObserverUpdatePreventsPendingDiscoveryResultFromOverwritingNewerDevices() async {
@@ -116,7 +116,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         await Task.yield()
 
         XCTAssertEqual(controller.state.devices, observedDevices)
-        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk126"))
+        XCTAssertEqual(controller.state.selectedDeviceID, DeviceID(rawValue: "disk84"))
     }
 
     func testControllerFetchesSystemProfilerOnceDuringBootstrapAndRefreshesProvidersOnObservedUpdate() async throws {
@@ -308,7 +308,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
                     )
                 ]
         }
-        XCTAssertNil(controller.state.selectedDeviceID)
+        XCTAssertEqual(controller.state.selectedDeviceID, bootstrapDevice.id)
         XCTAssertEqual(controller.selectedFooterActions.map(\.kind), [.openDiskUtility, .quit])
     }
 
@@ -913,8 +913,8 @@ final class DrivePulseAppControllerTests: XCTestCase {
             return false
         }
         XCTAssertTrue(controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true)
-        XCTAssertTrue(controller.panelDevices.isEmpty)
-        XCTAssertNil(controller.selectedPanelDevice)
+        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
+        XCTAssertEqual(controller.selectedPanelDevice?.id, mountedDevice.id)
         XCTAssertEqual(controller.selectedFooterActions.map(\.kind), [.openDiskUtility, .quit])
 
         discovery.emit([remountedDevice])
@@ -922,10 +922,10 @@ final class DrivePulseAppControllerTests: XCTestCase {
         discovery.emit([sparseDevice])
 
         await waitUntil { controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true }
-        XCTAssertNil(controller.state.selectedDeviceID)
+        XCTAssertEqual(controller.state.selectedDeviceID, mountedDevice.id)
     }
 
-    func testSuccessfulEjectSelectsNextMountedDevice() async throws {
+    func testSuccessfulEjectKeepsPhysicalDeviceSelectedWhileUnmounted() async throws {
         let firstDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let secondDevice = makeDevice(id: "disk42", volumes: ["disk42s1"])
         let coordinator = makeEjectCoordinator(
@@ -951,11 +951,11 @@ final class DrivePulseAppControllerTests: XCTestCase {
             return false
         }
         XCTAssertTrue(controller.state.device(id: firstDevice.id)?.volumes.isEmpty == true)
-        XCTAssertEqual(controller.state.selectedDeviceID, secondDevice.id)
-        XCTAssertEqual(controller.selectedPanelDevice?.id, secondDevice.id)
+        XCTAssertEqual(controller.state.selectedDeviceID, firstDevice.id)
+        XCTAssertEqual(controller.selectedPanelDevice?.id, firstDevice.id)
         XCTAssertEqual(
             controller.selectedFooterActions.map(\.kind),
-            [.openInFinder, .eject, .openDiskUtility, .quit]
+            [.openDiskUtility, .quit]
         )
     }
 
@@ -1021,14 +1021,14 @@ final class DrivePulseAppControllerTests: XCTestCase {
         }
 
         XCTAssertTrue(controller.state.device(id: ejectingDevice.id)?.volumes.isEmpty == true)
-        XCTAssertEqual(controller.state.selectedDeviceID, remainingDevice.id)
+        XCTAssertEqual(controller.state.selectedDeviceID, ejectingDevice.id)
         XCTAssertEqual(
             controller.state.device(id: remainingDevice.id)?.apfsContainerDetails,
             remainingContainer
         )
     }
 
-    func testPanelPresentationFallsBackToFirstMountedDevice() {
+    func testPanelPresentationKeepsUnmountedDeviceVisibleAndSelected() {
         let unmountedDevice = makeDevice(id: "disk21", volumes: [])
         let mountedDevice = makeDevice(id: "disk42", volumes: ["disk42s1"])
         let controller = DrivePulseAppController(
@@ -1039,12 +1039,12 @@ final class DrivePulseAppControllerTests: XCTestCase {
             deviceDiscovery: StubExternalDeviceDiscovery(results: [[unmountedDevice, mountedDevice]])
         )
 
-        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
-        XCTAssertEqual(controller.selectedPanelDevice?.id, mountedDevice.id)
-        XCTAssertEqual(controller.selectedPanelDeviceID, mountedDevice.id)
+        XCTAssertEqual(controller.panelDevices.map(\.id), [unmountedDevice.id, mountedDevice.id])
+        XCTAssertEqual(controller.selectedPanelDevice?.id, unmountedDevice.id)
+        XCTAssertEqual(controller.selectedPanelDeviceID, unmountedDevice.id)
         XCTAssertEqual(
             controller.selectedFooterActions.map(\.kind),
-            [.openInFinder, .eject, .openDiskUtility, .quit]
+            [.openDiskUtility, .quit]
         )
     }
 
@@ -1606,6 +1606,30 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(maxConcurrentInvocations, 2)
     }
 
+    func testLiveSystemProfilerProviderCoalescesConcurrentBootstrapFetches() async {
+        let runner = OverlappingSystemProfilerRunner()
+        let provider = LiveSystemProfilerProvider(dataTypeRunner: runner.run)
+        let firstFetch = Task { await provider.fetchIfNeeded() }
+
+        await runner.waitUntilInvocationCount(is: 3)
+        let secondFetch = Task { await provider.fetchIfNeeded() }
+        for _ in 0..<10 { await Task.yield() }
+        let coalescedInvocationCount = await runner.invocationCount()
+        XCTAssertEqual(coalescedInvocationCount, 3)
+
+        await runner.resumeBatch(
+            invocationIndices: [0, 1, 2],
+            serialNumber: "SERIAL",
+            slot: "Slot",
+            thunderboltDeviceName: "Enclosure"
+        )
+        await firstFetch.value
+        await secondFetch.value
+
+        let finalInvocationCount = await runner.invocationCount()
+        XCTAssertEqual(finalInvocationCount, 3)
+    }
+
     func testLiveSystemProfilerProviderKeepsNewestCacheWhenRefreshesOverlap() async {
         let runner = OverlappingSystemProfilerRunner()
         let provider = LiveSystemProfilerProvider(dataTypeRunner: runner.run)
@@ -1619,6 +1643,14 @@ final class DrivePulseAppControllerTests: XCTestCase {
             await provider.refresh()
         }
 
+        await runner.resumeBatch(
+            invocationIndices: [0, 1, 2],
+            serialNumber: "SERIAL-OLD",
+            slot: "Slot-Old",
+            thunderboltDeviceName: "Enclosure Old"
+        )
+        await firstRefresh.value
+
         await runner.waitUntilInvocationCount(is: 6)
         await runner.resumeBatch(
             invocationIndices: [3, 4, 5],
@@ -1631,14 +1663,6 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21", modelName: nil)?.serialNumber, "SERIAL-NEW")
         XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-NEW")?.slot, "Slot-New")
         XCTAssertEqual(provider.thunderboltInfo()?.deviceName, "Enclosure New")
-
-        await runner.resumeBatch(
-            invocationIndices: [0, 1, 2],
-            serialNumber: "SERIAL-OLD",
-            slot: "Slot-Old",
-            thunderboltDeviceName: "Enclosure Old"
-        )
-        await firstRefresh.value
 
         XCTAssertEqual(provider.nvmeInfo(forBSDName: "disk21", modelName: nil)?.serialNumber, "SERIAL-NEW")
         XCTAssertEqual(provider.pciInfo(forNVMeSerialNumber: "SERIAL-NEW")?.slot, "Slot-New")
@@ -3153,6 +3177,10 @@ private actor OverlappingSystemProfilerRunner {
         while invocationCountValue < expectedCount {
             await Task.yield()
         }
+    }
+
+    func invocationCount() -> Int {
+        invocationCountValue
     }
 
     func resumeBatch(

@@ -44,11 +44,17 @@ protocol EjectTargetSnapshotProviding: Sendable {
 }
 
 struct LiveEjectTargetSnapshotProvider: EjectTargetSnapshotProviding {
+    private let mapper: ExternalDeviceDiscoveryMapper
+
+    init(mapper: ExternalDeviceDiscoveryMapper = ExternalDeviceDiscoveryMapper()) {
+        self.mapper = mapper
+    }
+
     func currentMedia() async throws -> [EjectMediaSnapshot] {
         guard let session = DASessionCreate(kCFAllocatorDefault) else { return [] }
 
         let records = DiskDiscoveryEnumerator(session: session).records()
-        let devices = ExternalDeviceDiscoveryMapper().map(records)
+        let devices = mapper.map(records)
         let devicesByBSDName = Dictionary(uniqueKeysWithValues: devices.map { ($0.physicalStoreBSDName, $0) })
         let childNamesByParent = Dictionary(grouping: records, by: \DiskDiscoveryRecord.parentBSDName)
 

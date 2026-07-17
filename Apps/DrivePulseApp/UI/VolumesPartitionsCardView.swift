@@ -114,7 +114,9 @@ struct VolumesPartitionsCardView: View {
         guard let bytes else { return PanelDisplayValue.missing }
         let base = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         guard let total, total > 0 else { return base }
-        let pct = Int((Double(bytes) / Double(total) * 100).rounded())
+        let ratio = Double(bytes) / Double(total)
+        guard ratio.isFinite else { return base }
+        let pct = Int(min(max((ratio * 100).rounded(), 0), 100))
         return "\(base) (\(pct)%)"
     }
 

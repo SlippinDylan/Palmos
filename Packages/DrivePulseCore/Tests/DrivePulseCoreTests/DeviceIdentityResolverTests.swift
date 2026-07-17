@@ -2,6 +2,30 @@ import XCTest
 @testable import DrivePulseCore
 
 final class DeviceIdentityResolverTests: XCTestCase {
+    func testIdentityEvidenceUsesPersistentMediaUUIDFirst() {
+        let evidence = DeviceIdentityEvidence(
+            mediaUUID: "  ABCD-1234  ",
+            registryEntryID: 42,
+            sessionID: "session"
+        )
+
+        XCTAssertEqual(
+            evidence.deviceID(for: "disk9"),
+            DeviceID(rawValue: "session:session:media:abcd-1234")
+        )
+    }
+
+    func testRegistryEntryIDProducesSessionScopedIdentity() {
+        let evidence = DeviceIdentityEvidence(registryEntryID: 42)
+
+        XCTAssertEqual(
+            evidence.deviceID(for: "disk9"),
+            DeviceID(
+                rawValue: "session:\(DeviceIdentityResolver.processSessionID):registry:2a"
+            )
+        )
+    }
+
     func testResolverRejectsInternalAppleSiliconStore() {
         let descriptor = ExternalDeviceDescriptor(
             deviceInternal: true,

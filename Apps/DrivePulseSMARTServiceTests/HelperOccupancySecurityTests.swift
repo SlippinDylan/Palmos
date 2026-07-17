@@ -2,6 +2,55 @@ import Foundation
 import XCTest
 
 final class HelperOccupancySecurityTests: XCTestCase {
+    func testSMARTRequestAndPayloadLimitsRejectOversizedMessages() throws {
+        let oversizedRequest = SMARTReadRequest(
+            physicalDeviceBSDName: "disk4",
+            deviceProtocol: nil,
+            deviceModel: String(repeating: "x", count: SMARTXPCLimits.requestBytes)
+        )
+        XCTAssertThrowsError(try DrivePulseXPCMessages.encodeSMARTReadRequest(oversizedRequest))
+
+        let invalidRequestID = SMARTReadRequest(
+            physicalDeviceBSDName: "disk4",
+            deviceProtocol: nil,
+            deviceModel: nil,
+            requestID: "not-a-uuid"
+        )
+        XCTAssertThrowsError(try DrivePulseXPCMessages.encodeSMARTReadRequest(invalidRequestID))
+
+        let oversizedPayload = Data(repeating: 0, count: SMARTXPCLimits.payloadBytes + 1)
+        let response = SMARTReadCompletionResponse(
+            schemaVersion: SMARTReadCompletionResponse.currentSchemaVersion,
+            payload: oversizedPayload,
+            processDidExit: true
+        )
+        XCTAssertThrowsError(try DrivePulseXPCMessages.encodeSMARTReadCompletionResponse(response))
+        XCTAssertThrowsError(try DrivePulseXPCMessages.decodeSMARTReadCompletionResponse(from: oversizedPayload))
+    }
+
+    func testSmartctlRunnerRejectsUnsafeExecutableAndInvalidDevice() async {
+        let runner = SmartctlRunner(executableLocator: {
+            throw SmartctlRunner.RunnerError.executableUnavailable
+        })
+        do {
+            _ = try await runner.readSMARTData(for: "disk4s1", transportHint: .none)
+            XCTFail("Expected invalid BSD name")
+        } catch let error as SmartctlRunner.RunnerError {
+            XCTAssertEqual(error, .invalidDeviceName("disk4s1"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        do {
+            _ = try await runner.readSMARTData(for: "disk4", transportHint: .none)
+            XCTFail("Expected unavailable executable")
+        } catch let error as SmartctlRunner.RunnerError {
+            XCTAssertEqual(error, .executableUnavailable)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testValidatorRejectsMalformedWholeDiskNames() {
         for name in ["disk4s1", "/dev/disk4", "disk4;rm", ""] {
             XCTAssertThrowsError(try HelperOccupancyRequestValidator.validateBSDName(name))

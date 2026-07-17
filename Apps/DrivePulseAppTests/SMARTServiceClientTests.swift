@@ -222,6 +222,16 @@ final class SMARTServiceClientTests: XCTestCase {
         XCTAssertEqual(result, .degraded)
     }
 
+    func testHandshakeDecodeRejectsOversizedPayloadBeforeJSONDecode() {
+        let client = SMARTServiceClient()
+
+        XCTAssertThrowsError(
+            try client.evaluateHandshake(
+                from: Data(repeating: 0, count: SMARTXPCLimits.handshakeBytes + 1)
+            )
+        )
+    }
+
     func testHelperInspectionReportsNotInstalledWithoutOpeningXPCConnection() async {
         let handshakeFetchCount = LockedCounter()
         let client = SMARTServiceClient(
@@ -297,6 +307,17 @@ final class SMARTServiceClientTests: XCTestCase {
         )
 
         XCTAssertEqual(decodedRequest, request)
+    }
+
+    func testEncodeReadRequestRejectsOversizedModel() {
+        let client = SMARTServiceClient()
+        let request = SMARTReadRequest(
+            physicalDeviceBSDName: "disk42",
+            deviceProtocol: "USB",
+            deviceModel: String(repeating: "x", count: SMARTXPCLimits.requestBytes)
+        )
+
+        XCTAssertThrowsError(try client.encodeReadRequest(request))
     }
 
     func testRefreshSMARTMapsMissingHelperConnectionToHelperNotInstalled() async {

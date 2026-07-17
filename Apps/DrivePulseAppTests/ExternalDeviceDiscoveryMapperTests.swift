@@ -13,6 +13,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
                 isNetworkVolume: false,
                 isWholeMedia: true,
                 volumePath: nil,
+                mediaUUID: "field-ssd",
                 mediaName: "Field SSD",
                 deviceModel: "Portable SSD",
                 deviceVendor: "Acme",
@@ -59,7 +60,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
         let devices = ExternalDeviceDiscoveryMapper().map(records)
 
         XCTAssertEqual(devices.count, 1)
-        XCTAssertEqual(devices[0].id, DeviceID(rawValue: "disk21"))
+        XCTAssertTrue(devices[0].id.rawValue.hasSuffix(":media:field-ssd"))
         XCTAssertEqual(devices[0].displayName, "Acme Portable SSD")
         XCTAssertEqual(devices[0].transportName, "USB")
         XCTAssertEqual(
@@ -77,6 +78,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
                 isNetworkVolume: false,
                 isWholeMedia: true,
                 volumePath: nil,
+                mediaUUID: "archive",
                 mediaName: "Archive",
                 deviceModel: nil,
                 deviceVendor: nil,
@@ -91,7 +93,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
         let devices = ExternalDeviceDiscoveryMapper().map(records)
 
         XCTAssertEqual(devices.count, 1)
-        XCTAssertEqual(devices[0].id, DeviceID(rawValue: "disk84"))
+        XCTAssertTrue(devices[0].id.rawValue.hasSuffix(":media:archive"))
         XCTAssertEqual(devices[0].transportName, "Thunderbolt")
         XCTAssertEqual(devices[0].volumes, [])
     }
@@ -105,6 +107,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
                 isNetworkVolume: false,
                 isWholeMedia: true,
                 volumePath: nil,
+                mediaUUID: "capture",
                 mediaName: "Capture",
                 deviceModel: "Portable SSD",
                 deviceVendor: "Acme",
@@ -121,6 +124,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
                 isNetworkVolume: false,
                 isWholeMedia: true,
                 volumePath: nil,
+                mediaUUID: "archive-usb",
                 mediaName: "Archive",
                 deviceModel: "Portable SSD",
                 deviceVendor: "Acme",
@@ -151,11 +155,11 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
 
         let devices = ExternalDeviceDiscoveryMapper().map(records)
 
-        XCTAssertEqual(devices.first(where: { $0.id == DeviceID(rawValue: "disk21") })?.volumes, [
+        XCTAssertEqual(devices.first(where: { $0.physicalStoreBSDName == "disk21" })?.volumes, [
             MountedVolume(bsdName: "disk999s1", mountPoint: "/Volumes/Capture")
         ])
         XCTAssertEqual(
-            devices.first(where: { $0.id == DeviceID(rawValue: "disk50") })?.volumes,
+            devices.first(where: { $0.physicalStoreBSDName == "disk50" })?.volumes,
             [MountedVolume]()
         )
     }
@@ -170,6 +174,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
                 isNetworkVolume: false,
                 isWholeMedia: true,
                 volumePath: URL(fileURLWithPath: "/Volumes/CAMERA_CARD"),
+                mediaUUID: "camera-card",
                 mediaName: "CAMERA_CARD",
                 deviceModel: nil,
                 deviceVendor: "Acme",
@@ -184,7 +189,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
         let devices = ExternalDeviceDiscoveryMapper().map(records)
 
         XCTAssertEqual(devices.count, 1)
-        XCTAssertEqual(devices[0].id, DeviceID(rawValue: "disk3"))
+        XCTAssertTrue(devices[0].id.rawValue.hasSuffix(":media:camera-card"))
         XCTAssertEqual(devices[0].transportName, "SD")
         XCTAssertEqual(
             devices[0].volumes,
@@ -201,6 +206,7 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
                 isNetworkVolume: false,
                 isWholeMedia: true,
                 volumePath: nil,
+                mediaUUID: "backup",
                 mediaName: "Backup",
                 deviceModel: "Mini",
                 deviceVendor: "Acme",
@@ -252,5 +258,83 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
             devices[0].volumes,
             [MountedVolume(bsdName: "disk8s1", mountPoint: "/Volumes/Backup")]
         )
+    }
+
+    func testMapUsesMediaUUIDAcrossBSDNameReuse() {
+        let mapper = ExternalDeviceDiscoveryMapper()
+        let first = DiskDiscoveryRecord(
+            bsdName: "disk4", parentBSDName: nil, deviceInternal: false,
+            isNetworkVolume: false, isWholeMedia: true, volumePath: nil,
+            mediaUUID: "same-media", mediaName: "Disk", deviceModel: nil,
+            deviceVendor: nil, busName: "USB", deviceProtocol: "USB",
+            capacityBytes: 1_000, mediaContent: nil, ioClassPath: []
+        )
+        let replacement = DiskDiscoveryRecord(
+            bsdName: "disk8", parentBSDName: nil, deviceInternal: false,
+            isNetworkVolume: false, isWholeMedia: true, volumePath: nil,
+            mediaUUID: "same-media", mediaName: "Disk", deviceModel: nil,
+            deviceVendor: nil, busName: "USB", deviceProtocol: "USB",
+            capacityBytes: 1_000, mediaContent: nil, ioClassPath: []
+        )
+
+        let firstID = mapper.map([first]).first?.id
+        let replacementID = mapper.map([replacement]).first?.id
+        XCTAssertEqual(firstID, replacementID)
+        XCTAssertTrue(firstID?.rawValue.hasSuffix(":media:same-media") == true)
+    }
+
+    func testMapStartsNewSessionAfterMediaDisappears() {
+        let mapper = ExternalDeviceDiscoveryMapper()
+        let record = DiskDiscoveryRecord(
+            bsdName: "disk4", parentBSDName: nil, deviceInternal: false,
+            isNetworkVolume: false, isWholeMedia: true, volumePath: nil,
+            mediaUUID: "same-media", mediaName: "Disk", deviceModel: nil,
+            deviceVendor: nil, busName: "USB", deviceProtocol: "USB",
+            capacityBytes: 1_000, mediaContent: nil, ioClassPath: []
+        )
+
+        let firstID = mapper.map([record]).first?.id
+        XCTAssertTrue(mapper.map([]).isEmpty)
+        let reinsertedID = mapper.map([record]).first?.id
+
+        XCTAssertNotEqual(firstID, reinsertedID)
+    }
+
+    func testMapDoesNotUseBSDNameAsFallbackIdentity() {
+        let mapper = ExternalDeviceDiscoveryMapper()
+        let record = DiskDiscoveryRecord(
+            bsdName: "disk4", parentBSDName: nil, deviceInternal: false,
+            isNetworkVolume: false, isWholeMedia: true, volumePath: nil,
+            mediaName: "Disk", deviceModel: nil, deviceVendor: nil,
+            busName: "USB", deviceProtocol: "USB", capacityBytes: 1_000,
+            mediaContent: nil, ioClassPath: []
+        )
+
+        let id = mapper.map([record]).first?.id
+        XCTAssertNotEqual(id, DeviceID(rawValue: "disk4"))
+        XCTAssertTrue(id?.rawValue.hasPrefix("session:") == true)
+    }
+
+    func testMapDisambiguatesDuplicateMediaUUIDEvidence() {
+        let records = [
+            DiskDiscoveryRecord(
+                bsdName: "disk4", parentBSDName: nil, deviceInternal: false,
+                isNetworkVolume: false, isWholeMedia: true, volumePath: nil,
+                mediaUUID: "duplicate", mediaName: "One", deviceModel: nil,
+                deviceVendor: nil, busName: "USB", deviceProtocol: "USB",
+                capacityBytes: 1_000, mediaContent: nil, ioClassPath: []
+            ),
+            DiskDiscoveryRecord(
+                bsdName: "disk8", parentBSDName: nil, deviceInternal: false,
+                isNetworkVolume: false, isWholeMedia: true, volumePath: nil,
+                mediaUUID: "duplicate", mediaName: "Two", deviceModel: nil,
+                deviceVendor: nil, busName: "USB", deviceProtocol: "USB",
+                capacityBytes: 1_000, mediaContent: nil, ioClassPath: []
+            )
+        ]
+
+        let devices = ExternalDeviceDiscoveryMapper().map(records)
+        XCTAssertEqual(devices.count, 2)
+        XCTAssertEqual(Set(devices.map(\.id)).count, 2)
     }
 }

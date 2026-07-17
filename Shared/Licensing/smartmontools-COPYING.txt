@@ -1,19 +1,13 @@
-This file must contain the verbatim COPYING file from the exact smartmontools
-release bundled with DrivePulse.
+No `smartctl` binary is bundled in the current DrivePulse source or release
+pipeline. Consequently, this repository does not currently distribute the
+smartmontools work covered by a COPYING file.
 
-smartmontools is licensed under the GNU General Public License, version 2.
-The canonical upstream source is:
+If a release begins distributing a smartctl companion, replace this notice with
+the verbatim `COPYING` file from the exact smartmontools source release used to
+build that companion. The upstream project is available at:
 
   https://www.smartmontools.org
 
-Before distributing DrivePulse with a bundled smartctl binary, replace the
-contents of this file with the complete GPL v2 text from the corresponding
-upstream smartmontools release. The file to copy is named COPYING in the
-smartmontools source distribution.
-
-The GPL v2 full text is also available at:
-
-  https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
-
-Failure to include the license text with the distributed binary is a violation
-of the GPL v2 terms.
+Do not publish a release claiming bundled smartctl support while this notice is
+present. The corresponding release must include the complete applicable GPLv2
+license text and verify that the shipped binary and its license are present.

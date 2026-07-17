@@ -117,13 +117,18 @@ struct HealthSMARTCardView: View {
 
     private var totalWrittenString: String {
         guard let units = smartData?.dataUnitsWritten else { return PanelDisplayValue.missing }
-        let bytes = Int64(units) * 512_000
-        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        return byteCountString(forDataUnits: units)
     }
 
     private var totalReadString: String {
         guard let units = smartData?.dataUnitsRead else { return PanelDisplayValue.missing }
-        let bytes = Int64(units) * 512_000
+        return byteCountString(forDataUnits: units)
+    }
+
+    private func byteCountString(forDataUnits units: Int) -> String {
+        guard units >= 0 else { return PanelDisplayValue.missing }
+        let result = Int64(units).multipliedReportingOverflow(by: 512_000)
+        let bytes = result.overflow ? Int64.max : result.partialValue
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 

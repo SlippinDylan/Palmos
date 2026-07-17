@@ -43,14 +43,15 @@ struct DrivePulseAppState: Equatable {
 
     var selectedDevice: ExternalDevice? {
         guard let selectedDeviceID else {
-            return mountedDevices.first
+            return devices.first
         }
 
-        return mountedDevices.first(where: { $0.id == selectedDeviceID }) ?? mountedDevices.first
+        return devices.first(where: { $0.id == selectedDeviceID }) ?? devices.first
     }
 
-    /// Keeps raw topology in `devices` while preventing an unmounted physical
-    /// device from remaining as the panel's selected monitoring target.
+    /// Returns mounted devices for operations that specifically require a volume.
+    /// The picker and selected panel intentionally use `devices`, including
+    /// physically present media with no mounted volume.
     var mountedDevices: [ExternalDevice] {
         devices.filter { $0.volumes.isEmpty == false }
     }
@@ -171,15 +172,13 @@ struct DrivePulseAppState: Equatable {
         devices: [ExternalDevice],
         preferredID: DeviceID?
     ) -> DeviceID? {
-        let mountedDevices = devices.filter { $0.volumes.isEmpty == false }
-
         guard let preferredID else {
-            return mountedDevices.first?.id
+            return devices.first?.id
         }
 
-        return mountedDevices.contains(where: { $0.id == preferredID })
+        return devices.contains(where: { $0.id == preferredID })
             ? preferredID
-            : mountedDevices.first?.id
+            : devices.first?.id
     }
 
     private static func makeSMARTDetails(for device: ExternalDevice?) -> SMARTPresentationDetails? {

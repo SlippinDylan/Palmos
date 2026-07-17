@@ -19,8 +19,10 @@ struct ThroughputSample {
         self.timestamp = timestamp
         self.readBytes = readBytes
         self.writeBytes = writeBytes
-        self.readBytesPerSecond = Double(readBytes) / interval
-        self.writeBytesPerSecond = Double(writeBytes) / interval
+        let readRate = Double(readBytes) / interval
+        let writeRate = Double(writeBytes) / interval
+        self.readBytesPerSecond = readRate.isFinite ? readRate : Double.greatestFiniteMagnitude
+        self.writeBytesPerSecond = writeRate.isFinite ? writeRate : Double.greatestFiniteMagnitude
     }
 
     var readPoint: SpeedPoint {

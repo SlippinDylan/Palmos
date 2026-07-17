@@ -10,6 +10,19 @@ struct SMARTReadRequest: Codable, Equatable, Sendable {
     let physicalDeviceBSDName: String
     let deviceProtocol: String?
     let deviceModel: String?
+    let requestID: String?
+
+    init(
+        physicalDeviceBSDName: String,
+        deviceProtocol: String?,
+        deviceModel: String?,
+        requestID: String? = nil
+    ) {
+        self.physicalDeviceBSDName = physicalDeviceBSDName
+        self.deviceProtocol = deviceProtocol
+        self.deviceModel = deviceModel
+        self.requestID = requestID
+    }
 }
 
 struct SMARTReadCompletionResponse: Codable, Equatable, Sendable {
@@ -18,6 +31,13 @@ struct SMARTReadCompletionResponse: Codable, Equatable, Sendable {
     let schemaVersion: Int
     let payload: Data
     let processDidExit: Bool
+}
+
+enum SMARTXPCLimits {
+    static let requestBytes = 4 * 1024
+    static let payloadBytes = 2 * 1024 * 1024
+    static let responseBytes = 3 * 1024 * 1024
+    static let handshakeBytes = 4 * 1024
 }
 
 struct OccupancyScanRequest: Codable, Equatable, Sendable {
@@ -52,12 +72,14 @@ enum OccupancyXPCLimits {
 
 struct XPCFeatureCapabilities: Equatable, Sendable {
     let completionAwareSMART: Bool
+    let smartCancellation: Bool
     let occupancyScanning: Bool
 
     static func negotiated(helperContractMinor: Int) -> Self {
         let supportsMinorFour = helperContractMinor >= XPCContractVersion.completionAwareSMARTMinor
         return Self(
             completionAwareSMART: supportsMinorFour,
+            smartCancellation: helperContractMinor >= XPCContractVersion.smartCancellationMinor,
             occupancyScanning: supportsMinorFour
         )
     }
@@ -67,6 +89,7 @@ enum DrivePulseXPCMessageError: Error, Equatable {
     case unsupportedSchemaVersion(Int)
     case processExitUnacknowledged
     case encodedMessageTooLarge
+    case invalidSMARTMessage
     case invalidOccupancyMessage
 }
 
@@ -85,15 +108,28 @@ enum DrivePulseXPCMessages {
     static func encodeSMARTReadCompletionResponse(
         _ response: SMARTReadCompletionResponse
     ) throws -> Data {
-        try encode(response)
+        guard response.payload.count <= SMARTXPCLimits.payloadBytes else {
+            throw DrivePulseXPCMessageError.encodedMessageTooLarge
+        }
+        let data = try encode(response)
+        guard data.count <= SMARTXPCLimits.responseBytes else {
+            throw DrivePulseXPCMessageError.encodedMessageTooLarge
+        }
+        return data
     }
 
     static func decodeSMARTReadCompletionResponse(
         from data: Data
     ) throws -> SMARTReadCompletionResponse {
+        guard data.count <= SMARTXPCLimits.responseBytes else {
+            throw DrivePulseXPCMessageError.encodedMessageTooLarge
+        }
         let response = try decode(SMARTReadCompletionResponse.self, from: data)
         guard response.schemaVersion == SMARTReadCompletionResponse.currentSchemaVersion else {
             throw DrivePulseXPCMessageError.unsupportedSchemaVersion(response.schemaVersion)
+        }
+        guard response.payload.count <= SMARTXPCLimits.payloadBytes else {
+            throw DrivePulseXPCMessageError.encodedMessageTooLarge
         }
         return response
     }
@@ -114,6 +150,36 @@ enum DrivePulseXPCMessages {
             throw DrivePulseXPCMessageError.encodedMessageTooLarge
         }
         return data
+    }
+
+    static func encodeSMARTReadRequest(_ request: SMARTReadRequest) throws -> Data {
+        try validateSMARTReadRequest(request)
+        let data = try encode(request)
+        guard data.count <= SMARTXPCLimits.requestBytes else {
+            throw DrivePulseXPCMessageError.encodedMessageTooLarge
+        }
+        return data
+    }
+
+    static func decodeSMARTReadRequest(from data: Data) throws -> SMARTReadRequest {
+        guard data.count <= SMARTXPCLimits.requestBytes else {
+            throw DrivePulseXPCMessageError.encodedMessageTooLarge
+        }
+        let request = try decode(SMARTReadRequest.self, from: data)
+        try validateSMARTReadRequest(request)
+        return request
+    }
+
+    static func validateSMARTPayload(_ payload: Data) throws {
+        guard payload.isEmpty == false, payload.count <= SMARTXPCLimits.payloadBytes else {
+            throw DrivePulseXPCMessageError.encodedMessageTooLarge
+        }
+    }
+
+    private static func validateSMARTReadRequest(_ request: SMARTReadRequest) throws {
+        if let requestID = request.requestID, UUID(uuidString: requestID) == nil {
+            throw DrivePulseXPCMessageError.invalidSMARTMessage
+        }
     }
 
     static func decodeOccupancyRequest(from data: Data) throws -> OccupancyScanRequest {
