@@ -68,9 +68,12 @@ Run this checklist after each significant change to the app or helper. Every ite
 
 ## SMART — Helper Not Installed
 
+- [ ] Verify the release bundle with `Scripts/verify/code-signing.sh /path/to/DrivePulseApp.app <TEAM_ID>` before packaging
+- [ ] After copying a downloaded build to `/Applications`, run `sudo xattr -rd com.apple.quarantine /Applications/DrivePulseApp.app` once; do not extract or separately modify the embedded helper
 - [ ] Opening SMART section without the helper shows "Helper required" state
 - [ ] "Install Helper" button triggers the system credential prompt
 - [ ] After install, SMART data refreshes automatically
+- [ ] The installed helper and launchd plist exist only after the signed preflight and administrator authorization succeed
 
 ## SMART — Helper Installed
 

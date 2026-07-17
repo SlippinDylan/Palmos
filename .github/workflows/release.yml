@@ -51,6 +51,64 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install Apple Development certificate
+        if: steps.check.outputs.exists == 'false'
+        env:
+          APPLE_DEVELOPMENT_P12_BASE64: ${{ secrets.APPLE_DEVELOPMENT_P12_BASE64 }}
+          APPLE_DEVELOPMENT_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPMENT_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          : "${APPLE_DEVELOPMENT_P12_BASE64:?Missing APPLE_DEVELOPMENT_P12_BASE64 secret}"
+          : "${APPLE_DEVELOPMENT_P12_PASSWORD:?Missing APPLE_DEVELOPMENT_P12_PASSWORD secret}"
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/apple-development.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/drivepulse-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+
+          printf '%s' "$APPLE_DEVELOPMENT_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$APPLE_DEVELOPMENT_P12_PASSWORD" \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          SIGNING_IDENTITY="$(
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+              | awk '/Apple Development/ && !found { print $2; found = 1 }'
+          )"
+          SIGNING_TEAM_ID="$(
+            openssl pkcs12 \
+              -in "$CERTIFICATE_PATH" \
+              -clcerts \
+              -nokeys \
+              -passin env:APPLE_DEVELOPMENT_P12_PASSWORD 2>/dev/null \
+              | openssl x509 -noout -subject -nameopt RFC2253 \
+              | tr ',' '\n' \
+              | awk -F= '$1 == "OU" && !found { print $2; found = 1 }'
+          )"
+
+          if [[ -z "$SIGNING_IDENTITY" || -z "$SIGNING_TEAM_ID" ]]; then
+            echo "Unable to find an Apple Development identity and Team ID in the imported P12." >&2
+            exit 1
+          fi
+
+          {
+            echo "SIGNING_IDENTITY=$SIGNING_IDENTITY"
+            echo "SIGNING_KEYCHAIN_PATH=$KEYCHAIN_PATH"
+            echo "SIGNING_TEAM_ID=$SIGNING_TEAM_ID"
+          } >> "$GITHUB_ENV"
+
       - name: Build Release
         if: steps.check.outputs.exists == 'false'
         run: |
@@ -60,9 +118,18 @@ jobs:
             -scheme DrivePulseApp \
             -configuration Release \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+            DEVELOPMENT_TEAM="$SIGNING_TEAM_ID" \
+            TEAM_IDENTIFIER="$SIGNING_TEAM_ID" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN_PATH" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+
+      - name: Verify Release signatures
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/DrivePulseApp.app"
+          Scripts/verify/code-signing.sh "$APP_PATH" "$SIGNING_TEAM_ID"
 
       # ditto preserves symlinks and resource forks inside .app bundles.
       - name: Package
@@ -84,3 +151,11 @@ jobs:
             --title "DrivePulse ${{ steps.version.outputs.tag }}" \
             --generate-notes \
             "${{ steps.package.outputs.zip }}#${{ steps.package.outputs.name }}"
+
+      - name: Remove signing keychain
+        if: always()
+        run: |
+          if [[ -n "${SIGNING_KEYCHAIN_PATH:-}" && -f "$SIGNING_KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$SIGNING_KEYCHAIN_PATH" || true
+          fi
+          rm -f "$RUNNER_TEMP/apple-development.p12"

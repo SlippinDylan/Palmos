@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+@testable import DrivePulseApp
 
 final class Task7HelperPackagingTests: XCTestCase {
     private enum AppHostError: Error, Equatable {
@@ -33,6 +34,128 @@ final class Task7HelperPackagingTests: XCTestCase {
                 .notAppHosted(nonAppBundleURL.path)
             )
         }
+    }
+
+    func testHelperPreflightAcceptsMatchingDevelopmentSignatures() {
+        let app = HelperCodeSigningIdentity(
+            identifier: HelperInstallationPreflight.appIdentifier,
+            teamIdentifier: "TESTTEAM",
+            isAdHoc: false
+        )
+        let helper = HelperCodeSigningIdentity(
+            identifier: HelperInstallationPreflight.helperIdentifier,
+            teamIdentifier: "TESTTEAM",
+            isAdHoc: false
+        )
+
+        XCTAssertNoThrow(
+            try HelperInstallationPreflight.validateSigningRelationship(
+                app: app,
+                helper: helper
+            )
+        )
+    }
+
+    func testHelperPreflightRejectsAdHocAppBeforeAuthorization() {
+        let app = HelperCodeSigningIdentity(
+            identifier: HelperInstallationPreflight.appIdentifier,
+            teamIdentifier: nil,
+            isAdHoc: true
+        )
+        let helper = HelperCodeSigningIdentity(
+            identifier: HelperInstallationPreflight.helperIdentifier,
+            teamIdentifier: "TESTTEAM",
+            isAdHoc: false
+        )
+
+        XCTAssertThrowsError(
+            try HelperInstallationPreflight.validateSigningRelationship(
+                app: app,
+                helper: helper
+            )
+        ) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "DrivePulse is ad-hoc signed and cannot participate in the SMART Helper trust check. Sign both DrivePulse targets with the same Apple Development team."
+            )
+        }
+    }
+
+    func testHelperPreflightRejectsMismatchedSigningTeams() {
+        let app = HelperCodeSigningIdentity(
+            identifier: HelperInstallationPreflight.appIdentifier,
+            teamIdentifier: "APPTEAM",
+            isAdHoc: false
+        )
+        let helper = HelperCodeSigningIdentity(
+            identifier: HelperInstallationPreflight.helperIdentifier,
+            teamIdentifier: "HELPERTEAM",
+            isAdHoc: false
+        )
+
+        XCTAssertThrowsError(
+            try HelperInstallationPreflight.validateSigningRelationship(
+                app: app,
+                helper: helper
+            )
+        ) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "DrivePulse and the SMART Helper are signed by different teams (APPTEAM and HELPERTEAM). Sign both targets with the same Apple Development team."
+            )
+        }
+    }
+
+    func testHelperPreflightRejectsUnexpectedHelperIdentifier() {
+        let app = HelperCodeSigningIdentity(
+            identifier: HelperInstallationPreflight.appIdentifier,
+            teamIdentifier: "TESTTEAM",
+            isAdHoc: false
+        )
+        let helper = HelperCodeSigningIdentity(
+            identifier: "com.example.wrong-helper",
+            teamIdentifier: "TESTTEAM",
+            isAdHoc: false
+        )
+
+        XCTAssertThrowsError(
+            try HelperInstallationPreflight.validateSigningRelationship(
+                app: app,
+                helper: helper
+            )
+        ) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "SMART Helper has signing identifier com.example.wrong-helper, expected com.drivepulse.smartservice. Check the target bundle identifier and code-signing settings."
+            )
+        }
+    }
+
+    func testBlessFailureDescriptionPreservesNestedNSErrorDetails() {
+        let underlyingError = NSError(
+            domain: "com.drivepulse.signing",
+            code: 17,
+            userInfo: [NSLocalizedDescriptionKey: "Helper check rejected the app"]
+        )
+        let error = NSError(
+            domain: "CFErrorDomainLaunchd",
+            code: 4,
+            userInfo: [
+                NSLocalizedDescriptionKey: "The operation could not be completed",
+                "ServiceLabel": HelperInstallationPreflight.helperIdentifier,
+                NSUnderlyingErrorKey: underlyingError
+            ]
+        )
+
+        let message = HelperInstallationPreflight.detailedErrorMessage(for: error)
+
+        XCTAssertTrue(message.contains("SMJobBless failed."))
+        XCTAssertTrue(message.contains("Domain: CFErrorDomainLaunchd"))
+        XCTAssertTrue(message.contains("Code: 4"))
+        XCTAssertTrue(message.contains("ServiceLabel=com.drivepulse.smartservice"))
+        XCTAssertTrue(message.contains("Underlying error: [Domain: com.drivepulse.signing"))
+        XCTAssertTrue(message.contains("Code: 17"))
+        XCTAssertTrue(message.contains("Helper check rejected the app"))
     }
 
     private func appBundleURL() throws -> URL {
