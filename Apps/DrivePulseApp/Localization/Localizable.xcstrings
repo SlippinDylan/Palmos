@@ -2433,6 +2433,7 @@
       }
     },
     "Manage the privileged helper used for health and temperature monitoring." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
