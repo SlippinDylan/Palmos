@@ -29,12 +29,24 @@ jobs:
       - name: Read version
         id: version
         run: |
-          VERSION=$(xcodebuild \
+          set -euo pipefail
+
+          BUILD_SETTINGS="$(xcodebuild \
             -workspace DrivePulse.xcworkspace \
             -scheme DrivePulseApp \
-            -showBuildSettings 2>/dev/null \
-            | grep -m1 "MARKETING_VERSION" \
-            | awk '{print $3}')
+            -showBuildSettings 2>/dev/null)"
+          VERSION="$(
+            awk '
+              $1 == "MARKETING_VERSION" && $2 == "=" && !found {
+                print $3
+                found = 1
+              }
+            ' <<< "$BUILD_SETTINGS"
+          )"
+          if [[ -z "$VERSION" ]]; then
+            echo "Unable to read MARKETING_VERSION from Xcode build settings." >&2
+            exit 1
+          fi
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -62,9 +74,11 @@ jobs:
           : "${APPLE_DEVELOPMENT_P12_BASE64:?Missing APPLE_DEVELOPMENT_P12_BASE64 secret}"
           : "${APPLE_DEVELOPMENT_P12_PASSWORD:?Missing APPLE_DEVELOPMENT_P12_PASSWORD secret}"
 
+          umask 077
           CERTIFICATE_PATH="$RUNNER_TEMP/apple-development.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/drivepulse-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "SIGNING_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
           printf '%s' "$APPLE_DEVELOPMENT_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -83,16 +97,24 @@ jobs:
             "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
 
-          SIGNING_IDENTITY="$(
+          IDENTITY_LINE="$(
             security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
-              | awk '/Apple Development/ && !found { print $2; found = 1 }'
+              | awk '/"Apple Development:/ && !found { print; found = 1 }'
+          )"
+          if [[ -z "$IDENTITY_LINE" ]]; then
+            echo "Unable to find an Apple Development identity in the imported P12." >&2
+            exit 1
+          fi
+
+          SIGNING_IDENTITY="$(awk '{ print $2 }' <<< "$IDENTITY_LINE")"
+          SIGNING_CERTIFICATE_NAME="$(
+            sed -E 's/^[^"]*"([^"]+)".*$/\1/' <<< "$IDENTITY_LINE"
           )"
           SIGNING_TEAM_ID="$(
-            openssl pkcs12 \
-              -in "$CERTIFICATE_PATH" \
-              -clcerts \
-              -nokeys \
-              -passin env:APPLE_DEVELOPMENT_P12_PASSWORD 2>/dev/null \
+            security find-certificate \
+              -c "$SIGNING_CERTIFICATE_NAME" \
+              -p \
+              "$KEYCHAIN_PATH" \
               | openssl x509 -noout -subject -nameopt RFC2253 \
               | tr ',' '\n' \
               | awk -F= '$1 == "OU" && !found { print $2; found = 1 }'
@@ -105,9 +127,10 @@ jobs:
 
           {
             echo "SIGNING_IDENTITY=$SIGNING_IDENTITY"
-            echo "SIGNING_KEYCHAIN_PATH=$KEYCHAIN_PATH"
             echo "SIGNING_TEAM_ID=$SIGNING_TEAM_ID"
           } >> "$GITHUB_ENV"
+
+          rm -f "$CERTIFICATE_PATH"
 
       - name: Build Release
         if: steps.check.outputs.exists == 'false'
@@ -136,7 +159,13 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         id: package
         run: |
-          APP_PATH=$(find "$RUNNER_TEMP/DerivedData" -name "DrivePulseApp.app" -type d | head -1)
+          set -euo pipefail
+
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/DrivePulseApp.app"
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "Built app bundle not found at $APP_PATH." >&2
+            exit 1
+          fi
           ZIP_NAME="DrivePulse-${{ steps.version.outputs.tag }}.zip"
           ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/$ZIP_NAME"
           echo "zip=$RUNNER_TEMP/$ZIP_NAME" >> "$GITHUB_OUTPUT"

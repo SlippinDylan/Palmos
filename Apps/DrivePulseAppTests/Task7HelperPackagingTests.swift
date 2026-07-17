@@ -158,6 +158,63 @@ final class Task7HelperPackagingTests: XCTestCase {
         XCTAssertTrue(message.contains("Helper check rejected the app"))
     }
 
+    func testHelperPreflightPreservesEveryAuthorizedClientRequirement() throws {
+        let requirements = [
+            "identifier \"com.drivepulse.app\" and certificate leaf[subject.OU] = \"OLDTEAM\"",
+            "identifier \"com.drivepulse.app\" and certificate leaf[subject.OU] = \"NEWTEAM\""
+        ]
+        let plist: NSDictionary = ["SMAuthorizedClients": requirements]
+
+        XCTAssertEqual(
+            try HelperInstallationPreflight.helperClientRequirements(in: plist),
+            requirements
+        )
+    }
+
+    func testHelperPreflightRejectsEmptyAuthorizedClientRequirement() {
+        let plist: NSDictionary = ["SMAuthorizedClients": [""]]
+
+        XCTAssertThrowsError(
+            try HelperInstallationPreflight.helperClientRequirements(in: plist)
+        ) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "The SMART Helper does not contain an SMAuthorizedClients requirement. Rebuild the helper with the correct Info.plist."
+            )
+        }
+    }
+
+    func testHelperPreflightAcceptsAnyMatchingAuthorizedClientRequirement() {
+        let requirements = ["OLDTEAM", "NEWTEAM"]
+
+        let matchingRequirement = HelperInstallationPreflight.firstMatchingRequirement(
+            in: requirements,
+            matches: { $0 == "NEWTEAM" }
+        )
+
+        XCTAssertEqual(matchingRequirement, "NEWTEAM")
+    }
+
+    func testHelperPreflightReportsNoMatchingAuthorizedClientRequirement() {
+        let requirements = ["OLDTEAM", "NEWTEAM"]
+
+        let matchingRequirement = HelperInstallationPreflight.firstMatchingRequirement(
+            in: requirements,
+            matches: { $0 == "OTHERTEAM" }
+        )
+
+        XCTAssertNil(matchingRequirement)
+    }
+
+    func testDecodeHexdumpSupportsByteAndWordFormats() throws {
+        let expected = Data([0x3c, 0x3f, 0x78, 0x6d, 0x6c, 0x20, 0x76, 0x65])
+        let byteFormat = "0000000100001000\t3c 3f 78 6d 6c 20 76 65"
+        let wordFormat = "0000000100001000\t6d783f3c 6576206c"
+
+        XCTAssertEqual(try decodeHexdump(byteFormat), expected)
+        XCTAssertEqual(try decodeHexdump(wordFormat), expected)
+    }
+
     private func appBundleURL() throws -> URL {
         try appBundleURL(for: Bundle.main.bundleURL)
     }
@@ -180,9 +237,21 @@ final class Task7HelperPackagingTests: XCTestCase {
             "Expected embedded helper at \(helperURL.path)"
         )
 
+        var machineArchitecture = try runTool(
+            "/usr/bin/uname",
+            arguments: ["-m"]
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        if machineArchitecture == "arm64e" {
+            machineArchitecture = "arm64"
+        }
+
         let rawLaunchdSection = try runTool(
             "/usr/bin/otool",
-            arguments: ["-X", "-s", "__TEXT", "__launchd_plist", helperURL.path]
+            arguments: [
+                "-arch", machineArchitecture,
+                "-X", "-s", "__TEXT", "__launchd_plist",
+                helperURL.path
+            ]
         )
         let plistData = try decodeHexdump(rawLaunchdSection)
         let plist = try PropertyListSerialization.propertyList(
@@ -231,21 +300,29 @@ final class Task7HelperPackagingTests: XCTestCase {
             }
 
             for word in fields.dropFirst() where word.allSatisfy(\.isHexDigit) {
-                XCTAssertEqual(word.count, 8, "Expected 32-bit hex words from otool, got \(word)")
-
-                var byteStart = word.startIndex
-                var wordBytes: [UInt8] = []
-                while byteStart < word.endIndex {
-                    let byteEnd = word.index(byteStart, offsetBy: 2)
-                    let byteString = word[byteStart..<byteEnd]
-                    guard let byte = UInt8(byteString, radix: 16) else {
-                        throw XCTSkip("Failed to decode hexdump byte \(byteString)")
+                switch word.count {
+                case 2:
+                    guard let byte = UInt8(word, radix: 16) else {
+                        throw XCTSkip("Failed to decode hexdump byte \(word)")
                     }
-                    wordBytes.append(byte)
-                    byteStart = byteEnd
-                }
+                    bytes.append(byte)
+                case 8:
+                    var byteStart = word.startIndex
+                    var wordBytes: [UInt8] = []
+                    while byteStart < word.endIndex {
+                        let byteEnd = word.index(byteStart, offsetBy: 2)
+                        let byteString = word[byteStart..<byteEnd]
+                        guard let byte = UInt8(byteString, radix: 16) else {
+                            throw XCTSkip("Failed to decode hexdump byte \(byteString)")
+                        }
+                        wordBytes.append(byte)
+                        byteStart = byteEnd
+                    }
 
-                bytes.append(contentsOf: wordBytes.reversed())
+                    bytes.append(contentsOf: wordBytes.reversed())
+                default:
+                    continue
+                }
             }
         }
 

@@ -75,7 +75,7 @@ enum HelperInstallationPreflight {
             component: "SMART Helper"
         )
         let appRequirement = try appHelperRequirement(in: appPlist)
-        let helperRequirement = try helperClientRequirement(in: helperPlist)
+        let helperRequirements = try helperClientRequirements(in: helperPlist)
 
         try validate(
             requirement: appRequirement,
@@ -84,7 +84,7 @@ enum HelperInstallationPreflight {
             subjectCode: helperCode
         )
         try validate(
-            requirement: helperRequirement,
+            requirements: helperRequirements,
             owner: "SMART Helper",
             subject: "DrivePulse",
             subjectCode: appCode
@@ -239,17 +239,17 @@ enum HelperInstallationPreflight {
         return requirement
     }
 
-    private static func helperClientRequirement(in plist: NSDictionary) throws -> String {
+    static func helperClientRequirements(in plist: NSDictionary) throws -> [String] {
         guard
             let requirements = plist["SMAuthorizedClients"] as? [String],
-            let requirement = requirements.first,
-            !requirement.isEmpty
+            !requirements.isEmpty,
+            requirements.allSatisfy({ !$0.isEmpty })
         else {
             throw HelperInstallerError.preflightFailed(
                 "The SMART Helper does not contain an SMAuthorizedClients requirement. Rebuild the helper with the correct Info.plist."
             )
         }
-        return requirement
+        return requirements
     }
 
     private static func validate(
@@ -274,6 +274,48 @@ enum HelperInstallationPreflight {
                 status: validationStatus
             )
         }
+    }
+
+    private static func validate(
+        requirements sources: [String],
+        owner: String,
+        subject: String,
+        subjectCode: SecStaticCode
+    ) throws {
+        var lastStatus = errSecCSReqFailed
+        let matchingRequirement = try firstMatchingRequirement(in: sources) { source in
+            var requirement: SecRequirement?
+            let status = SecRequirementCreateWithString(source as CFString, [], &requirement)
+            guard status == errSecSuccess, let requirement else {
+                throw preflightError(
+                    "A code-signing requirement embedded in \(owner) is invalid.",
+                    status: status
+                )
+            }
+            let validationStatus = SecStaticCodeCheckValidity(subjectCode, [], requirement)
+            lastStatus = validationStatus
+            return validationStatus == errSecSuccess
+        }
+
+        guard matchingRequirement != nil else {
+            throw preflightError(
+                "The \(owner) signing requirements do not accept \(subject). Sign both targets with the same Apple Development team and verify their bundle identifiers.",
+                status: lastStatus
+            )
+        }
+    }
+
+    static func firstMatchingRequirement(
+        in sources: [String],
+        matches: (String) throws -> Bool
+    ) rethrows -> String? {
+        for source in sources {
+            if try matches(source) {
+                return source
+            }
+        }
+
+        return nil
     }
 
     private static func preflightError(_ message: String, status: OSStatus) -> HelperInstallerError {
@@ -324,10 +366,10 @@ final class HelperInstaller: HelperInstalling {
                 value: nil,
                 flags: 0
             )
-            var rights = withUnsafeMutablePointer(to: &blessRight) { pointer in
-                AuthorizationRights(count: 1, items: pointer)
+            return withUnsafeMutablePointer(to: &blessRight) { pointer in
+                var rights = AuthorizationRights(count: 1, items: pointer)
+                return AuthorizationCreate(&rights, nil, flags, &authorizationRef)
             }
-            return AuthorizationCreate(&rights, nil, flags, &authorizationRef)
         }
 
         guard status == errAuthorizationSuccess, let authorizationRef else {

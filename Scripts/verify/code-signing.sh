@@ -59,28 +59,64 @@ helper_requirement="$(
 )"
 
 helper_info_plist="$(mktemp)"
-trap 'rm -f "$helper_info_plist"' EXIT
-otool -X -s __TEXT __info_plist "$HELPER_PATH" \
+requirement_binary="$(mktemp)"
+trap 'rm -f "$helper_info_plist" "$requirement_binary"' EXIT
+machine_arch="$(uname -m)"
+case "$machine_arch" in
+  arm64|arm64e) machine_arch="arm64" ;;
+  x86_64) ;;
+  *) fail "unsupported verification architecture '$machine_arch'" ;;
+esac
+
+info_plist_hex="$(otool -arch "$machine_arch" -X -s __TEXT __info_plist "$HELPER_PATH" \
   | awk '
       {
         for (field_index = 2; field_index <= NF; field_index++) {
           word = $field_index
-          if (length(word) == 8 && word !~ /[^[:xdigit:]]/) {
+          if (length(word) == 2 && word !~ /[^[:xdigit:]]/) {
+            print word
+          } else if (length(word) == 8 && word !~ /[^[:xdigit:]]/) {
             print substr(word, 7, 2) substr(word, 5, 2) substr(word, 3, 2) substr(word, 1, 2)
           }
         }
       }
-    ' \
-  | xxd -r -p > "$helper_info_plist"
+    ')"
+[[ -n "$info_plist_hex" ]] || fail "embedded helper __info_plist section is empty"
+printf '%s\n' "$info_plist_hex" | xxd -r -p > "$helper_info_plist"
 plutil -lint "$helper_info_plist" >/dev/null
 
-app_requirement="$(
+app_requirements=()
+requirement_index=0
+while app_requirement="$(
   /usr/libexec/PlistBuddy \
-    -c 'Print :SMAuthorizedClients:0' \
-    "$helper_info_plist"
-)"
+    -c "Print :SMAuthorizedClients:$requirement_index" \
+    "$helper_info_plist" 2>/dev/null
+)"; do
+  [[ -n "$app_requirement" ]] \
+    || fail "helper contains an empty SMAuthorizedClients requirement at index $requirement_index"
+  app_requirements+=("$app_requirement")
+  ((requirement_index += 1))
+done
+
+((${#app_requirements[@]} > 0)) \
+  || fail "helper does not contain an SMAuthorizedClients requirement"
+
+for app_requirement in "${app_requirements[@]}"; do
+  csreq -r "=$app_requirement" -b "$requirement_binary" >/dev/null 2>&1 \
+    || fail "helper contains an invalid SMAuthorizedClients requirement"
+done
 
 codesign --verify --strict -R="$helper_requirement" "$HELPER_PATH"
-codesign --verify --strict -R="$app_requirement" "$APP_PATH"
+
+app_requirement_matched=false
+for app_requirement in "${app_requirements[@]}"; do
+  if codesign --verify --strict -R="$app_requirement" "$APP_PATH" >/dev/null 2>&1; then
+    app_requirement_matched=true
+    break
+  fi
+done
+
+[[ "$app_requirement_matched" == true ]] \
+  || fail "none of the helper SMAuthorizedClients requirements accepts the app"
 
 echo "Verified DrivePulse app and helper signatures for Team ID $app_team_id."
