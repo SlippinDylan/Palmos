@@ -62,7 +62,7 @@ struct HealthSMARTCardView: View {
     private var canRefresh: Bool {
         guard let snapshot = smartDetails?.snapshot else { return false }
         switch snapshot {
-        case .helperNotInstalled, .updateRequired:
+        case .companionUnavailable, .helperNotInstalled, .updateRequired:
             return false
         default:
             return true
@@ -125,10 +125,11 @@ struct HealthSMARTCardView: View {
         return byteCountString(forDataUnits: units)
     }
 
-    private func byteCountString(forDataUnits units: Int) -> String {
-        guard units >= 0 else { return PanelDisplayValue.missing }
-        let result = Int64(units).multipliedReportingOverflow(by: 512_000)
-        let bytes = result.overflow ? Int64.max : result.partialValue
+    private func byteCountString(forDataUnits units: UInt64) -> String {
+        let maxUnits = UInt64(Int64.max / 512_000)
+        let bytes = units > maxUnits
+            ? Int64.max
+            : Int64(units) * 512_000
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 

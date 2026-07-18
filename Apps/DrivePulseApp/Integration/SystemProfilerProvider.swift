@@ -29,7 +29,8 @@ enum SubprocessRunner {
         executable: String,
         arguments: [String],
         maxOutputBytes: Int = defaultMaxOutputBytes,
-        timeout: Duration = defaultTimeout
+        timeout: Duration = defaultTimeout,
+        processPrepared: (@Sendable () -> Void)? = nil
     ) async -> Data? {
         guard maxOutputBytes > 0 else { return nil }
         let processBox = ProcessBox()
@@ -44,6 +45,7 @@ enum SubprocessRunner {
                 process.arguments = arguments
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
+                processPrepared?()
 
                 do {
                     try process.run()
@@ -156,7 +158,7 @@ private extension Duration {
     }
 }
 
-private final class ProcessBox: @unchecked Sendable {
+final class ProcessBox: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
     private var wasCancelled = false
@@ -179,7 +181,7 @@ private final class ProcessBox: @unchecked Sendable {
 
     func processDidStart(_ process: Process) {
         let shouldTerminate = lock.withLock { wasCancelled && self.process === process }
-        if shouldTerminate, process.isRunning { process.terminate() }
+        if shouldTerminate { terminateAndEscalate() }
     }
 
     func terminate() {
@@ -190,17 +192,23 @@ private final class ProcessBox: @unchecked Sendable {
     }
 
     func terminateAndEscalate() {
-        let pid: pid_t? = lock.withLock {
+        let runningProcess: Process? = lock.withLock {
             wasCancelled = true
             guard let process, process.isRunning else { return nil }
             process.terminate()
-            return process.processIdentifier
+            return process
         }
-        guard let pid else { return }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(250)) {
-            if kill(pid, 0) == 0 {
-                _ = kill(pid, SIGKILL)
-            }
+        guard let runningProcess else { return }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(250)) { [weak self, weak runningProcess] in
+            guard let self, let runningProcess else { return }
+            self.killIfStillRunning(runningProcess)
+        }
+    }
+
+    private func killIfStillRunning(_ expectedProcess: Process) {
+        lock.withLock {
+            guard process === expectedProcess, expectedProcess.isRunning else { return }
+            _ = kill(expectedProcess.processIdentifier, SIGKILL)
         }
     }
 }
@@ -263,6 +271,7 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
     private let dataTypeRunner: @Sendable (String) async -> Data?
     private let deviceIOTracker: DeviceIOTracker?
     private let cacheTTL: TimeInterval
+    private let now: @Sendable () -> Date
 
     func usesDeviceIOTracker(_ tracker: DeviceIOTracker) -> Bool {
         deviceIOTracker === tracker
@@ -271,15 +280,17 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
     init(
         dataTypeRunner: @escaping @Sendable (String) async -> Data? = LiveSystemProfilerProvider.runSystemProfiler,
         deviceIOTracker: DeviceIOTracker? = nil,
-        cacheTTL: TimeInterval = 300
+        cacheTTL: TimeInterval = 300,
+        now: @escaping @Sendable () -> Date = { .now }
     ) {
         self.dataTypeRunner = dataTypeRunner
         self.deviceIOTracker = deviceIOTracker
         self.cacheTTL = max(cacheTTL, 0)
+        self.now = now
     }
 
     func fetchIfNeeded() async {
-        guard cacheBox.hasFreshValue(maxAge: cacheTTL) == false else { return }
+        guard cacheBox.hasFreshValue(maxAge: cacheTTL, now: now()) == false else { return }
         guard await fetchGate.acquire() else {
             _ = await fetchGate.waitUntilIdle()
             return
@@ -287,7 +298,7 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
         let generation = await requestCoordinator.beginRequest()
         let cache = await fetchCache()
         if let cache, await requestCoordinator.isLatest(generation) {
-            cacheBox.set(cache)
+            cacheBox.set(cache, at: now())
         }
         await fetchGate.release()
     }
@@ -304,7 +315,7 @@ final class LiveSystemProfilerProvider: SystemProfilerProviding, @unchecked Send
 
         await fetchGate.release()
         guard await requestCoordinator.isLatest(generation) else { return }
-        cacheBox.set(cache)
+        cacheBox.set(cache, at: now())
     }
 
     func nvmeInfo(forBSDName bsdName: String, modelName: String?) -> NVMeInfo? {
@@ -449,11 +460,11 @@ private final class SystemProfilerCacheBox: @unchecked Sendable {
         return now.timeIntervalSince(updatedAt) <= maxAge
     }
 
-    func set(_ newValue: SystemProfilerCache) {
+    func set(_ newValue: SystemProfilerCache, at date: Date = .now) {
         lock.lock()
         defer { lock.unlock() }
         value = newValue
-        updatedAt = .now
+        updatedAt = date
     }
 }
 

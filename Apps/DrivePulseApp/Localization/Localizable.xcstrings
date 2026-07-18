@@ -3678,6 +3678,50 @@
     "SMART" : {
 
     },
+    "SMART Companion Unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART Companion Unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART 伴随工具不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART 隨附工具無法使用"
+          }
+        }
+      }
+    },
+    "SMART companion unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART companion unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART 伴随工具不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART 隨附工具無法使用"
+          }
+        }
+      }
+    },
     "SMART Helper" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3690,6 +3734,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SMART Helper"
+          }
+        }
+      }
+    },
+    "SMART Monitoring Update Required" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART Monitoring Update Required"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART 监控需要更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART 監控需要更新"
           }
         }
       }
@@ -3713,6 +3779,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SMART 狀態"
+          }
+        }
+      }
+    },
+    "Safe-eject checks remain available, but SMART monitoring requires a helper update." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Safe-eject checks remain available, but SMART monitoring requires a helper update."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全弹出检查仍可用，但 SMART 监控需要更新 Helper。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全退出檢查仍可用，但 SMART 監控需要更新 Helper。"
+          }
+        }
+      }
+    },
+    "The helper is installed, but its trusted smartctl companion is unavailable." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The helper is installed, but its trusted smartctl companion is unavailable."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helper 已安装，但其受信任的 smartctl 伴随工具不可用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helper 已安裝，但其受信任的 smartctl 隨附工具無法使用。"
           }
         }
       }
@@ -4177,6 +4287,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "需要更新"
+          }
+        }
+      }
+    },
+    "Update the privileged SMART helper to restore its trusted smartctl companion." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update the privileged SMART helper to restore its trusted smartctl companion."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新特权 SMART Helper，以恢复其受信任的 smartctl 伴随工具。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新特權 SMART Helper，以恢復其受信任的 smartctl 隨附工具。"
           }
         }
       }

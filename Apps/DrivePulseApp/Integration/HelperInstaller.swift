@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Security
 import ServiceManagement
 
@@ -37,10 +38,15 @@ struct HelperCodeSigningIdentity: Equatable, Sendable {
 enum HelperInstallationPreflight {
     static let appIdentifier = "com.drivepulse.app"
     static let helperIdentifier = "com.drivepulse.smartservice"
+    static let companionIdentifier = "com.drivepulse.smartservice.smartctl"
+    static let companionRelativePath =
+        "Contents/Library/Helpers/com.drivepulse.smartservice.smartctl"
+    static let companionRequirementInfoKey = "DrivePulseSmartctlCompanionRequirement"
+    static let companionDigestInfoKey = "DrivePulseSmartctlCompanionSHA256"
 
     private static let adHocSignatureFlag: UInt32 = 0x0002
 
-    static func validate() throws {
+    static func validate() throws -> URL {
         let appURL = Bundle.main.bundleURL.standardizedFileURL
         guard appURL.pathExtension == "app" else {
             throw HelperInstallerError.preflightFailed(
@@ -56,15 +62,35 @@ enum HelperInstallationPreflight {
                 "The SMART Helper is missing from \(helperURL.path). Rebuild or reinstall DrivePulse before trying again."
             )
         }
+        let companionURL = appURL.appendingPathComponent(companionRelativePath)
+        guard FileManager.default.fileExists(atPath: companionURL.path) else {
+            throw HelperInstallerError.preflightFailed(
+                "The signed smartctl companion is missing from \(companionURL.path). Rebuild or reinstall DrivePulse before trying again."
+            )
+        }
 
         let appCode = try staticCode(at: appURL, component: "DrivePulse")
         let helperCode = try staticCode(at: helperURL, component: "SMART Helper")
+        let companionCode = try staticCode(at: companionURL, component: "smartctl companion")
         let appSigning = try signingIdentity(for: appCode, component: "DrivePulse")
         let helperSigning = try signingIdentity(for: helperCode, component: "SMART Helper")
+        let companionSigning = try signingIdentity(
+            for: companionCode,
+            component: "smartctl companion"
+        )
 
         try validateSigningRelationship(app: appSigning, helper: helperSigning)
+        try validateCompanionSigningRelationship(
+            helper: helperSigning,
+            companion: companionSigning
+        )
         try validateSignature(appCode, component: "DrivePulse")
         try validateSignature(helperCode, component: "SMART Helper")
+        try validateSignature(
+            companionCode,
+            component: "smartctl companion",
+            flags: SecCSFlags(rawValue: kSecCSCheckAllArchitectures)
+        )
 
         let appPlist = try propertyList(
             at: appURL.appendingPathComponent("Contents/Info.plist"),
@@ -76,6 +102,8 @@ enum HelperInstallationPreflight {
         )
         let appRequirement = try appHelperRequirement(in: appPlist)
         let helperRequirements = try helperClientRequirements(in: helperPlist)
+        let companionRequirement = try companionRequirement(in: helperPlist)
+        let companionDigest = try companionDigest(in: helperPlist)
 
         try validate(
             requirement: appRequirement,
@@ -89,6 +117,20 @@ enum HelperInstallationPreflight {
             subject: "DrivePulse",
             subjectCode: appCode
         )
+        try validate(
+            requirement: companionRequirement,
+            owner: "SMART Helper",
+            subject: "smartctl companion",
+            subjectCode: companionCode,
+            flags: SecCSFlags(rawValue: kSecCSCheckAllArchitectures)
+        )
+        let companionData = try HelperInstaller.readBundledCompanion(at: companionURL)
+        guard sha256Hex(companionData) == companionDigest else {
+            throw HelperInstallerError.preflightFailed(
+                "The bundled smartctl companion does not match the digest embedded in the signed SMART Helper. Rebuild or reinstall DrivePulse before authorizing the update."
+            )
+        }
+        return companionURL
     }
 
     static func validateSigningRelationship(
@@ -109,6 +151,27 @@ enum HelperInstallationPreflight {
         guard app.teamIdentifier == helper.teamIdentifier else {
             throw HelperInstallerError.preflightFailed(
                 "DrivePulse and the SMART Helper are signed by different teams (\(app.teamIdentifier ?? "missing") and \(helper.teamIdentifier ?? "missing")). Sign both targets with the same Apple Development team."
+            )
+        }
+    }
+
+    static func validateCompanionSigningRelationship(
+        helper: HelperCodeSigningIdentity,
+        companion: HelperCodeSigningIdentity
+    ) throws {
+        try validate(
+            helper,
+            component: "SMART Helper",
+            expectedIdentifier: helperIdentifier
+        )
+        try validate(
+            companion,
+            component: "smartctl companion",
+            expectedIdentifier: companionIdentifier
+        )
+        guard helper.teamIdentifier == companion.teamIdentifier else {
+            throw HelperInstallerError.preflightFailed(
+                "The SMART Helper and smartctl companion are signed by different teams (\(helper.teamIdentifier ?? "missing") and \(companion.teamIdentifier ?? "missing")). Sign both components with the same Apple Development team."
             )
         }
     }
@@ -188,8 +251,12 @@ enum HelperInstallationPreflight {
         return rawInformation
     }
 
-    private static func validateSignature(_ code: SecStaticCode, component: String) throws {
-        let status = SecStaticCodeCheckValidity(code, [], nil)
+    private static func validateSignature(
+        _ code: SecStaticCode,
+        component: String,
+        flags: SecCSFlags = []
+    ) throws {
+        let status = SecStaticCodeCheckValidity(code, flags, nil)
         guard status == errSecSuccess else {
             throw preflightError(
                 "The \(component) code signature is invalid or has been modified after signing.",
@@ -252,11 +319,39 @@ enum HelperInstallationPreflight {
         return requirements
     }
 
+    static func companionRequirement(in plist: NSDictionary) throws -> String {
+        guard let requirement = plist[companionRequirementInfoKey] as? String,
+              requirement.isEmpty == false else {
+            throw HelperInstallerError.preflightFailed(
+                "The SMART Helper does not contain a smartctl companion signing requirement. Rebuild the helper with the correct embedded Info.plist."
+            )
+        }
+        return requirement
+    }
+
+    static func companionDigest(in plist: NSDictionary) throws -> String {
+        guard let digest = plist[companionDigestInfoKey] as? String,
+              digest.count == 64,
+              digest.allSatisfy({ character in
+                  ("0"..."9").contains(String(character)) || ("a"..."f").contains(String(character))
+              }) else {
+            throw HelperInstallerError.preflightFailed(
+                "The SMART Helper does not contain a valid smartctl companion SHA-256 digest. Rebuild the helper with the signed release digest."
+            )
+        }
+        return digest
+    }
+
+    static func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     private static func validate(
         requirement source: String,
         owner: String,
         subject: String,
-        subjectCode: SecStaticCode
+        subjectCode: SecStaticCode,
+        flags: SecCSFlags = []
     ) throws {
         var requirement: SecRequirement?
         let parseStatus = SecRequirementCreateWithString(source as CFString, [], &requirement)
@@ -267,7 +362,7 @@ enum HelperInstallationPreflight {
             )
         }
 
-        let validationStatus = SecStaticCodeCheckValidity(subjectCode, [], requirement)
+        let validationStatus = SecStaticCodeCheckValidity(subjectCode, flags, requirement)
         guard validationStatus == errSecSuccess else {
             throw preflightError(
                 "The \(owner) signing requirement does not accept \(subject). Sign both targets with the same Apple Development team and verify their bundle identifiers.",
@@ -348,14 +443,67 @@ enum HelperInstallationPreflight {
 }
 
 final class HelperInstaller: HelperInstalling {
+    private let provisioner: any SMARTCompanionProvisioning
+    private let prepareInstallation: @Sendable () throws -> Data
+
+    init(
+        provisioner: any SMARTCompanionProvisioning = SMARTServiceClient(),
+        prepareInstallation: (@Sendable () throws -> Data)? = nil
+    ) {
+        self.provisioner = provisioner
+        self.prepareInstallation = prepareInstallation ?? Self.prepareInstallation
+    }
+
     func install() async throws {
-        try await Task.detached(priority: .userInitiated) {
-            try Self.installPrivilegedHelper()
+        let prepareInstallation = self.prepareInstallation
+        let binary = try await Task.detached(priority: .userInitiated) {
+            try prepareInstallation()
         }.value
+        try Task.checkCancellation()
+        try await provisioner.installBundledSmartctlCompanion(binary)
+    }
+
+    private static func prepareInstallation() throws -> Data {
+        let companionURL = try HelperInstallationPreflight.validate()
+        let binary = try readBundledCompanion(at: companionURL)
+        try installPrivilegedHelper()
+        return binary
+    }
+
+    static func readBundledCompanion(at url: URL) throws -> Data {
+        do {
+            let values = try url.resourceValues(forKeys: [
+                .fileSizeKey,
+                .isRegularFileKey,
+                .isSymbolicLinkKey
+            ])
+            guard values.isRegularFile == true,
+                  values.isSymbolicLink != true,
+                  let fileSize = values.fileSize,
+                  fileSize > 0,
+                  fileSize <= SMARTCompanionXPCLimits.binaryBytes else {
+                throw HelperInstallerError.preflightFailed(
+                    "The bundled smartctl companion is not a regular executable within the \(SMARTCompanionXPCLimits.binaryBytes)-byte installation limit."
+                )
+            }
+            let data = try Data(contentsOf: url, options: .mappedIfSafe)
+            guard data.isEmpty == false,
+                  data.count <= SMARTCompanionXPCLimits.binaryBytes else {
+                throw HelperInstallerError.preflightFailed(
+                    "The bundled smartctl companion exceeds the installation size limit."
+                )
+            }
+            return data
+        } catch let error as HelperInstallerError {
+            throw error
+        } catch {
+            throw HelperInstallerError.preflightFailed(
+                "The bundled smartctl companion could not be read at \(url.path): \(error.localizedDescription)"
+            )
+        }
     }
 
     private static func installPrivilegedHelper() throws {
-        try HelperInstallationPreflight.validate()
 
         var authorizationRef: AuthorizationRef?
         let flags: AuthorizationFlags = [.interactionAllowed, .extendRights, .preAuthorize]

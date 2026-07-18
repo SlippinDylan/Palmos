@@ -25,21 +25,25 @@ actor DeviceIOTracker {
     private struct Operation: Sendable {
         let deviceID: DeviceID?
         let physicalBSDName: String?
+        let topologyGeneration: Int
         let kind: Kind
     }
 
     private struct SMARTSafetyScope: Hashable, Sendable {
         let deviceID: DeviceID?
         let physicalBSDName: String
+        let topologyGeneration: Int
     }
 
     private var operations: [Token: Operation] = [:]
     private var unobservableSMARTScopes: Set<SMARTSafetyScope> = []
     private var targetBarriers: [String: Int] = [:]
+    private var latestSafetyPruneGeneration = Int.min
 
     func beginTargetOperation(
         deviceID: DeviceID? = nil,
         physicalBSDName: String,
+        topologyGeneration: Int = 0,
         kind: Kind
     ) throws -> Token {
         guard physicalBSDName.isEmpty == false else { throw RegistrationError.invalidScope }
@@ -50,6 +54,7 @@ actor DeviceIOTracker {
         operations[token] = Operation(
             deviceID: deviceID,
             physicalBSDName: physicalBSDName,
+            topologyGeneration: topologyGeneration,
             kind: kind
         )
         return token
@@ -57,12 +62,34 @@ actor DeviceIOTracker {
 
     func beginGlobalOperation(kind: Kind) throws -> Token {
         let token = Token(id: UUID())
-        operations[token] = Operation(deviceID: nil, physicalBSDName: nil, kind: kind)
+        operations[token] = Operation(
+            deviceID: nil,
+            physicalBSDName: nil,
+            topologyGeneration: 0,
+            kind: kind
+        )
         return token
     }
 
     func finish(_ token: Token) {
         operations.removeValue(forKey: token)
+    }
+
+    func finishSMARTCompletion(
+        _ token: Token,
+        clearsPriorSafetyScopes: Bool
+    ) {
+        guard let operation = operations.removeValue(forKey: token),
+              operation.kind == .smart,
+              let physicalBSDName = operation.physicalBSDName else {
+            return
+        }
+        guard clearsPriorSafetyScopes else { return }
+        unobservableSMARTScopes = unobservableSMARTScopes.filter { scope in
+            scope.deviceID != operation.deviceID
+                || scope.physicalBSDName != physicalBSDName
+                || scope.topologyGeneration > operation.topologyGeneration
+        }
     }
 
     func markSMARTCompletionUnobservable(_ token: Token) {
@@ -73,7 +100,8 @@ actor DeviceIOTracker {
         }
         unobservableSMARTScopes.insert(.init(
             deviceID: operation.deviceID,
-            physicalBSDName: physicalBSDName
+            physicalBSDName: physicalBSDName,
+            topologyGeneration: operation.topologyGeneration
         ))
     }
 
@@ -85,9 +113,13 @@ actor DeviceIOTracker {
     /// can block a later, unrelated eject workflow.
     func pruneSMARTSafetyScopes(
         liveDeviceIDs: Set<DeviceID>,
-        livePhysicalBSDNames: Set<String>
+        livePhysicalBSDNames: Set<String>,
+        topologyGeneration: Int
     ) {
+        guard topologyGeneration >= latestSafetyPruneGeneration else { return }
+        latestSafetyPruneGeneration = topologyGeneration
         unobservableSMARTScopes = unobservableSMARTScopes.filter { scope in
+            if scope.topologyGeneration > topologyGeneration { return true }
             guard livePhysicalBSDNames.contains(scope.physicalBSDName) else {
                 return false
             }
@@ -120,16 +152,10 @@ actor DeviceIOTracker {
         deviceID: DeviceID,
         physicalBSDName: String
     ) -> TargetQuiescence {
-        let exactScope = SMARTSafetyScope(
-            deviceID: deviceID,
-            physicalBSDName: physicalBSDName
-        )
-        let legacyScope = SMARTSafetyScope(
-            deviceID: nil,
-            physicalBSDName: physicalBSDName
-        )
-        if unobservableSMARTScopes.contains(exactScope)
-            || unobservableSMARTScopes.contains(legacyScope) {
+        if unobservableSMARTScopes.contains(where: { scope in
+            scope.physicalBSDName == physicalBSDName
+                && (scope.deviceID == deviceID || scope.deviceID == nil)
+        }) {
             return .smartCompletionUnobservable
         }
         let hasRelevantOperation = operations.values.contains { operation in

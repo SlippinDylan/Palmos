@@ -2,15 +2,17 @@ import XCTest
 @testable import DrivePulseCore
 
 final class XPCCompatibilityPolicyTests: XCTestCase {
-    private let appContractMajor = 1
-    private let appContractMinor = 3
+    /// Representative values keep this pure policy test independent from the
+    /// production XPC schema version owned by Shared/XPCContracts.
+    private let representativeMajor = 1
+    private let representativeMinor = 6
 
     func testMatchingHandshakeContractFieldsAreCompatible() {
         let result = evaluateCompatibility(
             helperHandshake: HelperHandshakePayload(
                 helperVersion: "1.3.0",
-                contractMajor: 1,
-                contractMinor: 3
+                contractMajor: representativeMajor,
+                contractMinor: representativeMinor
             )
         )
 
@@ -21,8 +23,8 @@ final class XPCCompatibilityPolicyTests: XCTestCase {
         let result = evaluateCompatibility(
             helperHandshake: HelperHandshakePayload(
                 helperVersion: "1.4.0",
-                contractMajor: 1,
-                contractMinor: 4
+                contractMajor: representativeMajor,
+                contractMinor: representativeMinor + 1
             )
         )
 
@@ -33,7 +35,7 @@ final class XPCCompatibilityPolicyTests: XCTestCase {
         let result = evaluateCompatibility(
             helperHandshake: HelperHandshakePayload(
                 helperVersion: "2.0.0",
-                contractMajor: 2,
+                contractMajor: representativeMajor + 1,
                 contractMinor: 0
             )
         )
@@ -45,7 +47,7 @@ final class XPCCompatibilityPolicyTests: XCTestCase {
         let result = evaluateCompatibility(
             helperHandshake: HelperHandshakePayload(
                 helperVersion: "0.9.0",
-                contractMajor: 0,
+                contractMajor: representativeMajor - 1,
                 contractMinor: 9
             )
         )
@@ -57,7 +59,7 @@ final class XPCCompatibilityPolicyTests: XCTestCase {
         let result = evaluateCompatibility(
             helperHandshake: HelperHandshakePayload(
                 helperVersion: "1.1.0",
-                contractMajor: 1,
+                contractMajor: representativeMajor,
                 contractMinor: 1
             )
         )
@@ -69,8 +71,8 @@ final class XPCCompatibilityPolicyTests: XCTestCase {
         let result = evaluateCompatibility(
             helperHandshake: HelperHandshakePayload(
                 helperVersion: "9.9.9",
-                contractMajor: 1,
-                contractMinor: 1
+                contractMajor: representativeMajor,
+                contractMinor: representativeMinor - 1
             )
         )
 
@@ -86,9 +88,9 @@ final class XPCCompatibilityPolicyTests: XCTestCase {
 
     private func evaluate(appMinor: Int, helperMinor: Int) -> XPCCompatibilityResult {
         XPCCompatibilityPolicy.evaluate(
-            appMajor: appContractMajor,
+            appMajor: representativeMajor,
             appMinor: appMinor,
-            helperMajor: appContractMajor,
+            helperMajor: representativeMajor,
             helperMinor: helperMinor
         )
     }
@@ -97,8 +99,8 @@ final class XPCCompatibilityPolicyTests: XCTestCase {
         helperHandshake: HelperHandshakePayload
     ) -> XPCCompatibilityResult {
         XPCCompatibilityPolicy.evaluate(
-            appMajor: appContractMajor,
-            appMinor: appContractMinor,
+            appMajor: representativeMajor,
+            appMinor: representativeMinor,
             helperMajor: helperHandshake.contractMajor,
             helperMinor: helperHandshake.contractMinor
         )

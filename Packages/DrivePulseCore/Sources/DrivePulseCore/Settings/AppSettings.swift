@@ -12,7 +12,15 @@ public enum TemperatureUnit: String, CaseIterable, Identifiable, Sendable {
         case .celsius:
             return "\(celsiusValue) °C"
         case .fahrenheit:
-            let fahrenheitValue = Int((Double(celsiusValue) * 9 / 5 + 32).rounded())
+            let converted = (Double(celsiusValue) * 9 / 5 + 32).rounded()
+            let fahrenheitValue: Int
+            if converted >= Double(Int.max) {
+                fahrenheitValue = .max
+            } else if converted <= Double(Int.min) {
+                fahrenheitValue = .min
+            } else {
+                fahrenheitValue = Int(converted)
+            }
             return "\(fahrenheitValue) °F"
         }
     }

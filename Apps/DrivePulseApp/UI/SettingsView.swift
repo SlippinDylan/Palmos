@@ -219,7 +219,7 @@ private struct SMARTHelperSettingsSection: View {
                 .frame(width: 78, height: 28)
         case .notInstalled:
             SettingsGlassButton("Install", prominent: true, action: onInstallOrUpdate)
-        case .updateRequired:
+        case .companionUnavailable, .monitoringUpdateRequired, .updateRequired:
             SettingsGlassButton("Update", prominent: true, action: onInstallOrUpdate)
         case .installed:
             SettingsGlassButton("Check Again", action: onRefreshStatus)
@@ -260,6 +260,20 @@ struct SMARTHelperSettingsPresentation {
                 message: "Health and temperature monitoring is available.",
                 systemImage: "checkmark.shield.fill",
                 color: .green
+            )
+        case .companionUnavailable:
+            self.init(
+                title: "SMART Companion Unavailable",
+                message: "The helper is installed, but its trusted smartctl companion is unavailable.",
+                systemImage: "exclamationmark.shield.fill",
+                color: .orange
+            )
+        case .monitoringUpdateRequired:
+            self.init(
+                title: "SMART Monitoring Update Required",
+                message: "Safe-eject checks remain available, but SMART monitoring requires a helper update.",
+                systemImage: "arrow.triangle.2.circlepath.circle",
+                color: .orange
             )
         case .updateRequired:
             self.init(

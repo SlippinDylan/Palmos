@@ -141,7 +141,7 @@ final class DrivePulseAppStateTests: XCTestCase {
                 transportName: "USB 3.2",
                 capacityBytes: 2_000,
                 smartSnapshot: .notRequested,
-                sessionMetrics: .empty(historyLimit: 0),
+                sessionMetrics: .empty(),
                 physicalStoreBSDName: "disk8",
                 apfsContainerBSDName: "disk8s3",
                 volumes: [MountedVolume(bsdName: "disk8s3")]

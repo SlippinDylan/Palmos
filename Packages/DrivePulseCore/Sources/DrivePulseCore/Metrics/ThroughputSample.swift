@@ -8,21 +8,20 @@ struct ThroughputSample {
     let writeBytesPerSecond: Double
 
     init(readBytes: Int64, writeBytes: Int64, at timestamp: Date, previousTimestamp: Date?) {
-        let interval: TimeInterval
+        let rates: (read: Double, write: Double)
         if let previousTimestamp {
             let measuredInterval = timestamp.timeIntervalSince(previousTimestamp)
-            interval = measuredInterval > 0 ? measuredInterval : 1
+            let interval = measuredInterval > 0 ? measuredInterval : 1
+            rates = (Double(readBytes) / interval, Double(writeBytes) / interval)
         } else {
-            interval = 1
+            rates = (0, 0)
         }
 
         self.timestamp = timestamp
         self.readBytes = readBytes
         self.writeBytes = writeBytes
-        let readRate = Double(readBytes) / interval
-        let writeRate = Double(writeBytes) / interval
-        self.readBytesPerSecond = readRate.isFinite ? readRate : Double.greatestFiniteMagnitude
-        self.writeBytesPerSecond = writeRate.isFinite ? writeRate : Double.greatestFiniteMagnitude
+        self.readBytesPerSecond = rates.read.isFinite ? rates.read : Double.greatestFiniteMagnitude
+        self.writeBytesPerSecond = rates.write.isFinite ? rates.write : Double.greatestFiniteMagnitude
     }
 
     var readPoint: SpeedPoint {

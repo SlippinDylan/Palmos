@@ -5,6 +5,7 @@ public enum SmartSnapshot: Equatable, Sendable {
     case loading
     case available(SmartData)
     case unsupported
+    case companionUnavailable
     case helperNotInstalled
     case permissionRequired
     case transportUnsupported

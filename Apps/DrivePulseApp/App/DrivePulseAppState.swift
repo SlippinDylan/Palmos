@@ -19,7 +19,7 @@ struct SMARTPresentationDetails: Equatable {
         switch snapshot {
         case .helperNotInstalled:
             return .installHelper
-        case .updateRequired:
+        case .companionUnavailable, .updateRequired:
             return .updateHelper
         default:
             return .refresh

@@ -41,6 +41,7 @@ final class DrivePulseAppController: ObservableObject {
 
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
     private var discoveryLoadTask: Task<Void, Never>?
+    private var discoveryObservationDebounceTask: Task<Void, Never>?
     private var observationEnrichmentTask: Task<Void, Never>?
     private var apfsRetryTask: Task<Void, Never>?
     private var systemProfilerEnrichmentTask: Task<Void, Never>?
@@ -55,6 +56,7 @@ final class DrivePulseAppController: ObservableObject {
     private var isSystemActionInFlight = false
     private var isEjectWorkflowActive = false
     private var ejectWorkflowDeviceID: DeviceID?
+    private var suppressedEjectDeviceIDs: Set<DeviceID> = []
     private var lastDiskCountersByDeviceID: [DeviceID: DiskIOCounters] = [:]
     private var sessionMetricsReducersByDeviceID: [DeviceID: SessionMetricsReducer] = [:]
     private let deviceDiscovery: any ExternalDeviceDiscovering
@@ -70,6 +72,7 @@ final class DrivePulseAppController: ObservableObject {
     private let ejectSuccessFeedbackDuration: TimeInterval
     private let actionFailureFeedbackDuration: TimeInterval
     private let quitFeedbackDuration: TimeInterval
+    private let discoveryObservationDebounce: Duration
     private let quitHandler: @MainActor @Sendable () -> Void
 
     init(
@@ -91,6 +94,7 @@ final class DrivePulseAppController: ObservableObject {
         ejectSuccessFeedbackDuration: TimeInterval = 4.0,
         actionFailureFeedbackDuration: TimeInterval = 2.8,
         quitFeedbackDuration: TimeInterval = 0.75,
+        discoveryObservationDebounce: Duration = .milliseconds(75),
         quitHandler: @escaping @MainActor @Sendable () -> Void = {
             NSApplication.shared.terminate(nil)
         }
@@ -132,6 +136,7 @@ final class DrivePulseAppController: ObservableObject {
         self.ejectSuccessFeedbackDuration = ejectSuccessFeedbackDuration
         self.actionFailureFeedbackDuration = actionFailureFeedbackDuration
         self.quitFeedbackDuration = quitFeedbackDuration
+        self.discoveryObservationDebounce = discoveryObservationDebounce
         self.quitHandler = quitHandler
         self.state = state ?? DrivePulseAppState(
             devices: [],
@@ -155,6 +160,7 @@ final class DrivePulseAppController: ObservableObject {
 
     isolated deinit {
         discoveryLoadTask?.cancel()
+        discoveryObservationDebounceTask?.cancel()
         observationEnrichmentTask?.cancel()
         apfsRetryTask?.cancel()
         systemProfilerEnrichmentTask?.cancel()
@@ -211,7 +217,12 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     var selectedFooterActions: [SystemAction] {
-        SystemAction.footerActions(for: selectedPanelDevice)
+        SystemAction.footerActions(for: selectedPanelDevice).filter { action in
+            guard action.kind == .eject, let deviceID = selectedPanelDevice?.id else {
+                return true
+            }
+            return suppressedEjectDeviceIDs.contains(deviceID) == false
+        }
     }
 
     func perform(_ action: SystemAction) {
@@ -221,6 +232,7 @@ final class DrivePulseAppController: ObservableObject {
 
         if case .ejectPhysicalDevice = action.intent {
             guard let device = selectedPanelDevice else { return }
+            guard suppressedEjectDeviceIDs.contains(device.id) == false else { return }
             clearActionFeedback()
             ejectWorkflowDeviceID = device.id
             setEjectWorkflowActive(true)
@@ -304,7 +316,7 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     func refresh() {
-        loadDiscoveredDevices()
+        loadDiscoveredDevices(systemProfilerRefreshMode: .refresh)
     }
 
     func quit() {
@@ -330,6 +342,7 @@ final class DrivePulseAppController: ObservableObject {
         setEjectWorkflowActive(state.isActiveWorkflow)
         switch state {
         case .succeeded(let target):
+            suppressedEjectDeviceIDs.insert(target.deviceID)
             clearMountedVolumes(for: target.deviceID)
             ejectWorkflowDeviceID = nil
             presentActionFeedback(
@@ -340,6 +353,7 @@ final class DrivePulseAppController: ObservableObject {
             clearMountedVolumes(for: target.deviceID)
             ejectWorkflowDeviceID = nil
         case .disappeared(let target):
+            suppressedEjectDeviceIDs.insert(target.deviceID)
             ejectWorkflowDeviceID = nil
             presentActionFeedback(
                 EjectLocalization.disappearanceFeedback(target: target),
@@ -370,6 +384,8 @@ final class DrivePulseAppController: ObservableObject {
         // Enrichment tasks capture pre-eject snapshots. Letting one commit
         // after the terminal state would restore volumes that were just cleared.
         discoveryLoadTask?.cancel()
+        discoveryObservationDebounceTask?.cancel()
+        discoveryObservationDebounceTask = nil
         observationEnrichmentTask?.cancel()
         apfsRetryTask?.cancel()
         discoveryWriteGeneration += 1
@@ -411,6 +427,11 @@ final class DrivePulseAppController: ObservableObject {
             }
 
             guard let previousCounters = lastDiskCountersByDeviceID[device.id] else {
+                var reducer = sessionMetricsReducersByDeviceID[device.id]
+                    ?? SessionMetricsReducer(historyLimit: Self.throughputHistoryLimit)
+                reducer.ingest(readBytes: 0, writeBytes: 0, at: timestamp)
+                sessionMetricsReducersByDeviceID[device.id] = reducer
+                state.applySessionMetrics(reducer.metrics, for: device.id)
                 continue
             }
 
@@ -434,7 +455,9 @@ final class DrivePulseAppController: ObservableObject {
         }
     }
 
-    private func loadDiscoveredDevices() {
+    private func loadDiscoveredDevices(
+        systemProfilerRefreshMode: SystemProfilerRefreshMode = .fetchIfNeeded
+    ) {
         discoveryLoadTask?.cancel()
         observationEnrichmentTask?.cancel()
         apfsRetryTask?.cancel()
@@ -452,7 +475,7 @@ final class DrivePulseAppController: ObservableObject {
             let mergedDevices = self.mergeDevicesPreservingKnownContext(devices)
             // Show basic device list immediately; NVMe/TB/APFS enrichment follows
             self.applyDiscoveredDevices(mergedDevices, generation: generation)
-            self.scheduleSystemProfilerEnrichment(.fetchIfNeeded)
+            self.scheduleSystemProfilerEnrichment(systemProfilerRefreshMode)
             await diskUtilAPFSProvider.refresh(targets: mergedDevices.map {
                 APFSTopologyTarget(
                     physicalBSDName: $0.physicalStoreBSDName,
@@ -475,6 +498,24 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     private func applyObservedDevices(_ devices: [ExternalDevice]) {
+        discoveryObservationDebounceTask?.cancel()
+        let debounce = discoveryObservationDebounce
+        discoveryObservationDebounceTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: debounce)
+            } catch {
+                return
+            }
+            guard let self, Task.isCancelled == false else { return }
+            discoveryObservationDebounceTask = nil
+            applyCoalescedObservedDevices(devices)
+        }
+    }
+
+    private func applyCoalescedObservedDevices(_ devices: [ExternalDevice]) {
+        let existingDeviceIDs = Set(state.devices.map(\.id))
+        let containsNewDevice = devices.contains { existingDeviceIDs.contains($0.id) == false }
+        reconcileEjectSuppression(with: devices)
         observationEnrichmentTask?.cancel()
         apfsRetryTask?.cancel()
         discoveryWriteGeneration += 1
@@ -486,7 +527,7 @@ final class DrivePulseAppController: ObservableObject {
         pruneSamplingState()
         updateCapacityRefresher(from: mergedDevices)
         triggerInitialSMARTForNewDevices(mergedDevices)
-        scheduleSystemProfilerEnrichment(.refresh)
+        scheduleSystemProfilerEnrichment(containsNewDevice ? .refresh : .fetchIfNeeded)
         scheduleAPFSEnrichment(for: mergedDevices, generation: generation)
     }
 
@@ -531,6 +572,7 @@ final class DrivePulseAppController: ObservableObject {
             return
         }
 
+        reconcileEjectSuppression(with: devices)
         state.replaceDevices(devices)
         pruneSamplingState()
         updateCapacityRefresher(from: devices)
@@ -654,7 +696,10 @@ final class DrivePulseAppController: ObservableObject {
     private func mergeKnownContext(from existing: ExternalDevice, into incoming: ExternalDevice) -> ExternalDevice {
         var merged = incoming
 
-        if isGenericDisplayName(merged.displayName, for: merged.id) {
+        if isGenericDisplayName(
+            merged.displayName,
+            forPhysicalBSDName: merged.physicalStoreBSDName
+        ) {
             merged.displayName = existing.displayName
         }
         if shouldPrefer(existing.transportName, over: merged.transportName) {
@@ -690,8 +735,11 @@ final class DrivePulseAppController: ObservableObject {
         return merged
     }
 
-    private func isGenericDisplayName(_ displayName: String, for deviceID: DeviceID) -> Bool {
-        displayName == deviceID.rawValue.uppercased()
+    private func isGenericDisplayName(
+        _ displayName: String,
+        forPhysicalBSDName physicalBSDName: String
+    ) -> Bool {
+        displayName.caseInsensitiveCompare(physicalBSDName) == .orderedSame
     }
 
     private func shouldPrefer(_ existingTransportName: String, over incomingTransportName: String) -> Bool {
@@ -878,12 +926,16 @@ final class DrivePulseAppController: ObservableObject {
         }
 
         let generation = smartRefreshGenerationsByDeviceID[deviceID, default: 0] + 1
+        let topologyGeneration = discoveryWriteGeneration
         smartRefreshGenerationsByDeviceID[deviceID] = generation
 
         state.setSMARTRefreshing(for: deviceID)
         smartRefreshTasksByDeviceID[deviceID] = Task { @MainActor [weak self] in
             guard let self else { return }
-            let result = await smartService.refreshSMART(for: device)
+            let result = await smartService.refreshSMART(
+                for: device,
+                topologyGeneration: topologyGeneration
+            )
             guard Task.isCancelled == false,
                   smartRefreshGenerationsByDeviceID[deviceID] == generation else {
                 return
@@ -916,6 +968,13 @@ final class DrivePulseAppController: ObservableObject {
         case .transportUnsupported:
             smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
             state.applySMARTResult(for: deviceID, snapshot: .transportUnsupported, compatibility: nil)
+        case .companionUnavailable:
+            smartHelperManager.record(.companionUnavailable, authority: helperEvidenceAuthority)
+            state.applySMARTResult(
+                for: deviceID,
+                snapshot: .companionUnavailable,
+                compatibility: nil
+            )
         case .helperNotInstalled:
             smartHelperManager.record(.notInstalled, authority: helperEvidenceAuthority)
             state.applySMARTResult(for: deviceID, snapshot: .helperNotInstalled, compatibility: nil)
@@ -957,13 +1016,23 @@ final class DrivePulseAppController: ObservableObject {
         }
     }
 
+    private func reconcileEjectSuppression(with devices: [ExternalDevice]) {
+        let remountedDeviceIDs = Set(devices.compactMap { device in
+            device.volumes.isEmpty ? nil : device.id
+        })
+        suppressedEjectDeviceIDs.subtract(remountedDeviceIDs)
+    }
+
     private func pruneSamplingState() {
         let liveDeviceIDs = Set(state.devices.map(\.id))
         let livePhysicalBSDNames = Set(state.devices.map(\.physicalStoreBSDName))
+        suppressedEjectDeviceIDs.formIntersection(liveDeviceIDs)
+        let topologyGeneration = discoveryWriteGeneration
         Task {
             await deviceIOTracker.pruneSMARTSafetyScopes(
                 liveDeviceIDs: liveDeviceIDs,
-                livePhysicalBSDNames: livePhysicalBSDNames
+                livePhysicalBSDNames: livePhysicalBSDNames,
+                topologyGeneration: topologyGeneration
             )
         }
         let removedSMARTDeviceIDs = Set(smartRefreshTasksByDeviceID.keys).subtracting(liveDeviceIDs)

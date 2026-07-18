@@ -46,16 +46,25 @@ protocol EjectTargetSnapshotProviding: Sendable {
 struct LiveEjectTargetSnapshotProvider: EjectTargetSnapshotProviding {
     private let mapper: ExternalDeviceDiscoveryMapper
 
-    init(mapper: ExternalDeviceDiscoveryMapper = ExternalDeviceDiscoveryMapper()) {
+    init(mapper: ExternalDeviceDiscoveryMapper = ExternalDeviceDiscoveryMapper(
+        identityRegistry: .shared
+    )) {
         self.mapper = mapper
     }
 
     func currentMedia() async throws -> [EjectMediaSnapshot] {
         guard let session = DASessionCreate(kCFAllocatorDefault) else { return [] }
 
-        let records = DiskDiscoveryEnumerator(session: session).records()
+        return snapshots(from: DiskDiscoveryEnumerator(session: session).records())
+    }
+
+    func snapshots(from discoveredRecords: [DiskDiscoveryRecord]) -> [EjectMediaSnapshot] {
+        let records = mapper.canonicalRecords(from: discoveredRecords)
         let devices = mapper.map(records)
-        let devicesByBSDName = Dictionary(uniqueKeysWithValues: devices.map { ($0.physicalStoreBSDName, $0) })
+        let devicesByBSDName = Dictionary(
+            devices.map { ($0.physicalStoreBSDName, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
         let childNamesByParent = Dictionary(grouping: records, by: \DiskDiscoveryRecord.parentBSDName)
 
         return records.map { record in

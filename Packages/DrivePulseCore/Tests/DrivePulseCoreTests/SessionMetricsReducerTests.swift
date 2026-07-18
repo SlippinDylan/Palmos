@@ -3,7 +3,7 @@ import XCTest
 
 final class SessionMetricsReducerTests: XCTestCase {
     func testNewSessionStartsWithZeroedCumulativeCounters() {
-        let metrics = DeviceSessionMetrics.empty(historyLimit: 60)
+        let metrics = DeviceSessionMetrics.empty()
         XCTAssertEqual(metrics.cumulativeReadBytes, 0)
         XCTAssertEqual(metrics.cumulativeWriteBytes, 0)
         XCTAssertEqual(metrics.readHistory.count, 0)
@@ -74,6 +74,19 @@ final class SessionMetricsReducerTests: XCTestCase {
 
         XCTAssertEqual(reducer.metrics.currentReadBytesPerSecond, 100, accuracy: 0.0001)
         XCTAssertEqual(reducer.metrics.currentWriteBytesPerSecond, 300, accuracy: 0.0001)
+    }
+
+    func testFirstSampleDoesNotAssumeOneSecondInterval() {
+        var reducer = SessionMetricsReducer(historyLimit: 3)
+
+        reducer.ingest(
+            readBytes: 100,
+            writeBytes: 50,
+            at: Date(timeIntervalSince1970: 2_000)
+        )
+
+        XCTAssertEqual(reducer.metrics.currentReadBytesPerSecond, 0)
+        XCTAssertEqual(reducer.metrics.currentWriteBytesPerSecond, 0)
     }
 
     func testSessionReducerCopiesWithoutSharingState() {

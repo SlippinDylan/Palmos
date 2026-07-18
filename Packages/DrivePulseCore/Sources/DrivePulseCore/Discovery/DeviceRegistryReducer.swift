@@ -1,3 +1,5 @@
+import Foundation
+
 public struct DeviceRegistryReducer {
     public init() {}
 
@@ -7,8 +9,11 @@ public struct DeviceRegistryReducer {
         volumes: [MountedVolume],
         identityEvidence: DeviceIdentityEvidence? = nil
     ) -> ExternalDevice {
+        let resolvedEvidence = identityEvidence ?? DeviceIdentityEvidence(
+            sessionID: UUID().uuidString
+        )
         var device = ExternalDevice(
-            id: (identityEvidence ?? DeviceIdentityEvidence()).deviceID(for: physicalBSDName),
+            id: resolvedEvidence.deviceID(for: physicalBSDName),
             displayName: physicalBSDName.uppercased(),
             transportName: "External",
             physicalStoreBSDName: physicalBSDName,

@@ -42,6 +42,23 @@ final class EjectTargetResolverTests: XCTestCase {
         XCTAssertEqual(result.scope.mountURLs, Set([URL(fileURLWithPath: "/Volumes/EFI"), URL(fileURLWithPath: "/Volumes/Backup")]))
     }
 
+    func testResolvesUnmountedExternalPhysicalDevice() async throws {
+        let deviceID = DeviceID(rawValue: "session:test:registry:1b59")
+        let adapter = SnapshotAdapter(snapshots: [[
+            media(id: deviceID.rawValue, bsd: "disk9", registryID: 7_001)
+        ]])
+
+        let result = try await LiveEjectTargetResolver(snapshotProvider: adapter).resolve(
+            deviceID: deviceID,
+            displayName: "Unmounted SSD",
+            topologyGeneration: 1
+        )
+
+        XCTAssertEqual(result.target.physicalBSDName, "disk9")
+        XCTAssertEqual(result.scope.mountURLs, [])
+        XCTAssertEqual(result.scope.deviceNodes, Set(["/dev/disk9", "/dev/rdisk9"]))
+    }
+
     func testRejectsDisappearedAndInternalMedia() async {
         let missing = LiveEjectTargetResolver(snapshotProvider: SnapshotAdapter(snapshots: [[]]))
         await XCTAssertThrowsErrorAsync(try await missing.resolve(deviceID: DeviceID(rawValue: "serial:x"), displayName: "X", topologyGeneration: 1))
@@ -84,6 +101,54 @@ final class EjectTargetResolverTests: XCTestCase {
             await XCTAssertThrowsErrorAsync(try await resolver.revalidate(resolved.target), equals: expectedError)
         }
     }
+
+    func testConflictingChildRecordsCannotPolluteProviderScope() async throws {
+        let provider = LiveEjectTargetSnapshotProvider(
+            mapper: ExternalDeviceDiscoveryMapper(
+                identityRegistry: DeviceIdentitySessionRegistry()
+            )
+        )
+        let records = [
+            discoveryRecord(
+                bsdName: "disk4",
+                parentBSDName: nil,
+                isWholeMedia: true,
+                registryEntryID: 4_001,
+                mediaUUID: "media-a"
+            ),
+            discoveryRecord(
+                bsdName: "disk4s1",
+                parentBSDName: "disk4",
+                wholeDiskBSDName: "disk4",
+                volumePath: URL(fileURLWithPath: "/Volumes/First"),
+                mediaName: "First"
+            ),
+            discoveryRecord(
+                bsdName: "disk4s1",
+                parentBSDName: "disk4",
+                wholeDiskBSDName: "disk4",
+                volumePath: URL(fileURLWithPath: "/Volumes/Second"),
+                mediaName: "Second"
+            )
+        ]
+
+        let snapshots = provider.snapshots(from: records)
+        let root = try XCTUnwrap(snapshots.first(where: { $0.bsdName == "disk4" }))
+        let deviceID = try XCTUnwrap(root.deviceID)
+        XCTAssertEqual(snapshots.map(\.bsdName), ["disk4"])
+        XCTAssertTrue(root.childBSDNames.isEmpty)
+
+        let resolved = try await LiveEjectTargetResolver(
+            snapshotProvider: SnapshotAdapter(snapshots: [snapshots])
+        ).resolve(
+            deviceID: deviceID,
+            displayName: "External Disk",
+            topologyGeneration: 1
+        )
+
+        XCTAssertEqual(resolved.scope.deviceNodes, Set(["/dev/disk4", "/dev/rdisk4"]))
+        XCTAssertTrue(resolved.scope.mountURLs.isEmpty)
+    }
 }
 
 private actor SnapshotAdapter: EjectTargetSnapshotProviding {
@@ -107,6 +172,38 @@ private func node(bsd: String, children: [String] = [], mount: String? = nil) ->
     EjectMediaSnapshot(deviceID: nil, bsdName: bsd, registryEntryID: nil, isWhole: false,
                        isExternal: false, isEjectable: false, childBSDNames: children,
                        apfsContainerBSDName: nil, mountURL: mount.map(URL.init(fileURLWithPath:)))
+}
+
+private func discoveryRecord(
+    bsdName: String,
+    parentBSDName: String?,
+    wholeDiskBSDName: String? = nil,
+    isWholeMedia: Bool = false,
+    registryEntryID: UInt64? = nil,
+    mediaUUID: String? = nil,
+    volumePath: URL? = nil,
+    mediaName: String = "Disk"
+) -> DiskDiscoveryRecord {
+    DiskDiscoveryRecord(
+        bsdName: bsdName,
+        parentBSDName: parentBSDName,
+        wholeDiskBSDName: wholeDiskBSDName,
+        deviceInternal: false,
+        isNetworkVolume: false,
+        isWholeMedia: isWholeMedia,
+        isEjectable: true,
+        registryEntryID: registryEntryID,
+        volumePath: volumePath,
+        mediaUUID: mediaUUID,
+        mediaName: mediaName,
+        deviceModel: nil,
+        deviceVendor: nil,
+        busName: "USB",
+        deviceProtocol: "USB",
+        capacityBytes: 1_000,
+        mediaContent: nil,
+        ioClassPath: ["IOMedia"]
+    )
 }
 
 private func XCTAssertThrowsErrorAsync<T>(

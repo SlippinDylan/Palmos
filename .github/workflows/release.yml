@@ -25,6 +25,39 @@ jobs:
       - name: Select Xcode 26.4
         run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
 
+      - name: Run DrivePulseCore Tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace DrivePulse.xcworkspace \
+            -scheme DrivePulseCore \
+            -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Run DrivePulseApp Tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace DrivePulse.xcworkspace \
+            -scheme DrivePulseApp \
+            -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Run DrivePulseSMARTService Tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace DrivePulse.xcworkspace \
+            -scheme DrivePulseSMARTServiceTests \
+            -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
       # Read MARKETING_VERSION from Xcode build settings — single source of truth.
       - name: Read version
         id: version
@@ -132,6 +165,37 @@ jobs:
 
           rm -f "$CERTIFICATE_PATH"
 
+      - name: Build and sign smartctl companion
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+
+          COMPANION_OUTPUT_DIRECTORY="$RUNNER_TEMP/smartctl-companion"
+          Scripts/build-smartctl-companion.sh "$COMPANION_OUTPUT_DIRECTORY"
+
+          COMPANION_PATH="$COMPANION_OUTPUT_DIRECTORY/smartctl"
+          SOURCE_ARCHIVE="$COMPANION_OUTPUT_DIRECTORY/smartmontools-7.5.tar.gz"
+          cmp \
+            "$COMPANION_OUTPUT_DIRECTORY/smartmontools-COPYING.txt" \
+            Shared/Licensing/smartmontools-COPYING.txt
+
+          codesign \
+            --force \
+            --sign "$SIGNING_IDENTITY" \
+            --identifier com.drivepulse.smartservice.smartctl \
+            --options runtime \
+            --timestamp=none \
+            --keychain "$SIGNING_KEYCHAIN_PATH" \
+            "$COMPANION_PATH"
+          codesign --verify --strict --verbose=2 "$COMPANION_PATH"
+          COMPANION_SHA256="$(shasum -a 256 "$COMPANION_PATH" | awk '{ print $1 }')"
+
+          {
+            echo "SMARTCTL_COMPANION_PATH=$COMPANION_PATH"
+            echo "SMARTCTL_COMPANION_SHA256=$COMPANION_SHA256"
+            echo "SMARTMONTOOLS_SOURCE_ARCHIVE=$SOURCE_ARCHIVE"
+          } >> "$GITHUB_ENV"
+
       - name: Build Release
         if: steps.check.outputs.exists == 'false'
         run: |
@@ -146,7 +210,10 @@ jobs:
             DEVELOPMENT_TEAM="$SIGNING_TEAM_ID" \
             TEAM_IDENTIFIER="$SIGNING_TEAM_ID" \
             OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN_PATH" \
-            PROVISIONING_PROFILE_SPECIFIER=""
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            SMARTCTL_COMPANION_PATH="$SMARTCTL_COMPANION_PATH" \
+            SMARTCTL_COMPANION_SHA256="$SMARTCTL_COMPANION_SHA256" \
+            SMARTCTL_COMPANION_REQUIRED=YES
 
       - name: Verify Release signatures
         if: steps.check.outputs.exists == 'false'
@@ -179,7 +246,8 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             --title "DrivePulse ${{ steps.version.outputs.tag }}" \
             --generate-notes \
-            "${{ steps.package.outputs.zip }}#${{ steps.package.outputs.name }}"
+            "${{ steps.package.outputs.zip }}#${{ steps.package.outputs.name }}" \
+            "$SMARTMONTOOLS_SOURCE_ARCHIVE#smartmontools-7.5.tar.gz"
 
       - name: Remove signing keychain
         if: always()

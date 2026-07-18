@@ -48,4 +48,21 @@ final class DeviceRegistryReducerTests: XCTestCase {
         XCTAssertEqual(device.id, DeviceID(rawValue: "session:test-session:disk4"))
         XCTAssertNotEqual(device.id, DeviceID(rawValue: "disk4"))
     }
+
+    func testConvenienceInitializerUsesSessionScopedIdentity() {
+        let device = ExternalDevice(
+            physicalStoreBSDName: "disk4",
+            apfsContainerBSDName: nil,
+            volumes: []
+        )
+        let replacement = ExternalDevice(
+            physicalStoreBSDName: "disk4",
+            apfsContainerBSDName: nil,
+            volumes: []
+        )
+
+        XCTAssertTrue(device.id.rawValue.hasPrefix("session:"))
+        XCTAssertNotEqual(device.id, DeviceID(rawValue: "disk4"))
+        XCTAssertNotEqual(device.id, replacement.id)
+    }
 }

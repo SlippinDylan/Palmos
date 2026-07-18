@@ -89,7 +89,7 @@ struct SystemAction: Identifiable, Equatable {
     }
 
     static func footerActions(for device: ExternalDevice?) -> [Self] {
-        guard let device, device.volumes.isEmpty == false else {
+        guard let device else {
             return [
                 Self(kind: .openDiskUtility, intent: .openDiskUtility),
                 Self(kind: .quit, intent: .quit)

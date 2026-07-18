@@ -7,6 +7,57 @@ import DrivePulseCore
 
 @MainActor
 final class DrivePulseAppControllerTests: XCTestCase {
+    func testObservedTopologyGenerationIsDynamicallyDispatchedToSMARTService() async {
+        let device = makeDevice(
+            id: "disk4",
+            volumes: ["disk4s1"],
+            smartSnapshot: .notRequested
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [])
+        let smartService = TopologyRecordingSMARTService()
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [], selectedDeviceID: nil),
+            smartService: smartService,
+            deviceDiscovery: discovery,
+            systemProfilerProvider: StubSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider(),
+            discoveryObservationDebounce: .zero
+        )
+
+        discovery.emit([device])
+
+        await smartService.waitUntilRefreshStarts()
+        let topologyGenerations = await smartService.recordedTopologyGenerations()
+        XCTAssertEqual(topologyGenerations, [1])
+        XCTAssertEqual(controller.state.selectedDeviceID, device.id)
+    }
+
+    func testObservedDiskEventBurstCoalescesToLatestSnapshot() async {
+        let initial = makeDevice(id: "disk1", volumes: [])
+        let intermediate = makeDevice(id: "disk2", volumes: [])
+        let latest = makeDevice(id: "disk3", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [])
+        let profiler = StubSystemProfilerProvider()
+        let diskUtil = StubDiskUtilAPFSProvider()
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [initial], selectedDeviceID: initial.id),
+            deviceDiscovery: discovery,
+            systemProfilerProvider: profiler,
+            diskUtilAPFSProvider: diskUtil,
+            discoveryObservationDebounce: .milliseconds(20)
+        )
+
+        discovery.emit([intermediate])
+        discovery.emit([latest])
+
+        await waitUntilStateDevices(controller, equals: [latest])
+        await waitUntil {
+            profiler.refreshCallCount == 1 && diskUtil.refreshCallCount == 1
+        }
+        XCTAssertEqual(profiler.refreshCallCount, 1)
+        XCTAssertEqual(diskUtil.refreshCallCount, 1)
+    }
+
     func testControllerBootstrapsStateFromDiscoveryAsynchronously() async {
         let discoveredDevices = [
             makeDevice(id: "disk21", volumes: ["disk21s1"])
@@ -179,7 +230,8 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let controller = DrivePulseAppController(
             deviceDiscovery: discovery,
             systemProfilerProvider: systemProfilerProvider,
-            diskUtilAPFSProvider: diskUtilProvider
+            diskUtilAPFSProvider: diskUtilProvider,
+            discoveryObservationDebounce: .zero
         )
 
         await discovery.resolveNextDiscovery()
@@ -217,6 +269,84 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(diskUtilProvider.refreshCallCount, 2)
     }
 
+    func testObservedEventBurstUsesSystemProfilerTTLUntilCacheExpires() async {
+        let initialDate = Date(timeIntervalSince1970: 1_000)
+        let clock = ControllerTestClock(now: initialDate)
+        let runner = ConcurrentSystemProfilerRunner()
+        let provider = LiveSystemProfilerProvider(
+            dataTypeRunner: runner.run,
+            cacheTTL: 300,
+            now: { clock.now() }
+        )
+        let bootstrapDevice = makeDevice(
+            id: "disk21",
+            volumes: ["disk21s1"],
+            transportName: "USB"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: provider,
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider(),
+            discoveryObservationDebounce: .milliseconds(10)
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntil {
+            provider.nvmeInfo(forBSDName: "disk21", modelName: nil) != nil
+        }
+
+        var firstObservedDevice = bootstrapDevice
+        firstObservedDevice.displayName = "Burst Device A"
+        var coalescedObservedDevice = bootstrapDevice
+        coalescedObservedDevice.displayName = "Burst Device B"
+        discovery.emit([firstObservedDevice])
+        discovery.emit([coalescedObservedDevice])
+
+        await waitUntilStateDevices(controller) {
+            $0.first?.displayName == "Burst Device B"
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        let freshCacheInvocationCount = await runner.invocationCount()
+        XCTAssertEqual(freshCacheInvocationCount, 3)
+
+        clock.advance(by: 301)
+        var expiredCacheObservedDevice = bootstrapDevice
+        expiredCacheObservedDevice.displayName = "Expired Cache Device"
+        discovery.emit([expiredCacheObservedDevice])
+
+        await waitUntil { await runner.invocationCount() == 6 }
+        await waitUntilStateDevices(controller) {
+            $0.first?.displayName == "Expired Cache Device"
+        }
+    }
+
+    func testExplicitRefreshForcesSystemProfilerRefreshWithinTTL() async {
+        let clock = ControllerTestClock(now: Date(timeIntervalSince1970: 1_000))
+        let runner = ConcurrentSystemProfilerRunner()
+        let provider = LiveSystemProfilerProvider(
+            dataTypeRunner: runner.run,
+            cacheTTL: 300,
+            now: { clock.now() }
+        )
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let discovery = StubExternalDeviceDiscovery(results: [[device], [device]])
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: provider,
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider()
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntil {
+            provider.nvmeInfo(forBSDName: "disk21", modelName: nil) != nil
+        }
+
+        controller.refresh()
+        await discovery.resolveNextDiscovery()
+        await waitUntil { await runner.invocationCount() == 6 }
+    }
+
     func testExternalUnmountClearsVolumesWithoutDiscardingRicherDeviceContext() async throws {
         let bootstrapDevice = makeDevice(
             id: "disk84",
@@ -234,7 +364,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         )
         let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
         let systemProfilerProvider = StubSystemProfilerProvider(
-            refreshedNVMeInfoByBSDName: [
+            bootstrapNVMeInfoByBSDName: [
                 "disk84": NVMeInfo(
                     controller: "Controller B",
                     model: "Model B",
@@ -242,14 +372,14 @@ final class DrivePulseAppControllerTests: XCTestCase {
                     firmwareVersion: "FW-B"
                 )
             ],
-            refreshedPCIInfoBySerialNumber: [
+            bootstrapPCIInfoBySerialNumber: [
                 "SERIAL-B": PCIInfo(
                     slot: "Slot-B",
                     vendorID: "0x1234",
                     deviceID: "0x5678"
                 )
             ],
-            refreshedThunderboltInfo: ThunderboltInfo(
+            bootstrapThunderboltInfo: ThunderboltInfo(
                 vendorName: "Acme",
                 deviceName: "TB Enclosure"
             )
@@ -284,11 +414,14 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let controller = DrivePulseAppController(
             deviceDiscovery: discovery,
             systemProfilerProvider: systemProfilerProvider,
-            diskUtilAPFSProvider: diskUtilProvider
+            diskUtilAPFSProvider: diskUtilProvider,
+            discoveryObservationDebounce: .zero
         )
 
         await discovery.resolveNextDiscovery()
-        await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+        await waitUntilStateDevices(controller) {
+            $0.first?.id == bootstrapDevice.id
+        }
 
         discovery.emit([sparseObservedDevice])
 
@@ -309,7 +442,50 @@ final class DrivePulseAppControllerTests: XCTestCase {
                 ]
         }
         XCTAssertEqual(controller.state.selectedDeviceID, bootstrapDevice.id)
-        XCTAssertEqual(controller.selectedFooterActions.map(\.kind), [.openDiskUtility, .quit])
+        XCTAssertEqual(
+            controller.selectedFooterActions.map(\.kind),
+            [.eject, .openDiskUtility, .quit]
+        )
+    }
+
+    func testSparseObservationDoesNotReplaceKnownModelWithBSDName() async {
+        let deviceID = DeviceID(rawValue: "session:test:media:known")
+        let knownDevice = ExternalDevice(
+            id: deviceID,
+            displayName: "Acme Portable SSD",
+            transportName: "USB",
+            physicalStoreBSDName: "disk4",
+            apfsContainerBSDName: nil,
+            volumes: []
+        )
+        let sparseDevice = ExternalDevice(
+            id: deviceID,
+            displayName: "DISK4",
+            transportName: "External",
+            physicalStoreBSDName: "disk4",
+            apfsContainerBSDName: nil,
+            volumes: []
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[knownDevice]])
+        let profiler = StubSystemProfilerProvider()
+        let controller = DrivePulseAppController(
+            deviceDiscovery: discovery,
+            systemProfilerProvider: profiler,
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider(),
+            discoveryObservationDebounce: .zero
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilStateDevices(controller) {
+            $0.first?.id == knownDevice.id && $0.first?.displayName == knownDevice.displayName
+        }
+        discovery.emit([sparseDevice])
+        await waitUntilStateDevices(controller) {
+            $0.first?.displayName == knownDevice.displayName
+        }
+        XCTAssertEqual(profiler.refreshCallCount, 0)
+
+        XCTAssertEqual(controller.state.selectedDevice?.displayName, "Acme Portable SSD")
     }
 
     func testControllerRetriesAPFSEnrichmentAfterInitialDiskUtilFailure() async throws {
@@ -353,13 +529,18 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let controller = DrivePulseAppController(
             deviceDiscovery: discovery,
             systemProfilerProvider: DelayedSystemProfilerProvider(fetchDelayNanoseconds: 1_000_000_000),
-            diskUtilAPFSProvider: diskUtilProvider
+            diskUtilAPFSProvider: diskUtilProvider,
+            volumeCapacityRefresher: VolumeCapacityRefresher(capacityReader: { _, _ in nil })
         )
 
         await discovery.resolveNextDiscovery()
         await waitUntilStateDevices(controller, equals: [bootstrapDevice])
 
-        await waitUntilStateDevices(controller) { devices in
+        await waitUntilEventually(timeout: 2) {
+            diskUtilProvider.refreshCallCount >= 2
+        }
+        await waitUntilEventually(timeout: 2) {
+            let devices = controller.state.devices
             guard let device = devices.first else { return false }
             return device.id == bootstrapDevice.id
                 && device.apfsContainerDetails?.capacityInUseBytes == 1_500
@@ -490,13 +671,15 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let controller = DrivePulseAppController(
             deviceDiscovery: discovery,
             systemProfilerProvider: DelayedSystemProfilerProvider(fetchDelayNanoseconds: 1_000_000_000),
-            diskUtilAPFSProvider: diskUtilProvider
+            diskUtilAPFSProvider: diskUtilProvider,
+            volumeCapacityRefresher: VolumeCapacityRefresher(capacityReader: { _, _ in nil })
         )
 
         await discovery.resolveNextDiscovery()
         await waitUntilStateDevices(controller, equals: [bootstrapDevice])
 
-        await waitUntilStateDevices(controller) { devices in
+        await waitUntilEventually(timeout: 2) {
+            let devices = controller.state.devices
             guard let device = devices.first else { return false }
             return device.apfsContainerDetails?.volumes.first?.isVolumeDetailComplete == true
                 && device.apfsContainerDetails?.volumes.first?.sealed == false
@@ -537,7 +720,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         }
     }
 
-    func testRepeatedObservedUpdatesDoNotRestartSystemProfilerEnrichmentForSameDevice() async throws {
+    func testRepeatedObservedUpdatesDoNotForceSystemProfilerRefreshForSameDevice() async throws {
         let bootstrapDevice = makeDevice(
             id: "disk84",
             volumes: ["disk84s2s1"],
@@ -553,9 +736,8 @@ final class DrivePulseAppControllerTests: XCTestCase {
             apfsContainerBSDName: "disk84s2"
         )
         let discovery = StubExternalDeviceDiscovery(results: [[bootstrapDevice]])
-        let systemProfilerProvider = DelayedRefreshingStubSystemProfilerProvider(
-            refreshDelayNanoseconds: 500_000_000,
-            refreshedNVMeInfoByBSDName: [
+        let systemProfilerProvider = StubSystemProfilerProvider(
+            bootstrapNVMeInfoByBSDName: [
                 "disk84": NVMeInfo(
                     controller: "Controller B",
                     model: "Model B",
@@ -563,14 +745,14 @@ final class DrivePulseAppControllerTests: XCTestCase {
                     firmwareVersion: "FW-B"
                 )
             ],
-            refreshedPCIInfoBySerialNumber: [
+            bootstrapPCIInfoBySerialNumber: [
                 "SERIAL-B": PCIInfo(
                     slot: "Thunderbolt@67,0,0",
                     vendorID: "0x144d",
                     deviceID: "0xa808"
                 )
             ],
-            refreshedThunderboltInfo: ThunderboltInfo(
+            bootstrapThunderboltInfo: ThunderboltInfo(
                 vendorName: "ACASIS",
                 deviceName: "TB406Pro",
                 uid: "0x8086DA2A0D19ED00"
@@ -583,19 +765,20 @@ final class DrivePulseAppControllerTests: XCTestCase {
         )
 
         await discovery.resolveNextDiscovery()
-        await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+        await waitUntilStateDevices(controller) {
+            $0.first?.nvmeInfo?.serialNumber == "SERIAL-B"
+        }
 
         discovery.emit([observedDevice])
-        await systemProfilerProvider.waitUntilRefreshCallCount(is: 1)
-
-        try? await Task.sleep(nanoseconds: 300_000_000)
+        await waitUntil { systemProfilerProvider.fetchIfNeededCallCount == 2 }
         discovery.emit([observedDevice])
-        try? await Task.sleep(nanoseconds: 300_000_000)
+        await waitUntil { systemProfilerProvider.fetchIfNeededCallCount == 3 }
 
         let selectedDevice = try XCTUnwrap(controller.state.selectedDevice)
         XCTAssertEqual(selectedDevice.nvmeInfo?.serialNumber, "SERIAL-B")
         XCTAssertEqual(selectedDevice.pciInfo?.vendorID, "0x144d")
         XCTAssertEqual(selectedDevice.thunderboltInfo?.uid, "0x8086DA2A0D19ED00")
+        XCTAssertEqual(systemProfilerProvider.refreshCallCount, 0)
     }
 
     func testControllerDoesNotAssignSharedThunderboltInfoToMultipleThunderboltDevices() async {
@@ -776,16 +959,24 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let ejecter = BlockingDiskEjecter()
         let coordinator = makeEjectCoordinator(resolver: resolver, ejecter: ejecter)
         let actionPerformer = StubSystemActionPerformer()
+        let profiler = StubSystemProfilerProvider()
+        let diskUtil = StubDiskUtilAPFSProvider()
         let controller = DrivePulseAppController(
             state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
             systemActions: actionPerformer,
             deviceDiscovery: discovery,
-            ejectCoordinator: coordinator
+            systemProfilerProvider: profiler,
+            diskUtilAPFSProvider: diskUtil,
+            ejectCoordinator: coordinator,
+            discoveryObservationDebounce: .zero
         )
         let action = try XCTUnwrap(controller.selectedFooterActions.first(where: { $0.kind == .eject }))
 
         discovery.emit([device])
-        await waitUntilStateDevices(controller, equals: [device])
+        await waitUntil {
+            profiler.fetchIfNeededCallCount == 1 && diskUtil.refreshCallCount == 1
+        }
+        XCTAssertEqual(profiler.refreshCallCount, 0)
         controller.perform(action)
 
         await ejecter.waitUntilNormalEjectStarts()
@@ -919,10 +1110,48 @@ final class DrivePulseAppControllerTests: XCTestCase {
 
         discovery.emit([remountedDevice])
         await waitUntil { controller.state.selectedDevice?.volumes == remountedDevice.volumes }
+        XCTAssertEqual(
+            controller.selectedFooterActions.map(\.kind),
+            [.openInFinder, .eject, .openDiskUtility, .quit]
+        )
         discovery.emit([sparseDevice])
 
         await waitUntil { controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true }
         XCTAssertEqual(controller.state.selectedDeviceID, mountedDevice.id)
+        XCTAssertEqual(
+            controller.selectedFooterActions.map(\.kind),
+            [.eject, .openDiskUtility, .quit]
+        )
+    }
+
+    func testSuccessfulEjectCancelsPendingPreEjectObservation() async throws {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: mountedDevice),
+            ejecter: ImmediateDiskEjecter(normalResult: .success(()))
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator,
+            discoveryObservationDebounce: .milliseconds(100)
+        )
+        let action = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+
+        discovery.emit([mountedDevice])
+        controller.perform(action)
+
+        await waitUntil {
+            if case .succeeded = coordinator.state { return true }
+            return false
+        }
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertTrue(controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true)
+        XCTAssertEqual(controller.selectedFooterActions.map(\.kind), [.openDiskUtility, .quit])
     }
 
     func testSuccessfulEjectKeepsPhysicalDeviceSelectedWhileUnmounted() async throws {
@@ -1044,7 +1273,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(controller.selectedPanelDeviceID, unmountedDevice.id)
         XCTAssertEqual(
             controller.selectedFooterActions.map(\.kind),
-            [.openDiskUtility, .quit]
+            [.eject, .openDiskUtility, .quit]
         )
     }
 
@@ -1175,6 +1404,10 @@ final class DrivePulseAppControllerTests: XCTestCase {
             EjectLocalization.disappearanceFeedback(target: target)
         )
         XCTAssertNotEqual(feedback, EjectLocalization.successFeedback(target: target))
+        XCTAssertEqual(
+            controller.selectedFooterActions.map(\.kind),
+            [.openInFinder, .openDiskUtility, .quit]
+        )
         await waitUntilEventually(timeout: 1) { controller.actionFeedback == nil }
     }
 
@@ -2017,7 +2250,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         physicalStoreBSDName: String? = nil,
         apfsContainerBSDName: String? = nil,
         smartSnapshot: SmartSnapshot = .helperNotInstalled,
-        sessionMetrics: DeviceSessionMetrics = .empty(historyLimit: 0),
+        sessionMetrics: DeviceSessionMetrics = .empty(),
         apfsContainerDetails: APFSContainerInfo? = nil,
         physicalPartitions: [PhysicalPartitionInfo] = []
     ) -> ExternalDevice {
@@ -2237,6 +2470,25 @@ private final class ControllerTestLockedArray<Element>: @unchecked Sendable {
     }
 }
 
+private final class ControllerTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var currentDate: Date
+
+    init(now: Date) {
+        currentDate = now
+    }
+
+    func now() -> Date {
+        lock.withLock { currentDate }
+    }
+
+    func advance(by interval: TimeInterval) {
+        lock.withLock {
+            currentDate = currentDate.addingTimeInterval(interval)
+        }
+    }
+}
+
 private final class StubDiskSampler: DiskSampling, @unchecked Sendable {
     private let lock = NSLock()
     private var samplesByBSDName: [String: [DiskIOCounters]]
@@ -2256,6 +2508,32 @@ private final class StubDiskSampler: DiskSampling, @unchecked Sendable {
         let nextSample = samples.removeFirst()
         samplesByBSDName[bsdName] = samples
         return nextSample
+    }
+}
+
+private actor TopologyRecordingSMARTService: SMARTServiceProviding {
+    private var topologyGenerations: [Int] = []
+
+    func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
+        .failed("Legacy SMART refresh overload was called.")
+    }
+
+    func refreshSMART(
+        for device: ExternalDevice,
+        topologyGeneration: Int
+    ) async -> SMARTServiceRefreshResult {
+        topologyGenerations.append(topologyGeneration)
+        return .helperNotInstalled
+    }
+
+    func waitUntilRefreshStarts() async {
+        while topologyGenerations.isEmpty {
+            await Task.yield()
+        }
+    }
+
+    func recordedTopologyGenerations() -> [Int] {
+        topologyGenerations
     }
 }
 
@@ -2742,71 +3020,6 @@ private final class DelayedSystemProfilerProvider: SystemProfilerProviding, @unc
 
     func thunderboltInfo() -> ThunderboltInfo? {
         nil
-    }
-}
-
-private final class DelayedRefreshingStubSystemProfilerProvider: SystemProfilerProviding, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "DelayedRefreshingStubSystemProfilerProvider")
-    private let refreshDelayNanoseconds: UInt64
-    private let refreshedNVMeInfoByBSDName: [String: NVMeInfo]
-    private let refreshedPCIInfoBySerialNumber: [String: PCIInfo]
-    private let refreshedThunderboltInfo: ThunderboltInfo?
-    private var refreshCallCountValue = 0
-    private var hasRefreshedValue = false
-
-    init(
-        refreshDelayNanoseconds: UInt64,
-        refreshedNVMeInfoByBSDName: [String: NVMeInfo] = [:],
-        refreshedPCIInfoBySerialNumber: [String: PCIInfo] = [:],
-        refreshedThunderboltInfo: ThunderboltInfo? = nil
-    ) {
-        self.refreshDelayNanoseconds = refreshDelayNanoseconds
-        self.refreshedNVMeInfoByBSDName = refreshedNVMeInfoByBSDName
-        self.refreshedPCIInfoBySerialNumber = refreshedPCIInfoBySerialNumber
-        self.refreshedThunderboltInfo = refreshedThunderboltInfo
-    }
-
-    func fetchIfNeeded() async {}
-
-    func refresh() async {
-        queue.sync {
-            refreshCallCountValue += 1
-        }
-
-        if refreshDelayNanoseconds > 0 {
-            try? await Task.sleep(nanoseconds: refreshDelayNanoseconds)
-        }
-
-        queue.sync {
-            hasRefreshedValue = true
-        }
-    }
-
-    func nvmeInfo(forBSDName bsdName: String, modelName: String?) -> NVMeInfo? {
-        queue.sync {
-            guard hasRefreshedValue else { return nil }
-            return refreshedNVMeInfoByBSDName[bsdName]
-        }
-    }
-
-    func pciInfo(forNVMeSerialNumber serial: String?) -> PCIInfo? {
-        queue.sync {
-            guard hasRefreshedValue, let serial else { return nil }
-            return refreshedPCIInfoBySerialNumber[serial]
-        }
-    }
-
-    func thunderboltInfo() -> ThunderboltInfo? {
-        queue.sync {
-            guard hasRefreshedValue else { return nil }
-            return refreshedThunderboltInfo
-        }
-    }
-
-    func waitUntilRefreshCallCount(is expectedCount: Int) async {
-        while queue.sync(execute: { refreshCallCountValue < expectedCount }) {
-            await Task.yield()
-        }
     }
 }
 

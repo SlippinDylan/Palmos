@@ -23,7 +23,7 @@ DrivePulse uses three targets:
 
 - **DrivePulseApp** — Menu bar app, UI, device browsing, throughput visualization, settings, launch-at-login, safe eject.
 - **DrivePulseCore** — Shared domain and application logic. No UI or privileged dependency.
-- **DrivePulseSMARTService** — Privileged helper installed via `SMJobBless`, accessed over XPC, restricted to SMART-related operations.
+- **DrivePulseSMARTService** — Privileged helper installed via `SMJobBless`, accessed over XPC, restricted to SMART-related operations and installation of DrivePulse's signed `smartctl` companion.
 
 The app remains fully functional without the privileged helper. SMART capability is a layered, opt-in feature.
 
@@ -43,7 +43,7 @@ Removing quarantine only bypasses Gatekeeper's download quarantine check. It doe
 
 DrivePulse installs a privileged helper the first time advanced SMART monitoring is requested. This helper is required for broad Thunderbolt and USB enclosure coverage because Apple's app-sandboxed APIs do not expose SMART telemetry for most external enclosures.
 
-The helper is installed to `/Library/PrivilegedHelperTools/com.drivepulse.smartservice` and registered as a launchd daemon. The system prompts for administrator credentials during installation.
+The helper is installed to `/Library/PrivilegedHelperTools/com.drivepulse.smartservice` and registered as a launchd daemon. The system prompts for administrator credentials during installation. The same workflow installs the bundled companion to `/Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl` only after the helper verifies its fixed code-signing identifier and matching Team ID. The installed file is root-owned and is never loaded from Homebrew or another user-writable command path.
 
 ### Helper Versioning
 
@@ -54,14 +54,13 @@ The app validates XPC contract compatibility before each SMART operation:
 
 ### Removing the Helper
 
-Deleting the app bundle does **not** remove the privileged helper automatically. Before deleting DrivePulse, use the in-app **Remove Advanced Monitoring** action in Settings to uninstall the helper cleanly.
-
-If the app has already been deleted, remove the helper manually:
+Deleting the app bundle does **not** remove the privileged helper automatically. The current app does not provide an uninstall action, so remove the helper manually before or after deleting DrivePulse:
 
 ```sh
-sudo launchctl unload /Library/LaunchDaemons/com.drivepulse.smartservice.plist
+sudo launchctl bootout system /Library/LaunchDaemons/com.drivepulse.smartservice.plist
 sudo rm /Library/LaunchDaemons/com.drivepulse.smartservice.plist
 sudo rm /Library/PrivilegedHelperTools/com.drivepulse.smartservice
+sudo rm /Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl
 ```
 
 ## Building
@@ -71,6 +70,28 @@ Open `DrivePulse.xcworkspace` in Xcode, select the `DrivePulseApp` scheme, and b
 The `DrivePulseSMARTService` scheme builds the privileged helper binary. The repository defaults to the maintainer's public Team ID. For a fork or local development with another free Apple ID, replace `DEVELOPMENT_TEAM` in `Config/xcconfigs/Base.xcconfig` with your Personal Team ID. Both targets inherit that value so their signing requirements remain compatible. No paid Developer ID certificate or notarization is required for local use.
 
 Pull request tests explicitly disable signing from the command line. Any build that needs to install the SMART Helper must keep signing enabled and use the same Apple Development team for both targets.
+
+The normal Debug build does not download third-party tools. To prepare a signed build with SMART support, build the pinned companion and pass it to Xcode:
+
+```sh
+Scripts/build-smartctl-companion.sh /tmp/drivepulse-smartctl
+codesign --force \
+  --sign "Apple Development: Your Name (TEAMID)" \
+  --identifier com.drivepulse.smartservice.smartctl \
+  --options runtime \
+  --timestamp=none \
+  /tmp/drivepulse-smartctl/smartctl
+SMARTCTL_COMPANION_SHA256="$(shasum -a 256 /tmp/drivepulse-smartctl/smartctl | awk '{ print $1 }')"
+xcodebuild build \
+  -workspace DrivePulse.xcworkspace \
+  -scheme DrivePulseApp \
+  -configuration Release \
+  SMARTCTL_COMPANION_PATH=/tmp/drivepulse-smartctl/smartctl \
+  SMARTCTL_COMPANION_SHA256="$SMARTCTL_COMPANION_SHA256" \
+  SMARTCTL_COMPANION_REQUIRED=YES
+```
+
+The release workflow performs these steps automatically and fails closed if the companion, signature, license, or source archive is missing.
 
 ### GitHub Release Signing
 
@@ -85,7 +106,7 @@ For example, after exporting the certificate as `AppleDevelopment.p12`, copy its
 base64 -i AppleDevelopment.p12 | pbcopy
 ```
 
-Add that value and the export password under the repository's **Settings → Secrets and variables → Actions**. The workflow derives the Team ID from the certificate, signs the app and helper with the same identity, and verifies the strict signatures plus both `SMJobBless` signing requirements before packaging. The Team ID is not a secret and is never used as a credential.
+Add that value and the export password under the repository's **Settings → Secrets and variables → Actions**. The workflow derives the Team ID from the certificate, builds smartmontools 7.5 from its pinned source archive, signs the app, helper, and companion with the same identity, and verifies the strict signatures plus both `SMJobBless` signing requirements before packaging. The Team ID is not a secret and is never used as a credential.
 
 Free Apple Development certificates expire periodically. When renewing one, export the replacement certificate and update the two secrets. As long as the Personal Team ID remains the same, the App/Helper requirements do not need to change.
 
@@ -103,12 +124,14 @@ xcodebuild test -workspace DrivePulse.xcworkspace \
 
 ## Third-Party Licenses
 
-The current source tree does not bundle `smartctl`. The privileged helper only accepts a
-root-owned companion at `/Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl`;
-it never searches Homebrew or other user-writable locations. Until a release artifact has
-installed and verified that companion, SMART is reported as unavailable. A release that ships
-the companion must include the exact smartmontools license text and update packaging
-verification before claiming bundled SMART support.
+DrivePulse release artifacts include a separately signed `smartctl` executable built from
+smartmontools 7.5 with its external drive database disabled, so the root helper never reads
+configuration or database files from `/usr/local` or Homebrew locations. smartmontools is
+distributed under GNU GPL version 2 or later. The exact
+upstream license is included at
+[`Shared/Licensing/smartmontools-COPYING.txt`](Shared/Licensing/smartmontools-COPYING.txt)
+and inside the app bundle. Each GitHub release also attaches the exact, checksum-pinned
+`smartmontools-7.5.tar.gz` corresponding source archive used by the build.
 
-See [`Shared/Licensing/smartmontools-COPYING.txt`](Shared/Licensing/smartmontools-COPYING.txt)
-for the repository's current licensing status.
+The pinned upstream archive is downloaded from SourceForge and must have SHA-256
+`690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e`.

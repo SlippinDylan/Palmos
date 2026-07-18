@@ -69,15 +69,18 @@ Run this checklist after each significant change to the app or helper. Every ite
 ## SMART — Helper Not Installed
 
 - [ ] Verify the release bundle with `Scripts/verify/code-signing.sh /path/to/DrivePulseApp.app <TEAM_ID>` before packaging
+- [ ] Confirm the release bundle contains `Contents/Library/Helpers/com.drivepulse.smartservice.smartctl` and the bundled smartmontools GPLv2 license
 - [ ] After copying a downloaded build to `/Applications`, run `sudo xattr -rd com.apple.quarantine /Applications/DrivePulseApp.app` once; do not extract or separately modify the embedded helper
 - [ ] Opening SMART section without the helper shows "Helper required" state
 - [ ] "Install Helper" button triggers the system credential prompt
 - [ ] After install, SMART data refreshes automatically
 - [ ] The installed helper and launchd plist exist only after the signed preflight and administrator authorization succeed
+- [ ] The installed companion exists at `/Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl`, is owned by root, is not group/world writable, and matches the release Team ID
 
 ## SMART — Helper Installed
 
 - [ ] Refresh reads SMART data and shows overall health and temperature
+- [ ] Replacing the bundled companion with an unsigned or differently signed executable causes installation to fail without replacing an existing trusted companion
 - [ ] Highest temperature is displayed in the Overview card
 - [ ] All temperature sensors appear in the SMART detail section
 
@@ -98,5 +101,5 @@ Run this checklist after each significant change to the app or helper. Every ite
 
 ## Uninstall
 
-- [ ] "Remove Advanced Monitoring" action in Settings removes the helper binary and launchd plist
+- [ ] Manual helper removal with `launchctl bootout system` removes the launchd job, helper binary, and plist
 - [ ] After removal, SMART section shows "Helper required" without crashing

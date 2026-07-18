@@ -11,7 +11,71 @@ private final class LockedCounter: @unchecked Sendable {
     func increment() { lock.withLock { count += 1 } }
 }
 
+private final class LockedDataBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Data?
+
+    var value: Data? { lock.withLock { stored } }
+    func set(_ data: Data) { lock.withLock { stored = data } }
+}
+
 final class SMARTServiceClientTests: XCTestCase {
+    func testCompanionInstallSendsBoundedRequestAndConfirmsHandshake() async throws {
+        let binary = Data([0xcf, 0xfa, 0xed, 0xfe, 1, 2, 3])
+        let requestBox = LockedDataBox()
+        let handshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.0.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.currentMinor,
+            smartctlCompanionAvailable: true
+        ))
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            installSmartctlCompanion: { requestData in
+                requestBox.set(requestData)
+                return try DrivePulseXPCMessages.encodeSMARTCompanionInstallAcknowledgement(
+                    .init(
+                        schemaVersion: SMARTCompanionInstallAcknowledgement.currentSchemaVersion,
+                        result: .installed
+                    )
+                )
+            }
+        )
+
+        try await client.installBundledSmartctlCompanion(binary)
+
+        let request = try DrivePulseXPCMessages.decodeSMARTCompanionInstallRequest(
+            from: XCTUnwrap(requestBox.value)
+        )
+        XCTAssertEqual(request.binary, binary)
+    }
+
+    func testCompanionInstallRequiresPostInstallCapabilityConfirmation() async throws {
+        let handshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.0.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.currentMinor,
+            smartctlCompanionAvailable: false
+        ))
+        let acknowledgement = try DrivePulseXPCMessages.encodeSMARTCompanionInstallAcknowledgement(
+            .init(
+                schemaVersion: SMARTCompanionInstallAcknowledgement.currentSchemaVersion,
+                result: .installed
+            )
+        )
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            installSmartctlCompanion: { _ in acknowledgement }
+        )
+
+        do {
+            try await client.installBundledSmartctlCompanion(Data([0xcf, 0xfa, 0xed, 0xfe]))
+            XCTFail("Expected unavailable companion confirmation to fail")
+        } catch let error as SMARTServiceClientError {
+            XCTAssertEqual(error, .companionInstallationUnconfirmed)
+        }
+    }
+
     func testCancellingOccupancyXPCInvalidatesSessionAndIgnoresLateReply() async throws {
         let workflowID = UUID()
         let session = ControlledOccupancyXPCSession(synchronouslyInvalidates: true)
@@ -259,6 +323,12 @@ final class SMARTServiceClientTests: XCTestCase {
             contractMajor: XPCContractVersion.currentMajor + 1,
             contractMinor: 0
         ))
+        let unavailableHandshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.4.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.currentMinor,
+            smartctlCompanionAvailable: false
+        ))
         let installedClient = SMARTServiceClient(
             isHelperInstalled: { true },
             fetchHelperHandshake: { currentHandshake }
@@ -267,12 +337,18 @@ final class SMARTServiceClientTests: XCTestCase {
             isHelperInstalled: { true },
             fetchHelperHandshake: { outdatedHandshake }
         )
+        let unavailableClient = SMARTServiceClient(
+            isHelperInstalled: { true },
+            fetchHelperHandshake: { unavailableHandshake }
+        )
 
         let installedResult = await installedClient.inspectSMARTHelper()
         let outdatedResult = await outdatedClient.inspectSMARTHelper()
+        let unavailableResult = await unavailableClient.inspectSMARTHelper()
 
         XCTAssertEqual(installedResult, .installed)
         XCTAssertEqual(outdatedResult, .updateRequired)
+        XCTAssertEqual(unavailableResult, .companionUnavailable)
     }
 
     func testHelperInspectionKeepsInstalledConnectionFailureVisible() async {
@@ -339,6 +415,48 @@ final class SMARTServiceClientTests: XCTestCase {
         let result = await client.refreshSMART(for: makeClientDevice(id: "disk42"))
 
         XCTAssertEqual(result, .helperNotInstalled)
+    }
+
+    func testMinorFiveHelperDegradesOnlySMARTMonitoringWithoutStartingUnobservableRead() async throws {
+        let tracker = DeviceIOTracker()
+        let reads = LockedCounter()
+        let handshake = try DrivePulseXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.5.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.legacySMARTCancellationMinor,
+            smartctlCompanionAvailable: true
+        ))
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            readSMARTData: { _ in
+                reads.increment()
+                throw NSError(domain: "legacy", code: 1)
+            },
+            deviceIOTracker: tracker
+        )
+        let device = makeClientDevice(id: "disk4")
+
+        XCTAssertEqual(
+            client.evaluateHandshake(try client.decodeHandshake(from: handshake)),
+            .degraded
+        )
+        let inspection = await client.inspectSMARTHelper()
+        XCTAssertEqual(inspection, .monitoringUpdateRequired)
+        let result = await client.refreshSMART(for: device)
+        XCTAssertEqual(result, .updateRequired)
+        XCTAssertEqual(reads.value, 0)
+        let barrier = try await DeviceIOQuiescer(tracker: tracker).acquireBarrier(
+            for: EjectWorkflowTarget(
+                deviceID: device.id,
+                physicalBSDName: "disk4",
+                mediaRegistryEntryID: 1,
+                displayName: "disk4",
+                topologyGeneration: 1
+            ),
+            timeout: .milliseconds(100)
+        )
+        try await barrier.waitUntilReady()
+        await barrier.release()
     }
 
     func testRefreshSMARTDoesNotTreatInstalledHelperConnectionFailureAsMissingHelper() async {
@@ -523,7 +641,7 @@ final class SMARTServiceClientTests: XCTestCase {
             displayName: "Device \(rawID)",
             transportName: "USB",
             smartSnapshot: .notRequested,
-            sessionMetrics: .empty(historyLimit: 0),
+            sessionMetrics: .empty(),
             physicalStoreBSDName: rawID,
             apfsContainerBSDName: nil,
             volumes: []
@@ -632,10 +750,10 @@ final class SMARTHelperManagerTests: XCTestCase {
         XCTAssertEqual(manager.status, .updateRequired)
     }
 
-    func testSuccessfulInstallPublishesInstalledWithoutRacingHandshake() async {
+    func testSuccessfulInstallPublishesInspectedCapability() async {
         let installer = StubHelperInstaller()
         let manager = SMARTHelperManager(
-            inspector: StubSMARTHelperInspector(result: .failed("launchd is starting")),
+            inspector: StubSMARTHelperInspector(result: .installed),
             installer: installer
         )
 
@@ -645,6 +763,48 @@ final class SMARTHelperManagerTests: XCTestCase {
         XCTAssertTrue(installed)
         XCTAssertEqual(manager.status, .installed)
         XCTAssertEqual(installCallCount, 1)
+    }
+
+    func testSuccessfulInstallDoesNotClaimSMARTWhenCompanionIsUnavailable() async {
+        let manager = SMARTHelperManager(
+            inspector: StubSMARTHelperInspector(result: .companionUnavailable),
+            installer: StubHelperInstaller()
+        )
+
+        let installed = await manager.installOrUpdate()
+        XCTAssertTrue(installed)
+        XCTAssertEqual(manager.status, .companionUnavailable)
+    }
+
+    func testPostInstallInspectionCannotOverwriteNewerDeviceEvidence() async {
+        let inspector = ControlledSMARTHelperInspector()
+        let manager = SMARTHelperManager(
+            inspector: inspector,
+            installer: StubHelperInstaller()
+        )
+
+        let installation = Task { await manager.installOrUpdate() }
+        await inspector.waitUntilInspectionStarts()
+        manager.record(.companionUnavailable)
+        await inspector.finish(with: .installed)
+
+        let installed = await installation.value
+        XCTAssertTrue(installed)
+        XCTAssertEqual(manager.status, .companionUnavailable)
+    }
+
+    func testRefreshPublishesMonitoringSpecificUpdateStatus() async {
+        let manager = SMARTHelperManager(
+            inspector: StubSMARTHelperInspector(result: .monitoringUpdateRequired),
+            installer: StubHelperInstaller()
+        )
+
+        manager.refreshStatus()
+        while manager.status == .checking {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(manager.status, .monitoringUpdateRequired)
     }
 
     func testFailedInstallPublishesActionableError() async {
@@ -693,6 +853,28 @@ final class SMARTHelperManagerTests: XCTestCase {
 
 @MainActor
 final class SMARTPresentationTests: XCTestCase {
+    func testCompanionUnavailableUsesExplicitDevicePresentationAndRepairAction() async throws {
+        let device = makeDevice(id: "disk-companion", smartSnapshot: .notRequested)
+        let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
+        let controller = makeController(
+            smartService: StubSMARTService(refreshResult: .companionUnavailable),
+            helperInstaller: StubHelperInstaller(),
+            deviceDiscovery: discovery
+        )
+
+        await discovery.resolveNextDiscovery()
+        await waitUntilSMARTSnapshot(
+            controller,
+            for: device.id,
+            equals: .companionUnavailable
+        )
+
+        let details = try XCTUnwrap(controller.state.selectedSMARTDetails)
+        XCTAssertEqual(details.snapshot, .companionUnavailable)
+        XCTAssertEqual(details.primaryAction, .updateHelper)
+        XCTAssertEqual(controller.smartHelperManager.status, .companionUnavailable)
+    }
+
     func testRefreshUsesLoadingSnapshotWhileRefreshIsInFlightIncludingRetry() async throws {
         let device = makeDevice(id: "disk6", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
@@ -1116,87 +1298,13 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertEqual(secondDetails?.compatibility, .compatible)
     }
 
-    func testDetailsDescriptionUsesConfiguredTemperatureUnit() throws {
-        let smartData = SmartData(
-            overallHealth: "PASSED",
-            primaryTemperature: 37,
-            highestTemperature: 40,
-            sensorTemperatures: ["Composite": 37]
-        )
-        let smartDetails = SMARTPresentationDetails(
-            snapshot: .available(smartData),
-            compatibility: nil,
-            isRefreshing: false,
-            isInstalling: false,
-            lastError: nil
-        )
-        let settings = makeAppSettings(temperatureUnit: .fahrenheit)
-        let view = DetailsSectionView(
-            device: nil,
-            smartDetails: smartDetails,
-            settings: settings,
-            onSMARTAction: { _ in }
-        )
-
-        XCTAssertEqual(view.description(for: smartDetails), "Highest Temperature: 104 °F")
-    }
-
-    func testTransportUnsupportedUsesAdditionalSupportDescription() throws {
-        let smartDetails = SMARTPresentationDetails(
-            snapshot: .transportUnsupported,
-            compatibility: nil,
-            isRefreshing: false,
-            isInstalling: false,
-            lastError: nil
-        )
-        let view = DetailsSectionView(
-            device: nil,
-            smartDetails: smartDetails,
-            settings: makeAppSettings(temperatureUnit: .celsius),
-            onSMARTAction: { _ in }
-        )
-
-        XCTAssertEqual(
-            view.description(for: smartDetails),
-            "This enclosure path needs additional transport support."
-        )
-        XCTAssertEqual(
-            view.title(for: smartDetails),
-            "Additional transport support required"
-        )
-    }
-
-    func testDegradedCompatibilityStillUsesHighestTemperatureDescription() throws {
-        let smartData = SmartData(
-            overallHealth: "PASSED",
-            primaryTemperature: 39,
-            highestTemperature: 43,
-            sensorTemperatures: ["Composite": 39]
-        )
-        let smartDetails = SMARTPresentationDetails(
-            snapshot: .available(smartData),
-            compatibility: .degraded,
-            isRefreshing: false,
-            isInstalling: false,
-            lastError: nil
-        )
-        let view = DetailsSectionView(
-            device: nil,
-            smartDetails: smartDetails,
-            settings: makeAppSettings(temperatureUnit: .celsius),
-            onSMARTAction: { _ in }
-        )
-
-        XCTAssertEqual(view.description(for: smartDetails), "Highest Temperature: 43 °C")
-    }
-
     private func makeDevice(id rawID: String, smartSnapshot: SmartSnapshot) -> ExternalDevice {
         ExternalDevice(
             id: DeviceID(rawValue: rawID),
             displayName: "Device \(rawID)",
             transportName: "USB",
             smartSnapshot: smartSnapshot,
-            sessionMetrics: .empty(historyLimit: 0),
+            sessionMetrics: .empty(),
             physicalStoreBSDName: rawID,
             apfsContainerBSDName: nil,
             volumes: [MountedVolume(bsdName: "\(rawID)s1")]
@@ -1208,9 +1316,13 @@ final class SMARTPresentationTests: XCTestCase {
         helperInstaller: any HelperInstalling,
         deviceDiscovery: any ExternalDeviceDiscovering
     ) -> DrivePulseAppController {
-        DrivePulseAppController(
+        let helperManager = SMARTHelperManager(
+            inspector: StubSMARTHelperInspector(result: .installed),
+            installer: helperInstaller
+        )
+        return DrivePulseAppController(
             smartService: smartService,
-            helperInstaller: helperInstaller,
+            smartHelperManager: helperManager,
             deviceDiscovery: deviceDiscovery,
             systemProfilerProvider: StubSMARTSystemProfilerProvider(),
             diskUtilAPFSProvider: StubSMARTDiskUtilAPFSProvider()

@@ -1,16 +1,26 @@
 import Foundation
 
 enum HelperVersionHandshake {
-    static func current(bundle: Bundle = .main) -> HelperHandshake {
+    static func current(
+        bundle: Bundle = .main,
+        smartctlCompanionAvailable: Bool? = nil
+    ) -> HelperHandshake {
         HelperHandshake(
             helperVersion: helperVersion(from: bundle),
             contractMajor: XPCContractVersion.currentMajor,
-            contractMinor: XPCContractVersion.currentMinor
+            contractMinor: XPCContractVersion.currentMinor,
+            smartctlCompanionAvailable: smartctlCompanionAvailable
         )
     }
 
-    static func encodedCurrent(bundle: Bundle = .main) throws -> Data {
-        try DrivePulseXPCMessages.encode(current(bundle: bundle))
+    static func encodedCurrent(
+        bundle: Bundle = .main,
+        smartctlCompanionAvailable: Bool? = nil
+    ) throws -> Data {
+        try DrivePulseXPCMessages.encode(current(
+            bundle: bundle,
+            smartctlCompanionAvailable: smartctlCompanionAvailable
+        ))
     }
 
     private static func helperVersion(from bundle: Bundle) -> String {

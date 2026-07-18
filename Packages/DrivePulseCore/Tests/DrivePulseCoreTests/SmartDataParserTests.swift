@@ -156,13 +156,13 @@ final class SmartDataParserTests: XCTestCase {
         XCTAssertEqual(result.primaryTemperature, 35)
     }
 
-    func testParserAcceptsNumericStringsAndIgnoresOutOfRangeCounters() throws {
+    func testParserAcceptsUInt64NumericStringsAndIgnoresOverflow() throws {
         let data = Data(
             """
             {
               "nvme_smart_health_information_log": {
                 "data_units_read": "86014906",
-                "data_units_written": 18446744073709551615,
+                "data_units_written": "18446744073709551616",
                 "power_cycles": 7
               }
             }
@@ -174,5 +174,15 @@ final class SmartDataParserTests: XCTestCase {
         XCTAssertEqual(result.dataUnitsRead, 86_014_906)
         XCTAssertNil(result.dataUnitsWritten)
         XCTAssertEqual(result.powerCycles, 7)
+    }
+
+    func testParserPreservesMaximumUInt64Counter() throws {
+        let data = Data(
+            #"{"nvme_smart_health_information_log":{"data_units_written":"18446744073709551615"}}"#.utf8
+        )
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertEqual(result.dataUnitsWritten, UInt64.max)
     }
 }

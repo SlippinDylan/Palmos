@@ -8,7 +8,7 @@ public struct SessionMetricsReducer {
 
     public init(historyLimit: Int) {
         self.historyLimit = max(historyLimit, 0)
-        self.metrics = .empty(historyLimit: historyLimit)
+        self.metrics = .empty()
     }
 
     public mutating func ingest(readBytes: Int64, writeBytes: Int64, at timestamp: Date) {

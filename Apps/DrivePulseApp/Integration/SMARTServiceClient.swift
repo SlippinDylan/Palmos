@@ -6,6 +6,7 @@ enum SMARTServiceRefreshResult: Equatable, Sendable {
     case available(SmartData, compatibility: XPCCompatibilityResult)
     case unsupported
     case transportUnsupported
+    case companionUnavailable
     case helperNotInstalled
     case updateRequired
     case permissionRequired
@@ -15,6 +16,23 @@ enum SMARTServiceRefreshResult: Equatable, Sendable {
 
 protocol SMARTServiceProviding: Sendable {
     func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult
+    func refreshSMART(
+        for device: ExternalDevice,
+        topologyGeneration: Int
+    ) async -> SMARTServiceRefreshResult
+}
+
+protocol SMARTCompanionProvisioning: Sendable {
+    func installBundledSmartctlCompanion(_ binary: Data) async throws
+}
+
+extension SMARTServiceProviding {
+    func refreshSMART(
+        for device: ExternalDevice,
+        topologyGeneration: Int
+    ) async -> SMARTServiceRefreshResult {
+        await refreshSMART(for: device)
+    }
 }
 
 enum SMARTXPCSessionEvent: @unchecked Sendable {
@@ -48,14 +66,17 @@ protocol OccupancyXPCSession: Sendable {
     func invalidate()
 }
 
-final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, HelperOccupancyScanning {
+final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting,
+    HelperOccupancyScanning, SMARTCompanionProvisioning
+{
     private let helperMachServiceName: String
     private let isHelperInstalledOperation: @Sendable () -> Bool
     private let fetchHelperHandshakeOperation: @Sendable () async throws -> Data
     private let readSMARTDataOperation: @Sendable (Data) async throws -> Data
     private let readSMARTDataWithCompletionOperation: (@Sendable (Data) async throws -> Data)?
     private let scanDiskOccupancyOperation: (@Sendable (Data) async throws -> Data)?
-    private let completionSession: (any SMARTCompletionXPCSession)?
+    private let installSmartctlCompanionOperation: @Sendable (Data) async throws -> Data
+    private let completionSessionFactory: (@Sendable () -> any SMARTCompletionXPCSession)?
     private let occupancySessionFactory: (@Sendable () -> any OccupancyXPCSession)?
     private let deviceIOTracker: DeviceIOTracker?
 
@@ -69,8 +90,10 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
         fetchHelperHandshake: (@Sendable () async throws -> Data)? = nil,
         readSMARTData: (@Sendable (Data) async throws -> Data)? = nil,
         readSMARTDataWithCompletion: (@Sendable (Data) async throws -> Data)? = nil,
+        installSmartctlCompanion: (@Sendable (Data) async throws -> Data)? = nil,
         scanDiskOccupancy: (@Sendable (Data) async throws -> Data)? = nil,
         occupancySessionFactory: (@Sendable () -> any OccupancyXPCSession)? = nil,
+        completionSessionFactory: (@Sendable () -> any SMARTCompletionXPCSession)? = nil,
         completionSession: (any SMARTCompletionXPCSession)? = nil,
         deviceIOTracker: DeviceIOTracker? = nil
     ) {
@@ -87,17 +110,29 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
                 helperMachServiceName: helperMachServiceName
             )
         }
-        self.completionSession = completionSession ?? (
-            readSMARTData == nil && readSMARTDataWithCompletion == nil
-                ? LiveSMARTCompletionXPCSession(helperMachServiceName: helperMachServiceName)
-                : nil
-        )
+        if let completionSessionFactory {
+            self.completionSessionFactory = completionSessionFactory
+        } else if let completionSession {
+            self.completionSessionFactory = { completionSession }
+        } else if readSMARTData == nil && readSMARTDataWithCompletion == nil {
+            self.completionSessionFactory = {
+                LiveSMARTCompletionXPCSession(helperMachServiceName: helperMachServiceName)
+            }
+        } else {
+            self.completionSessionFactory = nil
+        }
         if let readSMARTDataWithCompletion {
             self.readSMARTDataWithCompletionOperation = readSMARTDataWithCompletion
         } else {
             self.readSMARTDataWithCompletionOperation = nil
         }
         self.scanDiskOccupancyOperation = scanDiskOccupancy
+        self.installSmartctlCompanionOperation = installSmartctlCompanion ?? { requestData in
+            try await Self.installSmartctlCompanion(
+                requestData,
+                helperMachServiceName: helperMachServiceName
+            )
+        }
         self.occupancySessionFactory = scanDiskOccupancy == nil
             ? occupancySessionFactory ?? {
                 LiveOccupancyXPCSession(helperMachServiceName: helperMachServiceName)
@@ -126,10 +161,21 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
 
         do {
             let handshakeData = try await fetchHelperHandshakeOperation()
+            try Task.checkCancellation()
             let handshake = try decodeHandshake(from: handshakeData)
-            return evaluateHandshake(handshake) == .updateRequired
-                ? .updateRequired
-                : .installed
+            if evaluateHandshake(handshake) == .updateRequired {
+                return .updateRequired
+            }
+            let capabilities = XPCFeatureCapabilities.negotiated(
+                helperContractMinor: handshake.contractMinor
+            )
+            guard capabilities.observableSMARTFailures else {
+                return .monitoringUpdateRequired
+            }
+            if handshake.smartctlCompanionAvailable == false {
+                return .companionUnavailable
+            }
+            return .installed
         } catch {
             return isHelperInstalledOperation()
                 ? .failed(error.localizedDescription)
@@ -148,20 +194,55 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
         try DrivePulseXPCMessages.encodeSMARTReadRequest(request)
     }
 
+    func installBundledSmartctlCompanion(_ binary: Data) async throws {
+        let requestData = try DrivePulseXPCMessages.encodeSMARTCompanionInstallRequest(.init(
+            binary: binary
+        ))
+        let acknowledgementData = try await installSmartctlCompanionOperation(requestData)
+        let acknowledgement = try DrivePulseXPCMessages.decodeSMARTCompanionInstallAcknowledgement(
+            from: acknowledgementData
+        )
+        guard acknowledgement.result == .installed else {
+            throw SMARTServiceClientError.companionInstallationUnconfirmed
+        }
+
+        let handshakeData = try await fetchHelperHandshakeOperation()
+        try Task.checkCancellation()
+        let handshake = try decodeHandshake(from: handshakeData)
+        let capabilities = XPCFeatureCapabilities.negotiated(
+            helperContractMinor: handshake.contractMinor
+        )
+        guard evaluateHandshake(handshake) != .updateRequired,
+              capabilities.smartctlCompanionInstallation,
+              handshake.smartctlCompanionAvailable == true else {
+            throw SMARTServiceClientError.companionInstallationUnconfirmed
+        }
+    }
+
     func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
+        await refreshSMART(for: device, topologyGeneration: 0)
+    }
+
+    func refreshSMART(
+        for device: ExternalDevice,
+        topologyGeneration: Int
+    ) async -> SMARTServiceRefreshResult {
         var token: DeviceIOTracker.Token?
         do {
             let handshakeData = try await fetchHelperHandshakeOperation()
+            try Task.checkCancellation()
             let handshake = try decodeHandshake(from: handshakeData)
             let compatibility = evaluateHandshake(handshake)
 
             guard compatibility != .updateRequired else {
                 return .updateRequired
             }
-
             let capabilities = XPCFeatureCapabilities.negotiated(
                 helperContractMinor: handshake.contractMinor
             )
+            guard capabilities.observableSMARTFailures else {
+                return .updateRequired
+            }
             let request = SMARTReadRequest(
                 physicalDeviceBSDName: device.physicalStoreBSDName,
                 deviceProtocol: device.transportName,
@@ -172,13 +253,14 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
             token = try await deviceIOTracker?.beginTargetOperation(
                 deviceID: device.id,
                 physicalBSDName: device.physicalStoreBSDName,
+                topologyGeneration: topologyGeneration,
                 kind: .smart
             )
             let payload: Data
             if capabilities.completionAwareSMART,
-               completionSession != nil || readSMARTDataWithCompletionOperation != nil {
+               completionSessionFactory != nil || readSMARTDataWithCompletionOperation != nil {
                 let responseData: Data
-                if let completionSession {
+                if let completionSession = completionSessionFactory?() {
                     responseData = try await Self.readSMARTData(
                         requestData,
                         using: completionSession
@@ -191,13 +273,29 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
                 let response = try DrivePulseXPCMessages.decodeAcknowledgedSMARTReadCompletionResponse(
                     from: responseData
                 )
+                guard response.requestID == request.requestID else {
+                    throw SMARTServiceClientError.mismatchedSMARTRequest
+                }
                 payload = response.payload
-                if let token { await deviceIOTracker?.finish(token) }
+                if let token {
+                    await deviceIOTracker?.finishSMARTCompletion(
+                        token,
+                        clearsPriorSafetyScopes: response.deviceSMARTIOQuiesced == true
+                    )
+                }
                 token = nil
+                if let completionError = response.error {
+                    return mapCompletionError(completionError)
+                }
             } else {
                 payload = try await readSMARTDataOperation(requestData)
                 try DrivePulseXPCMessages.validateSMARTPayload(payload)
-                if let token { await deviceIOTracker?.finish(token) }
+                if let token {
+                    await deviceIOTracker?.finishSMARTCompletion(
+                        token,
+                        clearsPriorSafetyScopes: false
+                    )
+                }
                 token = nil
             }
             let smartData = try SmartDataParser.parse(jsonData: payload)
@@ -350,6 +448,29 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
         }
     }
 
+    private static func installSmartctlCompanion(
+        _ requestData: Data,
+        helperMachServiceName: String
+    ) async throws -> Data {
+        try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, gate in
+            guard proxy.installSmartctlCompanion != nil else {
+                gate.resume(throwing: SMARTServiceClientError.unsupportedCompanionInstallationEndpoint)
+                connection.invalidate()
+                return
+            }
+            proxy.installSmartctlCompanion?(for: requestData) { data, error in
+                if let error {
+                    gate.resume(throwing: error)
+                } else if let data {
+                    gate.resume(returning: data)
+                } else {
+                    gate.resume(throwing: SMARTServiceClientError.missingReplyData)
+                }
+                connection.invalidate()
+            }
+        }
+    }
+
     private static func receive(
         using cancellation: XPCSessionCancellation,
         operation: (@escaping @Sendable (SMARTXPCSessionEvent) -> Void) -> Void
@@ -380,17 +501,18 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let gate = XPCReplyGate(continuation: continuation)
-                guard cancellation.install(gate) else {
+                guard cancellation.start(gate: gate, operation: {
+                    session.readSMARTData(requestData: requestData) { event in
+                        switch event {
+                        case let .reply(data): gate.resume(returning: data)
+                        case let .failure(error): gate.resume(throwing: error)
+                        case .interrupted: gate.resume(throwing: SMARTServiceClientError.connectionInterrupted)
+                        case .invalidated: gate.resume(throwing: SMARTServiceClientError.connectionInvalidated)
+                        }
+                    }
+                }) else {
                     gate.resume(throwing: CancellationError())
                     return
-                }
-                session.readSMARTData(requestData: requestData) { event in
-                    switch event {
-                    case let .reply(data): gate.resume(returning: data)
-                    case let .failure(error): gate.resume(throwing: error)
-                    case .interrupted: gate.resume(throwing: SMARTServiceClientError.connectionInterrupted)
-                    case .invalidated: gate.resume(throwing: SMARTServiceClientError.connectionInvalidated)
-                    }
                 }
             }
         } onCancel: {
@@ -465,6 +587,12 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
             return .unsupported
         }
 
+        if normalizedDescription.contains("smartctl companion") &&
+            (normalizedDescription.contains("not installed") ||
+                normalizedDescription.contains("unavailable")) {
+            return .companionUnavailable
+        }
+
         if normalizedDescription.contains("using transport hint") &&
             (normalizedDescription.contains("unknown usb bridge") ||
                 normalizedDescription.contains("unknown bridge") ||
@@ -473,6 +601,25 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting, He
         }
 
         return .failed(description)
+    }
+
+    private func mapCompletionError(
+        _ error: SMARTReadCompletionError
+    ) -> SMARTServiceRefreshResult {
+        switch error.code {
+        case .executableUnavailable:
+            return .companionUnavailable
+        case .invalidRequest:
+            return .deviceUnavailable
+        case .commandFailed:
+            return mapRefreshError(NSError(
+                domain: "com.drivepulse.smartservice",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: error.message]
+            ))
+        case .timedOut, .cancelled, .busy, .duplicateRequest, .outputTooLarge, .internalFailure:
+            return .failed(error.message)
+        }
     }
 
     private static func isHelperInstalled(label: String) -> Bool {
@@ -513,7 +660,7 @@ private final class LiveSMARTCompletionXPCSession: SMARTCompletionXPCSession, @u
         connection.resume()
         let proxy = connection.remoteObjectProxyWithErrorHandler { error in
             eventHandler(.failure(error))
-            connection.invalidate()
+            self.finish(connection)
         }
         guard let proxy = proxy as? DrivePulseSMARTXPCProtocol else {
             eventHandler(.failure(SMARTServiceClientError.invalidRemoteProxy))
@@ -524,21 +671,45 @@ private final class LiveSMARTCompletionXPCSession: SMARTCompletionXPCSession, @u
             if let error { eventHandler(.failure(error)) }
             else if let data { eventHandler(.reply(data)) }
             else { eventHandler(.failure(SMARTServiceClientError.missingReplyData)) }
-            connection.invalidate()
+            self.finish(connection)
         }
     }
 
     func invalidate() {
         let (connection, requestID) = lock.withLock {
-            defer { self.connection = nil }
-            defer { self.requestID = nil }
             return (self.connection, self.requestID)
         }
-        if let requestID,
-           let proxy = connection?.remoteObjectProxy as? DrivePulseSMARTXPCProtocol {
-            proxy.cancelSMARTData?(for: requestID)
+        guard let connection else { return }
+        guard let requestID,
+              let proxy = connection.remoteObjectProxy as? DrivePulseSMARTXPCProtocol else {
+            finish(connection)
+            return
         }
-        connection?.invalidate()
+        do {
+            let requestData = try DrivePulseXPCMessages.encodeSMARTCancelRequest(.init(
+                requestID: requestID
+            ))
+            guard proxy.cancelSMARTDataRequest != nil else {
+                proxy.cancelSMARTData?(for: requestID)
+                return
+            }
+            proxy.cancelSMARTDataRequest?(for: requestData) { data, error in
+                guard error == nil, let data else { return }
+                _ = try? DrivePulseXPCMessages.decodeSMARTCancelAcknowledgement(from: data)
+            }
+        } catch {
+            finish(connection)
+        }
+    }
+
+    private func finish(_ connection: NSXPCConnection) {
+        lock.withLock {
+            if self.connection === connection {
+                self.connection = nil
+                self.requestID = nil
+            }
+        }
+        connection.invalidate()
     }
 }
 
@@ -649,6 +820,9 @@ enum SMARTServiceClientError: LocalizedError, Equatable {
     case connectionInvalidated
     case unsupportedOccupancyEndpoint
     case mismatchedOccupancyWorkflow
+    case mismatchedSMARTRequest
+    case unsupportedCompanionInstallationEndpoint
+    case companionInstallationUnconfirmed
 
     var errorDescription: String? {
         switch self {
@@ -664,6 +838,12 @@ enum SMARTServiceClientError: LocalizedError, Equatable {
             return "The SMART helper does not support disk occupancy scans."
         case .mismatchedOccupancyWorkflow:
             return "The SMART helper returned an occupancy result for another workflow."
+        case .mismatchedSMARTRequest:
+            return "The SMART helper returned a completion for another request."
+        case .unsupportedCompanionInstallationEndpoint:
+            return "The installed SMART Helper cannot install the bundled smartctl companion."
+        case .companionInstallationUnconfirmed:
+            return "The SMART Helper did not confirm that the trusted smartctl companion is available."
         }
     }
 }
@@ -706,22 +886,22 @@ private final class SMARTCompletionCancellation: @unchecked Sendable {
         self.session = session
     }
 
-    func install(_ gate: XPCReplyGate) -> Bool {
+    func start(gate: XPCReplyGate, operation: () -> Void) -> Bool {
         lock.withLock {
             guard isCancelled == false else { return false }
             self.gate = gate
+            operation()
             return true
         }
     }
 
     func cancel() {
-        let gate = lock.withLock { () -> XPCReplyGate? in
-            guard isCancelled == false else { return nil }
+        let shouldInvalidate = lock.withLock { () -> Bool in
+            guard isCancelled == false else { return false }
             isCancelled = true
-            return self.gate
+            return true
         }
-        gate?.resume(throwing: CancellationError())
-        session.invalidate()
+        if shouldInvalidate { session.invalidate() }
     }
 }
 

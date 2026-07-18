@@ -42,7 +42,9 @@ final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering, @unchecked S
     private var isMonitoring = false
 
     init(
-        mapper: ExternalDeviceDiscoveryMapper = ExternalDeviceDiscoveryMapper(),
+        mapper: ExternalDeviceDiscoveryMapper = ExternalDeviceDiscoveryMapper(
+            identityRegistry: .shared
+        ),
         monitoringSession: (any DiskArbitrationMonitoringSession)? = LiveDiskArbitrationMonitoringSession(),
         sessionQueue: DispatchQueue = DispatchQueue(label: "DrivePulse.ExternalDeviceDiscovery")
     ) {
@@ -301,16 +303,133 @@ struct DiskDiscoveryRecord: Equatable {
     }
 }
 
+final class DeviceIdentitySessionRegistry: @unchecked Sendable {
+    static let shared = DeviceIdentitySessionRegistry()
+
+    private struct ActiveSession {
+        let sessionID: String
+        let bsdName: String
+        let mediaUUID: String?
+        let registryEntryID: UInt64?
+
+        func updated(with record: DiskDiscoveryRecord) -> ActiveSession {
+            ActiveSession(
+                sessionID: sessionID,
+                bsdName: record.bsdName,
+                mediaUUID: record.normalizedMediaUUID ?? mediaUUID,
+                registryEntryID: record.registryEntryID ?? registryEntryID
+            )
+        }
+    }
+
+    private let lock = NSLock()
+    private var activeSessions: [ActiveSession] = []
+
+    func identityEvidence(for records: [DiskDiscoveryRecord]) -> [String: DeviceIdentityEvidence] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var remainingPrevious = activeSessions
+        var allocated: [String: ActiveSession] = [:]
+        let currentRegistryEntryCounts = Dictionary(
+            grouping: records.compactMap(\.registryEntryID),
+            by: { $0 }
+        ).mapValues(\.count)
+
+        // A live IORegistry entry is the strongest insertion-session evidence.
+        // Resolve it before consulting BSD names, which the kernel may reuse.
+        for record in records {
+            guard let registryEntryID = record.registryEntryID,
+                  currentRegistryEntryCounts[registryEntryID] == 1 else { continue }
+            let candidates = remainingPrevious.indices.filter {
+                remainingPrevious[$0].registryEntryID == registryEntryID
+            }
+            guard candidates.count == 1, let index = candidates.first else { continue }
+            let session = remainingPrevious.remove(at: index).updated(with: record)
+            allocated[record.bsdName] = session
+        }
+
+        let currentMediaCounts = Dictionary(
+            grouping: records.compactMap(\.normalizedMediaUUID),
+            by: { $0 }
+        ).mapValues(\.count)
+        for record in records where allocated[record.bsdName] == nil {
+            // A new registry entry means a new insertion session even when the
+            // persistent media UUID is unchanged. Media-only matching is for
+            // observations where registry evidence is unavailable.
+            guard record.registryEntryID == nil,
+                  let mediaUUID = record.normalizedMediaUUID,
+                  currentMediaCounts[mediaUUID] == 1 else { continue }
+            let candidates = remainingPrevious.indices.filter {
+                remainingPrevious[$0].mediaUUID == mediaUUID
+            }
+            guard candidates.count == 1, let index = candidates.first else { continue }
+            let session = remainingPrevious.remove(at: index).updated(with: record)
+            allocated[record.bsdName] = session
+        }
+
+        for record in records where allocated[record.bsdName] == nil {
+            // BSD continuity is only a final fallback. Stable incoming evidence
+            // must agree with the prior session; a sparse prior record or a
+            // different device must never claim the reused BSD name.
+            guard record.registryEntryID == nil,
+                  let index = remainingPrevious.firstIndex(where: { previous in
+                      guard previous.bsdName == record.bsdName else { return false }
+                      guard let mediaUUID = record.normalizedMediaUUID else { return true }
+                      return previous.mediaUUID == mediaUUID
+                  }) else { continue }
+            let session = remainingPrevious.remove(at: index).updated(with: record)
+            allocated[record.bsdName] = session
+        }
+
+        for record in records where allocated[record.bsdName] == nil {
+            allocated[record.bsdName] = ActiveSession(
+                sessionID: UUID().uuidString.lowercased(),
+                bsdName: record.bsdName,
+                mediaUUID: record.normalizedMediaUUID,
+                registryEntryID: record.registryEntryID
+            )
+        }
+
+        activeSessions = records.compactMap { allocated[$0.bsdName] }
+        return allocated.mapValues { session in
+            DeviceIdentityEvidence(
+                mediaUUID: session.mediaUUID,
+                registryEntryID: session.registryEntryID,
+                sessionID: session.sessionID
+            )
+        }
+    }
+}
+
+private extension DiskDiscoveryRecord {
+    var normalizedMediaUUID: String? {
+        guard let value = mediaUUID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              value.isEmpty == false else {
+            return nil
+        }
+        return value.lowercased()
+    }
+}
+
 final class ExternalDeviceDiscoveryMapper: @unchecked Sendable {
     private let reducer = DeviceRegistryReducer()
     private let lock = NSLock()
-    private var sessionIDsByIdentityKey: [String: String] = [:]
+    private let identityRegistry: DeviceIdentitySessionRegistry
+
+    init(identityRegistry: DeviceIdentitySessionRegistry = DeviceIdentitySessionRegistry()) {
+        self.identityRegistry = identityRegistry
+    }
 
     func map(_ records: [DiskDiscoveryRecord]) -> [ExternalDevice] {
         lock.lock()
         defer { lock.unlock() }
 
-        let recordsByBSD = Dictionary(uniqueKeysWithValues: records.map { ($0.bsdName, $0) })
+        let records = canonicalRecords(from: records)
+        let recordsByBSD = Dictionary(
+            records.map { ($0.bsdName, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
         discoveryLog.debug("Discovery: enumerating \(records.count) IOMedia records")
         for r in records {
             let pass = DeviceIdentityResolver.isExternalPhysicalDevice(r.descriptor)
@@ -339,12 +458,8 @@ final class ExternalDeviceDiscoveryMapper: @unchecked Sendable {
 
         discoveryLog.debug("Discovery: \(rootRecords.count) root external device(s) after filtering: \(rootRecords.map(\.bsdName).joined(separator: ", "))")
 
-        let activeIdentityKeys = Set(rootRecords.map(identityKey))
-        sessionIDsByIdentityKey = sessionIDsByIdentityKey.filter {
-            activeIdentityKeys.contains($0.key)
-        }
+        let identityEvidenceByBSDName = identityRegistry.identityEvidence(for: rootRecords)
 
-        var usedIdentityIDs = Set<DeviceID>()
         return rootRecords.map { rootRecord in
             let descendants = descendantRecords(for: rootRecord.bsdName, recordsByBSD: recordsByBSD)
 
@@ -392,27 +507,11 @@ final class ExternalDeviceDiscoveryMapper: @unchecked Sendable {
                 }
                 .sorted { $0.bsdName.localizedStandardCompare($1.bsdName) == .orderedAscending }
 
-            var identityEvidence = identityEvidence(for: rootRecord)
-            var resolvedID = identityEvidence.deviceID(for: rootRecord.bsdName)
-            if usedIdentityIDs.contains(resolvedID) {
-                if let registryEntryID = rootRecord.registryEntryID {
-                    identityEvidence = DeviceIdentityEvidence(registryEntryID: registryEntryID)
-                } else {
-                    identityEvidence = DeviceIdentityEvidence(sessionID: UUID().uuidString)
-                }
-                resolvedID = identityEvidence.deviceID(for: rootRecord.bsdName)
-                if usedIdentityIDs.contains(resolvedID) {
-                    identityEvidence = DeviceIdentityEvidence(sessionID: UUID().uuidString)
-                    resolvedID = identityEvidence.deviceID(for: rootRecord.bsdName)
-                }
-            }
-            usedIdentityIDs.insert(resolvedID)
-
             var device = reducer.reduce(
                 physicalBSDName: rootRecord.bsdName,
                 containerBSDName: apfsContainerBSDName,
                 volumes: mountedVolumes,
-                identityEvidence: identityEvidence
+                identityEvidence: identityEvidenceByBSDName[rootRecord.bsdName]
             )
             device.displayName = displayName(for: rootRecord)
             device.transportName = transportName(for: rootRecord)
@@ -436,42 +535,38 @@ final class ExternalDeviceDiscoveryMapper: @unchecked Sendable {
         }
     }
 
-    private func identityEvidence(for record: DiskDiscoveryRecord) -> DeviceIdentityEvidence {
-        let identityKey = identityKey(for: record)
-        let sessionID: String
-        if let existing = sessionIDsByIdentityKey[identityKey] {
-            sessionID = existing
-        } else {
-            sessionID = UUID().uuidString.lowercased()
-            sessionIDsByIdentityKey[identityKey] = sessionID
+    func canonicalRecords(from records: [DiskDiscoveryRecord]) -> [DiskDiscoveryRecord] {
+        let candidatesByBSDName = Dictionary(grouping: records, by: \.bsdName)
+        let conflictingBSDNames: Set<String> = Set(candidatesByBSDName.compactMap { bsdName, candidates -> String? in
+            guard let first = candidates.first,
+                  candidates.contains(where: { $0 != first }) else { return nil }
+            discoveryLog.error("Ignoring conflicting discovery records for \(bsdName)")
+            return bsdName
+        })
+
+        var excludedBSDNames = conflictingBSDNames
+        var didExcludeDescendant = true
+        while didExcludeDescendant {
+            didExcludeDescendant = false
+            for (bsdName, candidates) in candidatesByBSDName where excludedBSDNames.contains(bsdName) == false {
+                guard let record = candidates.first else { continue }
+                let touchesExcludedAncestor = record.parentBSDName.map {
+                    excludedBSDNames.contains($0)
+                } ?? false
+                let referencesExcludedWholeDisk = record.wholeDiskBSDName.map {
+                    excludedBSDNames.contains($0)
+                } ?? false
+                if touchesExcludedAncestor || referencesExcludedWholeDisk {
+                    excludedBSDNames.insert(bsdName)
+                    didExcludeDescendant = true
+                }
+            }
         }
 
-        if let mediaUUID = record.mediaUUID {
-            return DeviceIdentityEvidence(
-                mediaUUID: mediaUUID,
-                registryEntryID: record.registryEntryID,
-                sessionID: sessionID
-            )
+        return candidatesByBSDName.compactMap { bsdName, candidates in
+            guard excludedBSDNames.contains(bsdName) == false else { return nil }
+            return candidates.first
         }
-
-        if let registryEntryID = record.registryEntryID {
-            return DeviceIdentityEvidence(
-                registryEntryID: registryEntryID,
-                sessionID: sessionID
-            )
-        }
-
-        return DeviceIdentityEvidence(sessionID: sessionID)
-    }
-
-    private func identityKey(for record: DiskDiscoveryRecord) -> String {
-        if let mediaUUID = normalizedString(record.mediaUUID) {
-            return "media:\(mediaUUID.lowercased())"
-        }
-        if let registryEntryID = record.registryEntryID {
-            return "registry:\(String(registryEntryID, radix: 16))"
-        }
-        return "bsd:\(record.bsdName)"
     }
 
     private func topLevelExternalRoot(

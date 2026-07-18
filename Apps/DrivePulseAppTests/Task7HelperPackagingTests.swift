@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import XCTest
 @testable import DrivePulseApp
@@ -22,6 +23,24 @@ final class Task7HelperPackagingTests: XCTestCase {
         XCTAssertEqual(
             machServices["com.drivepulse.smartservice"] as? Bool,
             true
+        )
+    }
+
+    func testAppBundleIncludesExactSmartmontoolsLicense() throws {
+        let licenseURL = try XCTUnwrap(
+            Bundle.main.url(
+                forResource: "smartmontools-COPYING",
+                withExtension: "txt"
+            )
+        )
+        let data = try Data(contentsOf: licenseURL)
+        let digest = SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+
+        XCTAssertEqual(
+            digest,
+            "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
         )
     }
 
@@ -129,6 +148,54 @@ final class Task7HelperPackagingTests: XCTestCase {
                 "SMART Helper has signing identifier com.example.wrong-helper, expected com.drivepulse.smartservice. Check the target bundle identifier and code-signing settings."
             )
         }
+    }
+
+    func testCompanionPreflightAcceptsMatchingIdentifierTeamAndDigest() throws {
+        let helper = HelperCodeSigningIdentity(
+            identifier: HelperInstallationPreflight.helperIdentifier,
+            teamIdentifier: "TESTTEAM",
+            isAdHoc: false
+        )
+        let companion = HelperCodeSigningIdentity(
+            identifier: HelperInstallationPreflight.companionIdentifier,
+            teamIdentifier: "TESTTEAM",
+            isAdHoc: false
+        )
+
+        XCTAssertNoThrow(
+            try HelperInstallationPreflight.validateCompanionSigningRelationship(
+                helper: helper,
+                companion: companion
+            )
+        )
+        XCTAssertEqual(
+            try HelperInstallationPreflight.companionDigest(
+                in: [HelperInstallationPreflight.companionDigestInfoKey: String(repeating: "a", count: 64)]
+            ),
+            String(repeating: "a", count: 64)
+        )
+    }
+
+    func testCompanionPreflightRejectsMalformedDigest() {
+        XCTAssertThrowsError(
+            try HelperInstallationPreflight.companionDigest(
+                in: [HelperInstallationPreflight.companionDigestInfoKey: "not-a-digest"]
+            )
+        )
+    }
+
+    func testHelperInstallerProvisionsCompanionAfterPreparation() async throws {
+        let binary = Data([0xcf, 0xfa, 0xed, 0xfe, 1])
+        let provisioner = RecordingCompanionProvisioner()
+        let installer = HelperInstaller(
+            provisioner: provisioner,
+            prepareInstallation: { binary }
+        )
+
+        try await installer.install()
+
+        let provisionedBinary = await provisioner.binary
+        XCTAssertEqual(provisionedBinary, binary)
     }
 
     func testBlessFailureDescriptionPreservesNestedNSErrorDetails() {
@@ -329,5 +396,13 @@ final class Task7HelperPackagingTests: XCTestCase {
         XCTAssertFalse(bytes.isEmpty, "No hex payload found in otool section output:\n\(output)")
 
         return Data(bytes)
+    }
+}
+
+private actor RecordingCompanionProvisioner: SMARTCompanionProvisioning {
+    private(set) var binary: Data?
+
+    func installBundledSmartctlCompanion(_ binary: Data) async throws {
+        self.binary = binary
     }
 }

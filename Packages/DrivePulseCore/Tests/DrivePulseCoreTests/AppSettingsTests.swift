@@ -2,6 +2,11 @@ import XCTest
 @testable import DrivePulseCore
 
 final class AppSettingsTests: XCTestCase {
+    func testFahrenheitFormattingSaturatesExtremeIntegers() {
+        XCTAssertEqual(TemperatureUnit.fahrenheit.format(.max), "\(Int.max) °F")
+        XCTAssertEqual(TemperatureUnit.fahrenheit.format(.min), "\(Int.min) °F")
+    }
+
     func testPanelDetailSectionsContainOnlyConfigurableDetailCards() {
         XCTAssertEqual(
             PanelDetailSection.allCases,

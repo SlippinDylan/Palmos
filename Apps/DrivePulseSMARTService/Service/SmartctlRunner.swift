@@ -2,7 +2,19 @@ import Darwin
 import DrivePulseCore
 import Foundation
 
-final class SmartctlRunner: @unchecked Sendable {
+protocol SMARTDataRunning: Sendable {
+    /// Returns or throws only after the child has exited (or when no child was
+    /// launched). The completion envelope relies on this terminal guarantee.
+    func readSMARTData(
+        for physicalDeviceBSDName: String,
+        transportHint: SmartctlTransportHint,
+        timeout: Duration
+    ) async throws -> Data
+
+    func isCompanionAvailable() -> Bool
+}
+
+final class SmartctlRunner: SMARTDataRunning, @unchecked Sendable {
     enum RunnerError: LocalizedError, Equatable {
         case invalidDeviceName(String)
         case executableUnavailable
@@ -34,6 +46,7 @@ final class SmartctlRunner: @unchecked Sendable {
     static let stdoutLimit = 2 * 1024 * 1024
     static let stderrLimit = 64 * 1024
     static let trustedExecutablePath = "/Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl"
+    static let trustedExecutableIdentifier = "com.drivepulse.smartservice.smartctl"
 
     private let executableLocator: @Sendable () throws -> URL
 
@@ -49,30 +62,38 @@ final class SmartctlRunner: @unchecked Sendable {
         timeout: Duration = SmartctlRunner.defaultTimeout
     ) async throws -> Data {
         let sanitizedBSDName = try sanitize(physicalDeviceBSDName)
-        try Task.checkCancellation()
-
         let process = Process()
-        process.executableURL = try executableLocator()
-        process.arguments = arguments(
-            for: sanitizedBSDName,
-            transportHint: transportHint
-        )
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-
         let controller = RunningProcess(process)
-        let stdoutReader = BoundedPipeReader(stdout.fileHandleForReading, limit: Self.stdoutLimit)
-        let stderrReader = BoundedPipeReader(stderr.fileHandleForReading, limit: Self.stderrLimit)
-        let deadline = ContinuousClock.now.advanced(by: timeout)
 
         return try await withTaskCancellationHandler {
-            try process.run()
+            try Task.checkCancellation()
+
+            do {
+                process.executableURL = try executableLocator()
+            } catch {
+                try Task.checkCancellation()
+                throw RunnerError.executableUnavailable
+            }
+            try Task.checkCancellation()
+
+            process.arguments = arguments(
+                for: sanitizedBSDName,
+                transportHint: transportHint
+            )
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            let stdoutReader = BoundedPipeReader(stdout.fileHandleForReading, limit: Self.stdoutLimit)
+            let stderrReader = BoundedPipeReader(stderr.fileHandleForReading, limit: Self.stderrLimit)
+            try controller.launch()
+
             async let stdoutResult = stdoutReader.read()
             async let stderrResult = stderrReader.read()
 
+            let deadline = ContinuousClock.now.advanced(by: timeout)
             let monitor = Task {
                 while controller.isRunning {
                     if ContinuousClock.now >= deadline {
@@ -116,8 +137,12 @@ final class SmartctlRunner: @unchecked Sendable {
             }
             return stdoutData
         } onCancel: {
-            controller.terminateWithEscalation()
+            controller.requestTermination()
         }
+    }
+
+    func isCompanionAvailable() -> Bool {
+        (try? executableLocator()) != nil
     }
 
     private func sanitize(_ physicalDeviceBSDName: String) throws -> String {
@@ -168,6 +193,11 @@ final class SmartctlRunner: @unchecked Sendable {
             if parent.path == "/" { break }
             parent.deleteLastPathComponent()
         }
+        do {
+            try SecuritySMARTCompanionCodeValidator().validateCompanion(at: url)
+        } catch {
+            throw RunnerError.executableUnavailable
+        }
         return url
     }
 
@@ -189,21 +219,33 @@ private final class RunningProcess: @unchecked Sendable {
     private let process: Process
     private let lock = NSLock()
     private var timedOut = false
+    private var terminationRequested = false
 
     init(_ process: Process) { self.process = process }
     var isRunning: Bool { lock.withLock { process.isRunning } }
     var didTimeOut: Bool { lock.withLock { timedOut } }
 
+    func launch() throws {
+        try lock.withLock {
+            guard terminationRequested == false else {
+                throw CancellationError()
+            }
+            try process.run()
+        }
+    }
+
     func terminateForTimeout() {
         lock.withLock {
             timedOut = true
+            terminationRequested = true
             if process.isRunning { process.terminate() }
         }
         scheduleKill()
     }
 
-    func terminateWithEscalation() {
+    func requestTermination() {
         lock.withLock {
+            terminationRequested = true
             if process.isRunning { process.terminate() }
         }
         scheduleKill()

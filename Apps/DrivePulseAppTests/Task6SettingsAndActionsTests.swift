@@ -43,7 +43,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
             displayName: "Sample Drive",
             transportName: "USB-C",
             smartSnapshot: .notRequested,
-            sessionMetrics: .empty(historyLimit: 0),
+            sessionMetrics: .empty(),
             physicalStoreBSDName: "disk42",
             apfsContainerBSDName: "disk42s2",
             volumes: [MountedVolume(bsdName: "disk42s2")]
@@ -62,7 +62,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
             displayName: "Sample Drive",
             transportName: "USB-C",
             smartSnapshot: .notRequested,
-            sessionMetrics: .empty(historyLimit: 0),
+            sessionMetrics: .empty(),
             physicalStoreBSDName: "disk42",
             apfsContainerBSDName: "disk42s2",
             volumes: [MountedVolume(bsdName: "disk42s2")]
@@ -73,18 +73,20 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertEqual(actions.last?.kind, .quit)
     }
 
-    func testFooterActionsWithoutMountedDeviceShowOnlyDiskUtilityAndQuit() {
+    func testFooterActionsWithoutDeviceShowOnlyDiskUtilityAndQuit() {
         XCTAssertEqual(
             SystemAction.footerActions(for: nil).map(\.kind),
             [.openDiskUtility, .quit]
         )
+    }
 
+    func testUnmountedDeviceStillOffersEject() {
         let unmountedDevice = ExternalDevice(
             id: DeviceID(rawValue: "selected-device"),
             displayName: "Sample Drive",
             transportName: "USB-C",
             smartSnapshot: .notRequested,
-            sessionMetrics: .empty(historyLimit: 0),
+            sessionMetrics: .empty(),
             physicalStoreBSDName: "disk42",
             apfsContainerBSDName: "disk42s2",
             volumes: []
@@ -92,7 +94,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
 
         XCTAssertEqual(
             SystemAction.footerActions(for: unmountedDevice).map(\.kind),
-            [.openDiskUtility, .quit]
+            [.eject, .openDiskUtility, .quit]
         )
     }
 
@@ -102,7 +104,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
             displayName: "Sample Drive",
             transportName: "USB-C",
             smartSnapshot: .notRequested,
-            sessionMetrics: .empty(historyLimit: 0),
+            sessionMetrics: .empty(),
             physicalStoreBSDName: "disk42",
             apfsContainerBSDName: "disk42s2",
             volumes: [MountedVolume(bsdName: "disk42s2")]
@@ -125,7 +127,7 @@ final class Task6SettingsAndActionsTests: XCTestCase {
             displayName: "Sample Drive",
             transportName: "USB-C",
             smartSnapshot: .notRequested,
-            sessionMetrics: .empty(historyLimit: 0),
+            sessionMetrics: .empty(),
             physicalStoreBSDName: "disk42",
             apfsContainerBSDName: "disk42s2",
             volumes: [MountedVolume(bsdName: "disk42s2")]

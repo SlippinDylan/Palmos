@@ -44,7 +44,7 @@ public struct DeviceSessionMetrics: Equatable, Sendable {
         self.writeHistory = writeHistory
     }
 
-    public static func empty(historyLimit: Int) -> Self {
+    public static func empty() -> Self {
         return .init(
             currentReadBytesPerSecond: 0,
             currentWriteBytesPerSecond: 0,
@@ -65,18 +65,18 @@ public struct SmartData: Equatable, Sendable {
     public var availableSpare: Int?
     public var availableSpareThreshold: Int?
     public var percentageUsed: Int?
-    public var dataUnitsRead: Int?
-    public var dataUnitsWritten: Int?
-    public var hostReadCommands: Int?
-    public var hostWriteCommands: Int?
-    public var controllerBusyTime: Int?
-    public var powerCycles: Int?
-    public var powerOnHours: Int?
-    public var unsafeShutdowns: Int?
-    public var mediaIntegrityErrors: Int?
-    public var errorLogEntries: Int?
-    public var warningTempTime: Int?
-    public var criticalTempTime: Int?
+    public var dataUnitsRead: UInt64?
+    public var dataUnitsWritten: UInt64?
+    public var hostReadCommands: UInt64?
+    public var hostWriteCommands: UInt64?
+    public var controllerBusyTime: UInt64?
+    public var powerCycles: UInt64?
+    public var powerOnHours: UInt64?
+    public var unsafeShutdowns: UInt64?
+    public var mediaIntegrityErrors: UInt64?
+    public var errorLogEntries: UInt64?
+    public var warningTempTime: UInt64?
+    public var criticalTempTime: UInt64?
     public var warningTempThreshold: Int?
     public var criticalTempThreshold: Int?
 
@@ -89,18 +89,18 @@ public struct SmartData: Equatable, Sendable {
         availableSpare: Int? = nil,
         availableSpareThreshold: Int? = nil,
         percentageUsed: Int? = nil,
-        dataUnitsRead: Int? = nil,
-        dataUnitsWritten: Int? = nil,
-        hostReadCommands: Int? = nil,
-        hostWriteCommands: Int? = nil,
-        controllerBusyTime: Int? = nil,
-        powerCycles: Int? = nil,
-        powerOnHours: Int? = nil,
-        unsafeShutdowns: Int? = nil,
-        mediaIntegrityErrors: Int? = nil,
-        errorLogEntries: Int? = nil,
-        warningTempTime: Int? = nil,
-        criticalTempTime: Int? = nil,
+        dataUnitsRead: UInt64? = nil,
+        dataUnitsWritten: UInt64? = nil,
+        hostReadCommands: UInt64? = nil,
+        hostWriteCommands: UInt64? = nil,
+        controllerBusyTime: UInt64? = nil,
+        powerCycles: UInt64? = nil,
+        powerOnHours: UInt64? = nil,
+        unsafeShutdowns: UInt64? = nil,
+        mediaIntegrityErrors: UInt64? = nil,
+        errorLogEntries: UInt64? = nil,
+        warningTempTime: UInt64? = nil,
+        criticalTempTime: UInt64? = nil,
         warningTempThreshold: Int? = nil,
         criticalTempThreshold: Int? = nil
     ) {
@@ -202,7 +202,7 @@ public struct ExternalDevice: Equatable, Sendable, Identifiable {
         transportName: String,
         capacityBytes: Int64? = nil,
         smartSnapshot: SmartSnapshot = .notRequested,
-        sessionMetrics: DeviceSessionMetrics = .empty(historyLimit: DeviceSessionMetrics.defaultHistoryLimit),
+        sessionMetrics: DeviceSessionMetrics = .empty(),
         physicalStoreBSDName: String,
         apfsContainerBSDName: String?,
         volumes: [MountedVolume],
@@ -234,7 +234,9 @@ public struct ExternalDevice: Equatable, Sendable, Identifiable {
         volumes: [MountedVolume]
     ) {
         self.init(
-            id: DeviceID(rawValue: physicalStoreBSDName),
+            id: DeviceIdentityEvidence(
+                sessionID: UUID().uuidString
+            ).deviceID(for: physicalStoreBSDName),
             displayName: physicalStoreBSDName.uppercased(),
             transportName: "External",
             physicalStoreBSDName: physicalStoreBSDName,

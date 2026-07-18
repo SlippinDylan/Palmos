@@ -127,18 +127,18 @@ private struct NVMESMARTHealthInformationLog: Decodable {
     let availableSpare: Int?
     let availableSpareThreshold: Int?
     let percentageUsed: Int?
-    let dataUnitsRead: Int?
-    let dataUnitsWritten: Int?
-    let hostReads: Int?
-    let hostWrites: Int?
-    let controllerBusyTime: Int?
-    let powerCycles: Int?
-    let powerOnHours: Int?
-    let unsafeShutdowns: Int?
-    let mediaErrors: Int?
-    let numErrLogEntries: Int?
-    let warningTempTime: Int?
-    let criticalCompTime: Int?
+    let dataUnitsRead: UInt64?
+    let dataUnitsWritten: UInt64?
+    let hostReads: UInt64?
+    let hostWrites: UInt64?
+    let controllerBusyTime: UInt64?
+    let powerCycles: UInt64?
+    let powerOnHours: UInt64?
+    let unsafeShutdowns: UInt64?
+    let mediaErrors: UInt64?
+    let numErrLogEntries: UInt64?
+    let warningTempTime: UInt64?
+    let criticalCompTime: UInt64?
 
     enum CodingKeys: String, CodingKey {
         case temperature
@@ -169,18 +169,18 @@ private struct NVMESMARTHealthInformationLog: Decodable {
         availableSpare = container.decodeFlexibleIntIfPresent(forKey: .availableSpare)
         availableSpareThreshold = container.decodeFlexibleIntIfPresent(forKey: .availableSpareThreshold)
         percentageUsed = container.decodeFlexibleIntIfPresent(forKey: .percentageUsed)
-        dataUnitsRead = container.decodeFlexibleIntIfPresent(forKey: .dataUnitsRead)
-        dataUnitsWritten = container.decodeFlexibleIntIfPresent(forKey: .dataUnitsWritten)
-        hostReads = container.decodeFlexibleIntIfPresent(forKey: .hostReads)
-        hostWrites = container.decodeFlexibleIntIfPresent(forKey: .hostWrites)
-        controllerBusyTime = container.decodeFlexibleIntIfPresent(forKey: .controllerBusyTime)
-        powerCycles = container.decodeFlexibleIntIfPresent(forKey: .powerCycles)
-        powerOnHours = container.decodeFlexibleIntIfPresent(forKey: .powerOnHours)
-        unsafeShutdowns = container.decodeFlexibleIntIfPresent(forKey: .unsafeShutdowns)
-        mediaErrors = container.decodeFlexibleIntIfPresent(forKey: .mediaErrors)
-        numErrLogEntries = container.decodeFlexibleIntIfPresent(forKey: .numErrLogEntries)
-        warningTempTime = container.decodeFlexibleIntIfPresent(forKey: .warningTempTime)
-        criticalCompTime = container.decodeFlexibleIntIfPresent(forKey: .criticalCompTime)
+        dataUnitsRead = container.decodeFlexibleUInt64IfPresent(forKey: .dataUnitsRead)
+        dataUnitsWritten = container.decodeFlexibleUInt64IfPresent(forKey: .dataUnitsWritten)
+        hostReads = container.decodeFlexibleUInt64IfPresent(forKey: .hostReads)
+        hostWrites = container.decodeFlexibleUInt64IfPresent(forKey: .hostWrites)
+        controllerBusyTime = container.decodeFlexibleUInt64IfPresent(forKey: .controllerBusyTime)
+        powerCycles = container.decodeFlexibleUInt64IfPresent(forKey: .powerCycles)
+        powerOnHours = container.decodeFlexibleUInt64IfPresent(forKey: .powerOnHours)
+        unsafeShutdowns = container.decodeFlexibleUInt64IfPresent(forKey: .unsafeShutdowns)
+        mediaErrors = container.decodeFlexibleUInt64IfPresent(forKey: .mediaErrors)
+        numErrLogEntries = container.decodeFlexibleUInt64IfPresent(forKey: .numErrLogEntries)
+        warningTempTime = container.decodeFlexibleUInt64IfPresent(forKey: .warningTempTime)
+        criticalCompTime = container.decodeFlexibleUInt64IfPresent(forKey: .criticalCompTime)
     }
 }
 
@@ -192,6 +192,17 @@ private extension KeyedDecodingContainer {
         }
         if let string = try? decode(String.self, forKey: key) {
             return Int(string.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
+    }
+
+    func decodeFlexibleUInt64IfPresent(forKey key: Key) -> UInt64? {
+        guard contains(key), (try? decodeNil(forKey: key)) != true else { return nil }
+        if let value = try? decode(UInt64.self, forKey: key) {
+            return value
+        }
+        if let string = try? decode(String.self, forKey: key) {
+            return UInt64(string.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         return nil
     }

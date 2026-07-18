@@ -4,6 +4,8 @@ import Foundation
 enum SMARTHelperInspection: Equatable, Sendable {
     case notInstalled
     case installed
+    case companionUnavailable
+    case monitoringUpdateRequired
     case updateRequired
     case failed(String)
 }
@@ -16,6 +18,8 @@ enum SMARTHelperStatus: Equatable {
     case notInstalled
     case checking
     case installed
+    case companionUnavailable
+    case monitoringUpdateRequired
     case updateRequired
     case installing
     case inspectionFailed(String)
@@ -33,7 +37,7 @@ final class SMARTHelperManager: ObservableObject {
 
     private let inspector: any SMARTHelperInspecting
     private let installer: any HelperInstalling
-    private var inspectionTask: Task<Void, Never>?
+    private var inspectionTask: Task<SMARTHelperInspection, Never>?
     private var inspectionGeneration = 0
 
     init(
@@ -53,14 +57,20 @@ final class SMARTHelperManager: ObservableObject {
     func refreshStatus() {
         guard status != .installing else { return }
         inspectionTask?.cancel()
+        inspectionTask = nil
         inspectionGeneration += 1
         let generation = inspectionGeneration
         status = .checking
-        inspectionTask = Task { [weak self] in
+        let task = Task { [inspector] in
+            await inspector.inspectSMARTHelper()
+        }
+        inspectionTask = task
+        Task { [weak self] in
+            let inspection = await task.value
             guard let self else { return }
-            let inspection = await inspector.inspectSMARTHelper()
             guard Task.isCancelled == false,
                   generation == inspectionGeneration else { return }
+            inspectionTask = nil
             status = Self.status(for: inspection)
         }
     }
@@ -71,6 +81,7 @@ final class SMARTHelperManager: ObservableObject {
     ) {
         guard status != .installing else { return }
         inspectionTask?.cancel()
+        inspectionTask = nil
         inspectionGeneration += 1
 
         if authority == .authoritative {
@@ -79,14 +90,20 @@ final class SMARTHelperManager: ObservableObject {
         }
 
         switch inspection {
+        case .monitoringUpdateRequired:
+            status = .monitoringUpdateRequired
         case .updateRequired:
             status = .updateRequired
         case .installed:
-            guard status != .updateRequired else { return }
+            guard status != .monitoringUpdateRequired,
+                  status != .updateRequired else { return }
             status = .installed
+        case .companionUnavailable:
+            status = .companionUnavailable
         case .notInstalled:
             switch status {
-            case .installed, .updateRequired, .installationFailed:
+            case .installed, .companionUnavailable, .monitoringUpdateRequired,
+                 .updateRequired, .installationFailed:
                 return
             case .notInstalled, .checking, .installing, .inspectionFailed:
                 status = .notInstalled
@@ -99,7 +116,9 @@ final class SMARTHelperManager: ObservableObject {
     func installOrUpdate() async -> Bool {
         guard status != .checking, status != .installing else { return false }
         inspectionTask?.cancel()
+        inspectionTask = nil
         inspectionGeneration += 1
+        let generation = inspectionGeneration
         status = .installing
 
         do {
@@ -109,10 +128,20 @@ final class SMARTHelperManager: ObservableObject {
             return false
         }
 
-        // SMJobBless returning successfully is the authoritative completion
-        // signal. A handshake can briefly race launchd startup, so defer the
-        // compatibility check to the next explicit status refresh.
-        status = .installed
+        status = .checking
+        let task = Task { [inspector] in
+            await inspector.inspectSMARTHelper()
+        }
+        inspectionTask = task
+        let inspection = await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        guard Task.isCancelled == false,
+              generation == inspectionGeneration else { return true }
+        inspectionTask = nil
+        status = Self.status(for: inspection)
         return true
     }
 
@@ -122,6 +151,10 @@ final class SMARTHelperManager: ObservableObject {
             return .notInstalled
         case .installed:
             return .installed
+        case .companionUnavailable:
+            return .companionUnavailable
+        case .monitoringUpdateRequired:
+            return .monitoringUpdateRequired
         case .updateRequired:
             return .updateRequired
         case .failed(let message):
