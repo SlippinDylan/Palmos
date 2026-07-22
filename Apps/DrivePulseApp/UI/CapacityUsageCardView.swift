@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 import DrivePulseCore
@@ -104,7 +105,8 @@ struct CapacityUsageCardView: View {
                     CapacityLegendItem(
                         title: "Available",
                         value: formatted(model.availableBytes),
-                        color: .secondary.opacity(0.42)
+                        color: Color(nsColor: .controlBackgroundColor),
+                        hasOutline: true
                     )
                 }
             }
@@ -123,27 +125,27 @@ private struct CapacitySegmentBar: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color.secondary.opacity(0.14)
+                Color.primary.opacity(0.03)
+
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Color(nsColor: .controlBackgroundColor)
+                        .frame(width: geometry.size.width * model.availableFraction)
+                }
 
                 HStack(spacing: 0) {
                     Color.accentColor
                         .frame(width: geometry.size.width * model.usedFraction)
                     Spacer(minLength: 0)
                 }
-
-                HStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    Color.secondary.opacity(0.42)
-                        .frame(width: geometry.size.width * model.availableFraction)
-                }
             }
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             .overlay {
-                Capsule()
-                    .strokeBorder(Color.primary.opacity(0.08))
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
             }
         }
-        .frame(height: 12)
+        .frame(height: 18)
         .accessibilityHidden(true)
     }
 }
@@ -152,12 +154,19 @@ private struct CapacityLegendItem: View {
     let title: LocalizedStringKey
     let value: String
     let color: Color
+    var hasOutline = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
-            Circle()
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(color)
                 .frame(width: 7, height: 7)
+                .overlay {
+                    if hasOutline {
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.24), lineWidth: 1)
+                    }
+                }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

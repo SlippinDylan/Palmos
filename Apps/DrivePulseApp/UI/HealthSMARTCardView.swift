@@ -46,12 +46,24 @@ struct HealthSMARTCardView: View {
                 }
 
                 if !isLoading && canRefresh {
-                    Button("Refresh SMART Data") { onRefresh() }
-                        .buttonStyle(.link)
-                        .controlSize(.small)
+                    refreshButton
                         .padding(.top, 8)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var refreshButton: some View {
+        let button = Button("Refresh SMART Data", action: onRefresh)
+            .controlSize(.small)
+            .buttonBorderShape(.capsule)
+
+        if #available(macOS 26.0, *) {
+            button.buttonStyle(.glass)
+        } else {
+            button.buttonStyle(.bordered)
         }
     }
 

@@ -119,11 +119,11 @@ struct MenuBarRootView: View {
         VStack(spacing: 0) {
             MenuBarHeaderView(controller: controller, settingsWindowActivator: settingsWindowActivator)
 
-            Divider()
+            InsetPanelDivider()
 
             panelContent
 
-            Divider()
+            InsetPanelDivider()
 
             ActionBarView(
                 actions: controller.selectedFooterActions,
@@ -140,7 +140,6 @@ struct MenuBarRootView: View {
                 onRequestForceEject: controller.requestForceEject
             )
             .padding(14)
-            .background(.regularMaterial)
         }
         .frame(width: 360)
         .containerBackground(.regularMaterial, for: .window)
@@ -176,9 +175,8 @@ struct MenuBarRootView: View {
             )
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(.regularMaterial)
 
-            Divider()
+            InsetPanelDivider()
 
             deviceDetails(device)
         }
@@ -355,6 +353,13 @@ private struct ConfigurableDetailsHeightPreferenceKey: PreferenceKey {
     }
 }
 
+private struct InsetPanelDivider: View {
+    var body: some View {
+        Divider()
+            .padding(.horizontal, 14)
+    }
+}
+
 private struct NoMountedDeviceView: View {
     var body: some View {
         VStack(spacing: 12) {
@@ -415,6 +420,5 @@ private struct MenuBarHeaderView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.regularMaterial)
     }
 }

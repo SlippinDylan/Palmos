@@ -24,6 +24,12 @@ Run this checklist after each significant change to the app or helper. Every ite
 - [ ] Session cumulative counters reset when device is removed and reinserted
 - [ ] Throughput chart renders without errors for an active device
 
+## Panel Presentation
+
+- [ ] At the 360-point panel width, header, device picker, content, and footer share one continuous window background in English, Simplified Chinese, and Traditional Chinese
+- [ ] Section separators span the panel with matching left and right insets
+- [ ] Capacity usage renders as an outlined segmented bar with accurate Used and Available values in Light and Dark appearances
+
 ## Volumes
 
 - [ ] Volume list shows all volumes for the selected device
@@ -80,6 +86,7 @@ Run this checklist after each significant change to the app or helper. Every ite
 ## SMART — Helper Installed
 
 - [ ] Refresh reads SMART data and shows overall health and temperature
+- [ ] Refresh SMART Data is a centered compact glass capsule on macOS 26 and a centered bordered capsule on earlier supported macOS versions
 - [ ] Replacing the bundled companion with an unsigned or differently signed executable causes installation to fail without replacing an existing trusted companion
 - [ ] Highest temperature is displayed in the Overview card
 - [ ] All temperature sensors appear in the SMART detail section
