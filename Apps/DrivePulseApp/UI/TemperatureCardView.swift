@@ -45,12 +45,12 @@ struct TemperatureCardView: View {
 
     private var warningTempTimeString: String {
         guard let value = smartData?.warningTempTime else { return PanelDisplayValue.missing }
-        return "\(value) min"
+        return PanelValueFormatter.minutes(value)
     }
 
     private var criticalTempTimeString: String {
         guard let value = smartData?.criticalTempTime else { return PanelDisplayValue.missing }
-        return "\(value) min"
+        return PanelValueFormatter.minutes(value)
     }
 
     @ViewBuilder

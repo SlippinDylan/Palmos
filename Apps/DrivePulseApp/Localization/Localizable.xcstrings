@@ -167,6 +167,29 @@
         }
       }
     },
+    "Available spare %@ (threshold %@%%)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Available spare %@ (threshold %@%%)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用备用块 %@（阈值 %@%%）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用備用區塊 %@（閾值 %@%%）"
+          }
+        }
+      }
+    },
     "BSD Name" : {
       "localizations" : {
         "en" : {
@@ -190,7 +213,49 @@
       }
     },
     "Bus" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bus"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总线"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯流排"
+          }
+        }
+      }
+    },
+    "Bus %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bus %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总线 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯流排 %@"
+          }
+        }
+      }
     },
     "Cancel" : {
       "extractionState" : "stale",
@@ -566,7 +631,31 @@
         }
       }
     },
+    "Critical warning %@ (%@)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Critical warning %@ (%@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "严重警告 %@（%@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "嚴重警告 %@（%@）"
+          }
+        }
+      }
+    },
     "Details" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -627,6 +716,7 @@
       }
     },
     "Device ID" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -754,7 +844,26 @@
       }
     },
     "DrivePulse" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DrivePulse"
+          }
+        }
+      }
     },
     "DrivePulse can launch automatically when you sign in." : {
       "localizations" : {
@@ -852,6 +961,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "需要更新特權 SMART 助理才能重新整理 SMART 資料。"
+          }
+        }
+      }
+    },
+    "Duration hours" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hr"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 小时"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 小時"
+          }
+        }
+      }
+    },
+    "Duration minutes" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ min"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 分钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 分鐘"
           }
         }
       }
@@ -2216,7 +2371,26 @@
       }
     },
     "IEEE OUI" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IEEE OUI"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IEEE OUI"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IEEE OUI"
+          }
+        }
+      }
     },
     "Install" : {
       "localizations" : {
@@ -2539,7 +2713,26 @@
       }
     },
     "Name" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名稱"
+          }
+        }
+      }
     },
     "No" : {
       "localizations" : {
@@ -2586,6 +2779,7 @@
       }
     },
     "No device details available" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2696,6 +2890,7 @@
       }
     },
     "No SMART details available" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2757,6 +2952,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有卷宗資訊"
+          }
+        }
+      }
+    },
+    "No warnings" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No warnings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无警告"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無警告"
           }
         }
       }
@@ -3062,10 +3279,48 @@
       }
     },
     "Partition Type" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partition Type"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分区类型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分割區類型"
+          }
+        }
+      }
     },
     "PCI Device ID" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PCI Device ID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PCI 设备 ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PCI 裝置 ID"
+          }
+        }
+      }
     },
     "PCI Link Speed" : {
       "localizations" : {
@@ -3156,7 +3411,26 @@
       }
     },
     "PCI Vendor ID" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PCI Vendor ID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PCI 厂商 ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PCI 廠商 ID"
+          }
+        }
+      }
     },
     "PCIe Speed" : {
       "localizations" : {
@@ -3226,6 +3500,7 @@
       }
     },
     "Physical Disk" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3445,6 +3720,29 @@
         }
       }
     },
+    "Rate per second" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/s"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每秒 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每秒 %@"
+          }
+        }
+      }
+    },
     "Read" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3469,7 +3767,49 @@
       }
     },
     "Receptacle" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receptacle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插口"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插座"
+          }
+        }
+      }
+    },
+    "Receptacle %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receptacle %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插口 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插座 %@"
+          }
+        }
+      }
     },
     "Refresh SMART Data" : {
       "localizations" : {
@@ -3511,6 +3851,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "角色"
+          }
+        }
+      }
+    },
+    "Safe-eject checks remain available, but SMART monitoring requires a helper update." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Safe-eject checks remain available, but SMART monitoring requires a helper update."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全弹出检查仍可用，但 SMART 监控需要更新 Helper。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全退出檢查仍可用，但 SMART 監控需要更新 Helper。"
           }
         }
       }
@@ -3670,13 +4032,94 @@
       }
     },
     "Settings Bridge" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings Bridge"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置桥接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定橋接"
+          }
+        }
+      }
     },
     "Size" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Size"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大小"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大小"
+          }
+        }
+      }
     },
     "SMART" : {
-
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART"
+          }
+        }
+      }
+    },
+    "SMART companion unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART companion unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART 伴随工具不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART 隨附工具無法使用"
+          }
+        }
+      }
     },
     "SMART Companion Unavailable" : {
       "localizations" : {
@@ -3700,24 +4143,47 @@
         }
       }
     },
-    "SMART companion unavailable" : {
+    "SMART data partially available" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SMART companion unavailable"
+            "value" : "SMART data partially available"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SMART 伴随工具不可用"
+            "value" : "SMART 数据部分可用"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SMART 隨附工具無法使用"
+            "value" : "SMART 資料部分可用"
+          }
+        }
+      }
+    },
+    "SMART Failed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失敗"
           }
         }
       }
@@ -3760,6 +4226,29 @@
         }
       }
     },
+    "SMART Passed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通過"
+          }
+        }
+      }
+    },
     "SMART Status" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3779,50 +4268,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SMART 狀態"
-          }
-        }
-      }
-    },
-    "Safe-eject checks remain available, but SMART monitoring requires a helper update." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Safe-eject checks remain available, but SMART monitoring requires a helper update."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安全弹出检查仍可用，但 SMART 监控需要更新 Helper。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安全退出檢查仍可用，但 SMART 監控需要更新 Helper。"
-          }
-        }
-      }
-    },
-    "The helper is installed, but its trusted smartctl companion is unavailable." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The helper is installed, but its trusted smartctl companion is unavailable."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Helper 已安装，但其受信任的 smartctl 伴随工具不可用。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Helper 已安裝，但其受信任的 smartctl 隨附工具無法使用。"
           }
         }
       }
@@ -3903,6 +4348,28 @@
         }
       }
     },
+    "The helper is installed, but its trusted smartctl companion is unavailable." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The helper is installed, but its trusted smartctl companion is unavailable."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helper 已安装，但其受信任的 smartctl 伴随工具不可用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helper 已安裝，但其受信任的 smartctl 隨附工具無法使用。"
+          }
+        }
+      }
+    },
     "The SMART Helper installation did not complete." : {
       "localizations" : {
         "zh-Hans" : {
@@ -3915,6 +4382,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SMART Helper 安裝未完成。"
+          }
+        }
+      }
+    },
+    "Threshold %@%%" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "threshold %@%%"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "阈值 %@%%"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閾值 %@%%"
           }
         }
       }
@@ -4137,7 +4627,26 @@
       }
     },
     "UID" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UID"
+          }
+        }
+      }
     },
     "Unavailable" : {
       "extractionState" : "stale",
@@ -4291,28 +4800,6 @@
         }
       }
     },
-    "Update the privileged SMART helper to restore its trusted smartctl companion." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Update the privileged SMART helper to restore its trusted smartctl companion."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新特权 SMART Helper，以恢复其受信任的 smartctl 伴随工具。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新特權 SMART Helper，以恢復其受信任的 smartctl 隨附工具。"
-          }
-        }
-      }
-    },
     "Update SMART Helper for Complete Health Data" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4348,6 +4835,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更新 Helper 以符合目前版本的 DrivePulse。"
+          }
+        }
+      }
+    },
+    "Update the privileged SMART helper to restore its trusted smartctl companion." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update the privileged SMART helper to restore its trusted smartctl companion."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新特权 SMART Helper，以恢复其受信任的 smartctl 伴随工具。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新特權 SMART Helper，以恢復其受信任的 smartctl 隨附工具。"
           }
         }
       }

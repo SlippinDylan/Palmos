@@ -166,14 +166,14 @@ private struct ThroughputChartCanvas: View {
 
     private func rateString(_ bytesPerSecond: Double) -> String {
         guard bytesPerSecond.isFinite, bytesPerSecond > 0 else {
-            return "0 B/s"
+            return PanelValueFormatter.rate(bytesPerSecond: 0)
         }
         let maxRepresentable = Double(Int64.max)
         let bounded = min(bytesPerSecond, maxRepresentable)
         let bytes = bounded >= maxRepresentable
             ? Int64.max
             : Int64(bounded.rounded(.towardZero))
-        return "\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))/s"
+        return PanelValueFormatter.rate(bytesPerSecond: bytes)
     }
 }
 

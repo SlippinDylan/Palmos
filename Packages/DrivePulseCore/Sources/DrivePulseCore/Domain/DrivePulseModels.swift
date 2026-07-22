@@ -56,8 +56,61 @@ public struct DeviceSessionMetrics: Equatable, Sendable {
     }
 }
 
+public enum SMARTOverallHealth: String, Codable, Equatable, Sendable {
+    case passed
+    case failed
+}
+
+public enum SmartDataField: String, CaseIterable, Codable, Equatable, Sendable {
+    case overallHealth
+    case primaryTemperature
+    case nvmeTemperature
+    case nvmeHealthLog
+    case sensorTemperatures
+    case criticalWarning
+    case availableSpare
+    case availableSpareThreshold
+    case percentageUsed
+    case dataUnitsRead
+    case dataUnitsWritten
+    case hostReadCommands
+    case hostWriteCommands
+    case controllerBusyTime
+    case powerCycles
+    case powerOnHours
+    case unsafeShutdowns
+    case mediaIntegrityErrors
+    case errorLogEntries
+    case warningTempTime
+    case criticalTempTime
+    case warningTempThreshold
+    case criticalTempThreshold
+}
+
+public enum SmartDataParseIssueReason: Equatable, Sendable {
+    case typeMismatch
+    case invalidNumericString
+    case outOfRange
+}
+
+public struct SmartDataParseIssue: Equatable, Sendable {
+    public let field: SmartDataField
+    public let reason: SmartDataParseIssueReason
+
+    public init(field: SmartDataField, reason: SmartDataParseIssueReason) {
+        self.field = field
+        self.reason = reason
+    }
+}
+
+public enum SmartDataParsingQuality: Equatable, Sendable {
+    case clean
+    case degraded([SmartDataParseIssue])
+}
+
 public struct SmartData: Equatable, Sendable {
-    public var overallHealth: String?
+    public var overallHealth: SMARTOverallHealth?
+    public var parsingQuality: SmartDataParsingQuality
     public var primaryTemperature: Int?
     public var highestTemperature: Int?
     public var sensorTemperatures: [String: Int]
@@ -81,7 +134,8 @@ public struct SmartData: Equatable, Sendable {
     public var criticalTempThreshold: Int?
 
     public init(
-        overallHealth: String? = nil,
+        overallHealth: SMARTOverallHealth? = nil,
+        parsingQuality: SmartDataParsingQuality = .clean,
         primaryTemperature: Int? = nil,
         highestTemperature: Int? = nil,
         sensorTemperatures: [String: Int] = [:],
@@ -105,6 +159,7 @@ public struct SmartData: Equatable, Sendable {
         criticalTempThreshold: Int? = nil
     ) {
         self.overallHealth = overallHealth
+        self.parsingQuality = parsingQuality
         self.primaryTemperature = primaryTemperature
         self.highestTemperature = highestTemperature
         self.sensorTemperatures = sensorTemperatures
@@ -273,7 +328,7 @@ public struct ExternalDevice: Equatable, Sendable, Identifiable {
             transportName: transportName,
             capacityBytes: rawID == "disk8" ? 2_000_000_000_000 : 1_000_000_000_000,
             smartSnapshot: .available(SmartData(
-                overallHealth: "Verified",
+                overallHealth: .passed,
                 primaryTemperature: temperature,
                 highestTemperature: temperature + 2,
                 sensorTemperatures: ["Composite": temperature]

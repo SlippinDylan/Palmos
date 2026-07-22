@@ -16,12 +16,19 @@ struct HealthSMARTCardView: View {
                 }
 
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                    PanelKeyValueRow("Overall Health", value: PanelDisplayValue.string(smartData?.overallHealth))
+                    PanelKeyValueRow("Overall Health", value: healthString)
                     PanelKeyValueRow("Critical Warning", value: criticalWarningString, usesMonospacedDigits: true)
                     PanelKeyValueRow("Wear Level", value: wearLevelString, usesMonospacedDigits: true)
                     PanelKeyValueRow("Available Spare", value: availableSpareString, usesMonospacedDigits: true)
                     PanelKeyValueRow("Media Integrity Errors", value: mediaIntegrityErrorsString, usesMonospacedDigits: true)
                     PanelKeyValueRow("Error Log Entries", value: errorLogEntriesString, usesMonospacedDigits: true)
+                }
+
+                if isDegraded {
+                    Text(PanelValueFormatter.degradedNotice())
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 6)
                 }
 
                 Divider()
@@ -69,10 +76,21 @@ struct HealthSMARTCardView: View {
         }
     }
 
+    private var healthString: String {
+        guard let health = smartData?.overallHealth else { return PanelDisplayValue.missing }
+        return PanelValueFormatter.health(health)
+    }
+
+    private var isDegraded: Bool {
+        guard let quality = smartData?.parsingQuality else { return false }
+        if case .degraded = quality { return true }
+        return false
+    }
+
     private var criticalWarningString: String {
         guard let cw = smartData?.criticalWarning else { return PanelDisplayValue.missing }
         let hex = String(format: "0x%02X", cw)
-        return cw == 0 ? "\(hex) (No warnings)" : hex
+        return cw == 0 ? PanelValueFormatter.criticalWarning(hex: hex) : hex
     }
 
     private var wearLevelString: String {
@@ -83,7 +101,7 @@ struct HealthSMARTCardView: View {
     private var availableSpareString: String {
         guard let spare = smartData?.availableSpare else { return PanelDisplayValue.missing }
         guard let threshold = smartData?.availableSpareThreshold else { return "\(spare)%" }
-        return "\(spare)% (threshold \(threshold)%)"
+        return PanelValueFormatter.availableSpare(spare, threshold: threshold)
     }
 
     private var mediaIntegrityErrorsString: String {
@@ -98,7 +116,7 @@ struct HealthSMARTCardView: View {
 
     private var powerOnHoursString: String {
         guard let value = smartData?.powerOnHours else { return PanelDisplayValue.missing }
-        return "\(value) hr"
+        return PanelValueFormatter.hours(value)
     }
 
     private var powerCyclesString: String {
@@ -135,17 +153,17 @@ struct HealthSMARTCardView: View {
 
     private var controllerBusyTimeString: String {
         guard let value = smartData?.controllerBusyTime else { return PanelDisplayValue.missing }
-        return "\(value) min"
+        return PanelValueFormatter.minutes(value)
     }
 
     private var warningTempTimeString: String {
         guard let value = smartData?.warningTempTime else { return PanelDisplayValue.missing }
-        return "\(value) min"
+        return PanelValueFormatter.minutes(value)
     }
 
     private var criticalTempTimeString: String {
         guard let value = smartData?.criticalTempTime else { return PanelDisplayValue.missing }
-        return "\(value) min"
+        return PanelValueFormatter.minutes(value)
     }
 }
 

@@ -36,7 +36,7 @@ final class SmartDataParserTests: XCTestCase {
 
     func testSensorMaxWinsForOverviewDisplayWhenHighestTemperatureIsMissing() {
         let smartData = SmartData(
-            overallHealth: "PASSED",
+            overallHealth: .passed,
             primaryTemperature: 47,
             highestTemperature: nil,
             sensorTemperatures: [
@@ -50,7 +50,7 @@ final class SmartDataParserTests: XCTestCase {
 
     func testHighestTemperatureOverridesSensorMaxForOverviewDisplay() {
         let smartData = SmartData(
-            overallHealth: "PASSED",
+            overallHealth: .passed,
             primaryTemperature: 47,
             highestTemperature: 55,
             sensorTemperatures: [
@@ -64,7 +64,7 @@ final class SmartDataParserTests: XCTestCase {
 
     func testPrimaryTemperatureIsFallbackWhenHigherPrioritySourcesAreMissing() {
         let smartData = SmartData(
-            overallHealth: "PASSED",
+            overallHealth: .passed,
             primaryTemperature: 47,
             highestTemperature: nil,
             sensorTemperatures: [:]
@@ -184,5 +184,153 @@ final class SmartDataParserTests: XCTestCase {
         let result = try SmartDataParser.parse(jsonData: data)
 
         XCTAssertEqual(result.dataUnitsWritten, UInt64.max)
+    }
+
+    func testMissingAndNullRecognizedFieldsAreCleanMissingValues() throws {
+        let data = Data(
+            #"{"nvme_smart_health_information_log":{"data_units_read":null}}"#.utf8
+        )
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertNil(result.dataUnitsRead)
+        XCTAssertEqual(result.parsingQuality, .clean)
+    }
+
+    func testInvalidNumericStringProducesStableDiagnosticWithoutDroppingSiblings() throws {
+        let data = Data(
+            #"{"nvme_smart_health_information_log":{"data_units_read":"not-a-number","power_cycles":7}}"#.utf8
+        )
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertNil(result.dataUnitsRead)
+        XCTAssertEqual(result.powerCycles, 7)
+        XCTAssertEqual(
+            result.parsingQuality,
+            .degraded([
+                SmartDataParseIssue(field: .dataUnitsRead, reason: .invalidNumericString)
+            ])
+        )
+    }
+
+    func testWrongRecognizedTypeProducesTypeMismatchDiagnostic() throws {
+        let data = Data(
+            #"{"nvme_smart_health_information_log":{"power_cycles":{"value":7},"media_errors":1}}"#.utf8
+        )
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertNil(result.powerCycles)
+        XCTAssertEqual(result.mediaIntegrityErrors, 1)
+        XCTAssertEqual(
+            result.parsingQuality,
+            .degraded([
+                SmartDataParseIssue(field: .powerCycles, reason: .typeMismatch)
+            ])
+        )
+    }
+
+    func testUInt64NegativeAndOverflowValuesProduceOutOfRangeDiagnostics() throws {
+        let data = Data(
+            #"{"nvme_smart_health_information_log":{"data_units_read":-1,"data_units_written":"18446744073709551616"}}"#.utf8
+        )
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertNil(result.dataUnitsRead)
+        XCTAssertNil(result.dataUnitsWritten)
+        XCTAssertEqual(
+            result.parsingQuality,
+            .degraded([
+                SmartDataParseIssue(field: .dataUnitsRead, reason: .outOfRange),
+                SmartDataParseIssue(field: .dataUnitsWritten, reason: .outOfRange)
+            ])
+        )
+    }
+
+    func testUnknownRecognizedExtensionKeysRemainTolerated() throws {
+        let data = Data(
+            #"{"smartctl_version":[7,4],"nvme_smart_health_information_log":{"power_cycles":3}}"#.utf8
+        )
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertEqual(result.powerCycles, 3)
+        XCTAssertEqual(result.parsingQuality, .clean)
+    }
+
+    func testOverallHealthUsesDomainEnum() throws {
+        let passed = try SmartDataParser.parse(jsonData: Data(#"{"smart_status":{"passed":true}}"#.utf8))
+        let failed = try SmartDataParser.parse(jsonData: Data(#"{"smart_status":{"passed":false}}"#.utf8))
+
+        XCTAssertEqual(passed.overallHealth, .passed)
+        XCTAssertEqual(failed.overallHealth, .failed)
+    }
+
+    func testMalformedOverallHealthIsDegradedButPayloadStillParses() throws {
+        let data = Data(
+            #"{"smart_status":{"passed":"true"},"temperature":{"current":42}}"#.utf8
+        )
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertNil(result.overallHealth)
+        XCTAssertEqual(result.primaryTemperature, 42)
+        XCTAssertEqual(
+            result.parsingQuality,
+            .degraded([
+                SmartDataParseIssue(field: .overallHealth, reason: .typeMismatch)
+            ])
+        )
+    }
+
+    func testInvalidJSONAndNonObjectEnvelopeRemainHardFailures() {
+        XCTAssertThrowsError(try SmartDataParser.parse(jsonData: Data("{".utf8)))
+        XCTAssertThrowsError(try SmartDataParser.parse(jsonData: Data("[]".utf8)))
+    }
+
+    func testMalformedNestedHealthLogIsDegradedInsteadOfHardFailure() throws {
+        let data = Data(#"{"nvme_smart_health_information_log":[]}"#.utf8)
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertEqual(
+            result.parsingQuality,
+            .degraded([SmartDataParseIssue(field: .nvmeHealthLog, reason: .typeMismatch)])
+        )
+    }
+
+    func testMalformedTemperatureLeafPreservesOtherHealthLogFields() throws {
+        let data = Data(
+            #"{"temperature":{"current":"hot"},"nvme_smart_health_information_log":{"power_cycles":2}}"#.utf8
+        )
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertNil(result.primaryTemperature)
+        XCTAssertEqual(result.powerCycles, 2)
+        XCTAssertEqual(
+            result.parsingQuality,
+            .degraded([SmartDataParseIssue(field: .primaryTemperature, reason: .invalidNumericString)])
+        )
+    }
+
+    func testMalformedNestedTemperaturePreservesNestedSiblings() throws {
+        let data = Data(
+            #"{"nvme_smart_health_information_log":{"temperature":"hot","temperature_sensors":{"one":1},"power_cycles":2}}"#.utf8
+        )
+
+        let result = try SmartDataParser.parse(jsonData: data)
+
+        XCTAssertNil(result.primaryTemperature)
+        XCTAssertEqual(result.powerCycles, 2)
+        XCTAssertEqual(
+            result.parsingQuality,
+            .degraded([
+                SmartDataParseIssue(field: .nvmeTemperature, reason: .invalidNumericString),
+                SmartDataParseIssue(field: .sensorTemperatures, reason: .typeMismatch)
+            ])
+        )
     }
 }

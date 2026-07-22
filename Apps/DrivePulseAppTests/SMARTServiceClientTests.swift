@@ -937,7 +937,7 @@ final class SMARTPresentationTests: XCTestCase {
 
     func testMinorCompatibilityMismatchDoesNotForceUpdate() async throws {
         let smartData = SmartData(
-            overallHealth: "PASSED",
+            overallHealth: .passed,
             primaryTemperature: 41,
             highestTemperature: 44,
             sensorTemperatures: ["Composite": 41]
@@ -970,7 +970,7 @@ final class SMARTPresentationTests: XCTestCase {
 
     func testInstallHelperRetriesRefreshAndPublishesAvailableSMARTDetails() async throws {
         let smartData = SmartData(
-            overallHealth: "PASSED",
+            overallHealth: .passed,
             primaryTemperature: 38,
             highestTemperature: 40,
             sensorTemperatures: ["Composite": 38]
@@ -1028,7 +1028,7 @@ final class SMARTPresentationTests: XCTestCase {
             helperInstaller: helperInstaller,
             deviceDiscovery: discovery
         )
-        let smartData = SmartData(overallHealth: "PASSED", primaryTemperature: 37)
+        let smartData = SmartData(overallHealth: .passed, primaryTemperature: 37)
 
         await discovery.resolveNextDiscovery()
         await smartService.waitUntilRefreshStarts(count: 1)
@@ -1087,7 +1087,7 @@ final class SMARTPresentationTests: XCTestCase {
             deviceDiscovery: discovery
         )
         let smartData = SmartData(
-            overallHealth: "PASSED",
+            overallHealth: .passed,
             primaryTemperature: 35,
             highestTemperature: 39,
             sensorTemperatures: ["Composite": 35]
@@ -1213,7 +1213,7 @@ final class SMARTPresentationTests: XCTestCase {
         let rediscoveredDevice = makeDevice(id: "disk30", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[firstPassDevice], [rediscoveredDevice]])
         let smartData = SmartData(
-            overallHealth: "PASSED",
+            overallHealth: .passed,
             primaryTemperature: 42,
             highestTemperature: 45,
             sensorTemperatures: ["Composite": 42]
@@ -1254,8 +1254,8 @@ final class SMARTPresentationTests: XCTestCase {
             helperInstaller: StubHelperInstaller(),
             deviceDiscovery: discovery
         )
-        let firstData = SmartData(overallHealth: "PASSED", primaryTemperature: 36)
-        let secondData = SmartData(overallHealth: "PASSED", primaryTemperature: 41)
+        let firstData = SmartData(overallHealth: .passed, primaryTemperature: 36)
+        let secondData = SmartData(overallHealth: .passed, primaryTemperature: 41)
 
         await discovery.resolveNextDiscovery()
         await smartService.waitUntilRefreshStarts(for: "disk40")
