@@ -26,8 +26,23 @@
 		100000000000000000000012 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* Localizable.xcstrings */; };
 		100000000000000000000013 /* DrivePulseAppControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* DrivePulseAppControllerTests.swift */; };
 		100000000000000000000014 /* ExternalDeviceDiscoveryMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */; };
+		4B4000000000000000000001 /* ExternalDeviceDiscoveryObservationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4000000000000000000002 /* ExternalDeviceDiscoveryObservationTests.swift */; };
 		100000000000000000000015 /* ExternalDeviceDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* ExternalDeviceDiscovery.swift */; };
+		4D1100000000000000000001 /* DiskArbitrationDeviceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000001 /* DiskArbitrationDeviceMonitor.swift */; };
+		4D1100000000000000000002 /* DiskDiscoveryRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000002 /* DiskDiscoveryRecord.swift */; };
+		4D1100000000000000000003 /* DiskDiscoveryEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000003 /* DiskDiscoveryEnumerator.swift */; };
+		4D1100000000000000000004 /* DeviceIdentitySessionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000004 /* DeviceIdentitySessionRegistry.swift */; };
+		4D1100000000000000000005 /* ExternalDeviceDiscoveryMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000005 /* ExternalDeviceDiscoveryMapper.swift */; };
 		100000000000000000000016 /* SMARTServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000019 /* SMARTServiceClient.swift */; };
+		4D1500000000000000000001 /* SMARTXPCConnectionFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000001 /* SMARTXPCConnectionFactory.swift */; };
+		4D1500000000000000000002 /* SMARTHandshakeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000002 /* SMARTHandshakeClient.swift */; };
+		4D1500000000000000000003 /* SMARTReadXPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000003 /* SMARTReadXPCSession.swift */; };
+		4D1500000000000000000004 /* OccupancyXPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000004 /* OccupancyXPCClient.swift */; };
+		4D1500000000000000000005 /* XPCReplyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000005 /* XPCReplyGate.swift */; };
+		4D1500000000000000000006 /* SMARTServiceErrorMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000006 /* SMARTServiceErrorMapper.swift */; };
+		4D1600000000000000000001 /* DeviceContextMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1620000000000000000001 /* DeviceContextMergerTests.swift */; };
+		4D1600000000000000000002 /* DeviceContextMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1620000000000000000002 /* DeviceContextMerger.swift */; };
+		4D1600000000000000000003 /* APFSDeviceEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1620000000000000000003 /* APFSDeviceEnricher.swift */; };
 		100000000000000000000017 /* DrivePulseXPCContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001A /* DrivePulseXPCContracts.swift */; };
 		100000000000000000000018 /* DrivePulseXPCMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001B /* DrivePulseXPCMessages.swift */; };
 		100000000000000000000019 /* DrivePulseSMARTServiceMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001D /* DrivePulseSMARTServiceMain.swift */; };
@@ -43,6 +58,8 @@
 		100000000000000000000026 /* TransportHintResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000027 /* TransportHintResolver.swift */; };
 		100000000000000000000027 /* DrivePulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000004 /* DrivePulseCore */; };
 		100000000000000000000028 /* HelperInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000028 /* HelperInstaller.swift */; };
+		4D1400000000000000000001 /* HelperInstallationPreflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1420000000000000000001 /* HelperInstallationPreflight.swift */; };
+		4D1400000000000000000002 /* BundledSMARTCompanionReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1420000000000000000002 /* BundledSMARTCompanionReader.swift */; };
 		100000000000000000000029 /* PanelSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000029 /* PanelSection.swift */; };
 		10000000000000000000002A /* IOKitDiskSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002A /* IOKitDiskSampler.swift */; };
 		10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002B /* ThroughputChartModelTests.swift */; };
@@ -108,11 +125,23 @@
 		100000000000000000000062 /* OccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000059 /* OccupancyScanner.swift */; };
 		100000000000000000000063 /* EjectCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005A /* EjectCoordinatorTests.swift */; };
 		100000000000000000000064 /* EjectCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005B /* EjectCoordinator.swift */; };
+		100000000000000000000080 /* BoundedProcessFDEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* BoundedProcessFDEnumerator.swift */; };
+		100000000000000000000085 /* ThroughputSamplingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000085 /* ThroughputSamplingCoordinator.swift */; };
+		100000000000000000000081 /* BoundedProcessFDEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* BoundedProcessFDEnumerator.swift */; };
+		100000000000000000000082 /* BoundedProcessFDEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* BoundedProcessFDEnumerator.swift */; };
+		100000000000000000000083 /* BoundedProcessFDEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* BoundedProcessFDEnumerator.swift */; };
+		100000000000000000000084 /* SettingsWindowActivatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000084 /* SettingsWindowActivatorTests.swift */; };
+		100000000000000000000086 /* SystemProfilerParserBoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000086 /* SystemProfilerParserBoundaryTests.swift */; };
+		100000000000000000000087 /* SubprocessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000087 /* SubprocessRunner.swift */; };
+		100000000000000000000088 /* LatestRequestCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000088 /* LatestRequestCoordinator.swift */; };
+		100000000000000000000089 /* SystemProfilerParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000089 /* SystemProfilerParser.swift */; };
 		100000000000000000000065 /* EjectLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005C /* EjectLocalization.swift */; };
 		100000000000000000000066 /* EjectRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005D /* EjectRecoveryView.swift */; };
 		100000000000000000000067 /* EjectForceConfirmationModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005E /* EjectForceConfirmationModifier.swift */; };
 		100000000000000000000068 /* EjectRecoveryViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005F /* EjectRecoveryViewTests.swift */; };
 		100000000000000000000069 /* EjectLocalizationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000060 /* EjectLocalizationCatalogTests.swift */; };
+		10000000000000000000006E /* LocalizationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000067 /* LocalizationCatalogTests.swift */; };
+		10000000000000000000006F /* PanelValueFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000068 /* PanelValueFormatter.swift */; };
 		10000000000000000000006A /* SafeEjectIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000061 /* SafeEjectIntegrationTests.swift */; };
 		10000000000000000000006B /* CapacityUsageCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000062 /* CapacityUsageCardView.swift */; };
 		10000000000000000000006C /* SMARTHelperManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000063 /* SMARTHelperManager.swift */; };
@@ -174,8 +203,23 @@
 		200000000000000000000015 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		200000000000000000000016 /* DrivePulseAppControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseAppControllerTests.swift; sourceTree = "<group>"; };
 		200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscoveryMapperTests.swift; sourceTree = "<group>"; };
+		4B4000000000000000000002 /* ExternalDeviceDiscoveryObservationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscoveryObservationTests.swift; sourceTree = "<group>"; };
 		200000000000000000000018 /* ExternalDeviceDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscovery.swift; sourceTree = "<group>"; };
+		4D1120000000000000000001 /* DiskArbitrationDeviceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskArbitrationDeviceMonitor.swift; sourceTree = "<group>"; };
+		4D1120000000000000000002 /* DiskDiscoveryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskDiscoveryRecord.swift; sourceTree = "<group>"; };
+		4D1120000000000000000003 /* DiskDiscoveryEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskDiscoveryEnumerator.swift; sourceTree = "<group>"; };
+		4D1120000000000000000004 /* DeviceIdentitySessionRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentitySessionRegistry.swift; sourceTree = "<group>"; };
+		4D1120000000000000000005 /* ExternalDeviceDiscoveryMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscoveryMapper.swift; sourceTree = "<group>"; };
 		200000000000000000000019 /* SMARTServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTServiceClient.swift; sourceTree = "<group>"; };
+		4D1520000000000000000001 /* SMARTXPCConnectionFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTXPCConnectionFactory.swift; sourceTree = "<group>"; };
+		4D1520000000000000000002 /* SMARTHandshakeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTHandshakeClient.swift; sourceTree = "<group>"; };
+		4D1520000000000000000003 /* SMARTReadXPCSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTReadXPCSession.swift; sourceTree = "<group>"; };
+		4D1520000000000000000004 /* OccupancyXPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OccupancyXPCClient.swift; sourceTree = "<group>"; };
+		4D1520000000000000000005 /* XPCReplyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XPCReplyGate.swift; sourceTree = "<group>"; };
+		4D1520000000000000000006 /* SMARTServiceErrorMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTServiceErrorMapper.swift; sourceTree = "<group>"; };
+		4D1620000000000000000001 /* DeviceContextMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceContextMergerTests.swift; sourceTree = "<group>"; };
+		4D1620000000000000000002 /* DeviceContextMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceContextMerger.swift; sourceTree = "<group>"; };
+		4D1620000000000000000003 /* APFSDeviceEnricher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APFSDeviceEnricher.swift; sourceTree = "<group>"; };
 		20000000000000000000001A /* DrivePulseXPCContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseXPCContracts.swift; sourceTree = "<group>"; };
 		20000000000000000000001B /* DrivePulseXPCMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseXPCMessages.swift; sourceTree = "<group>"; };
 		20000000000000000000001C /* com.drivepulse.smartservice */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = com.drivepulse.smartservice; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -191,8 +235,13 @@
 		200000000000000000000026 /* SmartctlRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartctlRunner.swift; sourceTree = "<group>"; };
 		200000000000000000000065 /* SmartctlCompanionInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartctlCompanionInstaller.swift; sourceTree = "<group>"; };
 		200000000000000000000066 /* smartmontools-COPYING.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "smartmontools-COPYING.txt"; sourceTree = "<group>"; };
+		200000000000000000000080 /* BoundedProcessFDEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedProcessFDEnumerator.swift; sourceTree = "<group>"; };
+		200000000000000000000085 /* ThroughputSamplingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputSamplingCoordinator.swift; sourceTree = "<group>"; };
+		200000000000000000000084 /* SettingsWindowActivatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowActivatorTests.swift; sourceTree = "<group>"; };
 		200000000000000000000027 /* TransportHintResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportHintResolver.swift; sourceTree = "<group>"; };
 		200000000000000000000028 /* HelperInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperInstaller.swift; sourceTree = "<group>"; };
+		4D1420000000000000000001 /* HelperInstallationPreflight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperInstallationPreflight.swift; sourceTree = "<group>"; };
+		4D1420000000000000000002 /* BundledSMARTCompanionReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundledSMARTCompanionReader.swift; sourceTree = "<group>"; };
 		200000000000000000000029 /* PanelSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelSection.swift; sourceTree = "<group>"; };
 		20000000000000000000002A /* IOKitDiskSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOKitDiskSampler.swift; sourceTree = "<group>"; };
 		20000000000000000000002B /* ThroughputChartModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputChartModelTests.swift; sourceTree = "<group>"; };
@@ -245,10 +294,16 @@
 		20000000000000000000005E /* EjectForceConfirmationModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectForceConfirmationModifier.swift; sourceTree = "<group>"; };
 		20000000000000000000005F /* EjectRecoveryViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectRecoveryViewTests.swift; sourceTree = "<group>"; };
 		200000000000000000000060 /* EjectLocalizationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectLocalizationCatalogTests.swift; sourceTree = "<group>"; };
+		200000000000000000000067 /* LocalizationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationCatalogTests.swift; sourceTree = "<group>"; };
+		200000000000000000000068 /* PanelValueFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelValueFormatter.swift; sourceTree = "<group>"; };
 		200000000000000000000061 /* SafeEjectIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeEjectIntegrationTests.swift; sourceTree = "<group>"; };
 		200000000000000000000062 /* CapacityUsageCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapacityUsageCardView.swift; sourceTree = "<group>"; };
 		200000000000000000000063 /* SMARTHelperManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTHelperManager.swift; sourceTree = "<group>"; };
 		200000000000000000000064 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsComponents.swift; sourceTree = "<group>"; };
+		200000000000000000000086 /* SystemProfilerParserBoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProfilerParserBoundaryTests.swift; sourceTree = "<group>"; };
+		200000000000000000000087 /* SubprocessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubprocessRunner.swift; sourceTree = "<group>"; };
+		200000000000000000000088 /* LatestRequestCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatestRequestCoordinator.swift; sourceTree = "<group>"; };
+		200000000000000000000089 /* SystemProfilerParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProfilerParser.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -324,6 +379,7 @@
 			children = (
 				200000000000000000000001 /* DrivePulseApp.swift */,
 				200000000000000000000002 /* DrivePulseAppController.swift */,
+				4D1620000000000000000002 /* DeviceContextMerger.swift */,
 				200000000000000000000003 /* DrivePulseAppState.swift */,
 			);
 			path = App;
@@ -348,6 +404,7 @@
 		300000000000000000000005 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				200000000000000000000068 /* PanelValueFormatter.swift */,
 				20000000000000000000005D /* EjectRecoveryView.swift */,
 				20000000000000000000005E /* EjectForceConfirmationModifier.swift */,
 				200000000000000000000004 /* MenuBarRootView.swift */,
@@ -372,14 +429,31 @@
 		300000000000000000000006 /* Integration */ = {
 			isa = PBXGroup;
 			children = (
+				4D1620000000000000000003 /* APFSDeviceEnricher.swift */,
 				200000000000000000000018 /* ExternalDeviceDiscovery.swift */,
+				4D1120000000000000000001 /* DiskArbitrationDeviceMonitor.swift */,
+				4D1120000000000000000002 /* DiskDiscoveryRecord.swift */,
+				4D1120000000000000000003 /* DiskDiscoveryEnumerator.swift */,
+				4D1120000000000000000004 /* DeviceIdentitySessionRegistry.swift */,
+				4D1120000000000000000005 /* ExternalDeviceDiscoveryMapper.swift */,
 				200000000000000000000019 /* SMARTServiceClient.swift */,
+				4D1520000000000000000001 /* SMARTXPCConnectionFactory.swift */,
+				4D1520000000000000000002 /* SMARTHandshakeClient.swift */,
+				4D1520000000000000000003 /* SMARTReadXPCSession.swift */,
+				4D1520000000000000000004 /* OccupancyXPCClient.swift */,
+				4D1520000000000000000005 /* XPCReplyGate.swift */,
+				4D1520000000000000000006 /* SMARTServiceErrorMapper.swift */,
 				200000000000000000000063 /* SMARTHelperManager.swift */,
 				200000000000000000000028 /* HelperInstaller.swift */,
+				4D1420000000000000000001 /* HelperInstallationPreflight.swift */,
+				4D1420000000000000000002 /* BundledSMARTCompanionReader.swift */,
 				200000000000000000000012 /* SystemActions.swift */,
 				20000000000000000000003C /* SettingsWindowActivator.swift */,
 				200000000000000000000013 /* LaunchAtLoginController.swift */,
 				20000000000000000000002C /* SystemProfilerProvider.swift */,
+				200000000000000000000087 /* SubprocessRunner.swift */,
+				200000000000000000000088 /* LatestRequestCoordinator.swift */,
+				200000000000000000000089 /* SystemProfilerParser.swift */,
 				20000000000000000000002D /* DiskUtilAPFSProvider.swift */,
 				20000000000000000000002E /* VolumeCapacityRefresher.swift */,
 				200000000000000000000038 /* StorageLocations.swift */,
@@ -398,9 +472,13 @@
 		300000000000000000000008 /* DrivePulseAppTests */ = {
 			isa = PBXGroup;
 			children = (
+				4D1620000000000000000001 /* DeviceContextMergerTests.swift */,
+				200000000000000000000086 /* SystemProfilerParserBoundaryTests.swift */,
 				200000000000000000000061 /* SafeEjectIntegrationTests.swift */,
+				4B4000000000000000000002 /* ExternalDeviceDiscoveryObservationTests.swift */,
 				20000000000000000000005F /* EjectRecoveryViewTests.swift */,
 				200000000000000000000060 /* EjectLocalizationCatalogTests.swift */,
+				200000000000000000000067 /* LocalizationCatalogTests.swift */,
 				200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */,
 				200000000000000000000016 /* DrivePulseAppControllerTests.swift */,
 				20000000000000000000000B /* DrivePulseAppStateTests.swift */,
@@ -423,6 +501,7 @@
 				200000000000000000000022 /* Task7HelperPackagingTests.swift */,
 				200000000000000000000011 /* Task6SettingsAndActionsTests.swift */,
 				20000000000000000000002B /* ThroughputChartModelTests.swift */,
+				200000000000000000000084 /* SettingsWindowActivatorTests.swift */,
 			);
 			path = Apps/DrivePulseAppTests;
 			sourceTree = "<group>";
@@ -453,10 +532,19 @@
 		30000000000000000000000B /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				300000000000000000000026 /* ProcessInspection */,
 				30000000000000000000000C /* XPCContracts */,
 				300000000000000000000024 /* Licensing */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		300000000000000000000026 /* ProcessInspection */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000080 /* BoundedProcessFDEnumerator.swift */,
+			);
+			path = ProcessInspection;
 			sourceTree = "<group>";
 		};
 		30000000000000000000000C /* XPCContracts */ = {
@@ -533,6 +621,7 @@
 			isa = PBXGroup;
 			children = (
 				20000000000000000000002A /* IOKitDiskSampler.swift */,
+				200000000000000000000085 /* ThroughputSamplingCoordinator.swift */,
 			);
 			path = Metrics;
 			sourceTree = "<group>";
@@ -768,6 +857,8 @@
 				100000000000000000000067 /* EjectForceConfirmationModifier.swift in Sources */,
 				100000000000000000000001 /* DrivePulseApp.swift in Sources */,
 				100000000000000000000002 /* DrivePulseAppController.swift in Sources */,
+				4D1600000000000000000002 /* DeviceContextMerger.swift in Sources */,
+				4D1600000000000000000003 /* APFSDeviceEnricher.swift in Sources */,
 				100000000000000000000003 /* DrivePulseAppState.swift in Sources */,
 				100000000000000000000004 /* MenuBarRootView.swift in Sources */,
 				100000000000000000000005 /* DevicePickerView.swift in Sources */,
@@ -782,15 +873,32 @@
 				100000000000000000000032 /* DeviceIdentityCardView.swift in Sources */,
 				100000000000000000000033 /* HealthSMARTCardView.swift in Sources */,
 				100000000000000000000034 /* TemperatureCardView.swift in Sources */,
+				10000000000000000000006F /* PanelValueFormatter.swift in Sources */,
 				100000000000000000000015 /* ExternalDeviceDiscovery.swift in Sources */,
+				4D1100000000000000000001 /* DiskArbitrationDeviceMonitor.swift in Sources */,
+				4D1100000000000000000002 /* DiskDiscoveryRecord.swift in Sources */,
+				4D1100000000000000000003 /* DiskDiscoveryEnumerator.swift in Sources */,
+				4D1100000000000000000004 /* DeviceIdentitySessionRegistry.swift in Sources */,
+				4D1100000000000000000005 /* ExternalDeviceDiscoveryMapper.swift in Sources */,
 				100000000000000000000016 /* SMARTServiceClient.swift in Sources */,
+				4D1500000000000000000001 /* SMARTXPCConnectionFactory.swift in Sources */,
+				4D1500000000000000000002 /* SMARTHandshakeClient.swift in Sources */,
+				4D1500000000000000000003 /* SMARTReadXPCSession.swift in Sources */,
+				4D1500000000000000000004 /* OccupancyXPCClient.swift in Sources */,
+				4D1500000000000000000005 /* XPCReplyGate.swift in Sources */,
+				4D1500000000000000000006 /* SMARTServiceErrorMapper.swift in Sources */,
 				10000000000000000000006C /* SMARTHelperManager.swift in Sources */,
 				100000000000000000000028 /* HelperInstaller.swift in Sources */,
+				4D1400000000000000000001 /* HelperInstallationPreflight.swift in Sources */,
+				4D1400000000000000000002 /* BundledSMARTCompanionReader.swift in Sources */,
 				10000000000000000000002A /* IOKitDiskSampler.swift in Sources */,
 				10000000000000000000000F /* SystemActions.swift in Sources */,
 				10000000000000000000003C /* SettingsWindowActivator.swift in Sources */,
 				100000000000000000000010 /* LaunchAtLoginController.swift in Sources */,
 				10000000000000000000002C /* SystemProfilerProvider.swift in Sources */,
+				100000000000000000000087 /* SubprocessRunner.swift in Sources */,
+				100000000000000000000088 /* LatestRequestCoordinator.swift in Sources */,
+				100000000000000000000089 /* SystemProfilerParser.swift in Sources */,
 				10000000000000000000002D /* DiskUtilAPFSProvider.swift in Sources */,
 				10000000000000000000002E /* VolumeCapacityRefresher.swift in Sources */,
 				100000000000000000000038 /* StorageLocations.swift in Sources */,
@@ -806,6 +914,8 @@
 				10000000000000000000004B /* AppOccupancyScanner.swift in Sources */,
 				100000000000000000000062 /* OccupancyScanner.swift in Sources */,
 				100000000000000000000064 /* EjectCoordinator.swift in Sources */,
+				100000000000000000000080 /* BoundedProcessFDEnumerator.swift in Sources */,
+				100000000000000000000085 /* ThroughputSamplingCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -813,9 +923,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4D1600000000000000000001 /* DeviceContextMergerTests.swift in Sources */,
 				10000000000000000000006A /* SafeEjectIntegrationTests.swift in Sources */,
+				4B4000000000000000000001 /* ExternalDeviceDiscoveryObservationTests.swift in Sources */,
 				100000000000000000000068 /* EjectRecoveryViewTests.swift in Sources */,
 				100000000000000000000069 /* EjectLocalizationCatalogTests.swift in Sources */,
+				10000000000000000000006E /* LocalizationCatalogTests.swift in Sources */,
 				100000000000000000000014 /* ExternalDeviceDiscoveryMapperTests.swift in Sources */,
 				100000000000000000000013 /* DrivePulseAppControllerTests.swift in Sources */,
 				10000000000000000000000B /* DrivePulseAppStateTests.swift in Sources */,
@@ -836,6 +949,9 @@
 				100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */,
 				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
 				10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */,
+				100000000000000000000081 /* BoundedProcessFDEnumerator.swift in Sources */,
+				100000000000000000000084 /* SettingsWindowActivatorTests.swift in Sources */,
+				100000000000000000000086 /* SystemProfilerParserBoundaryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -858,6 +974,7 @@
 				10000000000000000000005B /* HelperOccupancyEndpoint.swift in Sources */,
 				10000000000000000000005D /* HelperTopologyCommandRunner.swift in Sources */,
 				10000000000000000000005F /* HelperAuthoritativeSnapshot.swift in Sources */,
+				100000000000000000000082 /* BoundedProcessFDEnumerator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -880,6 +997,7 @@
 				100000000000000000000072 /* DrivePulseSMARTXPCDelegate.swift in Sources */,
 				100000000000000000000073 /* TransportHintResolver.swift in Sources */,
 				100000000000000000000074 /* HelperVersionHandshake.swift in Sources */,
+				100000000000000000000083 /* BoundedProcessFDEnumerator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
