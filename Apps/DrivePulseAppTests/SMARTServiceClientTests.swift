@@ -441,6 +441,7 @@ final class SMARTServiceClientTests: XCTestCase {
             smartctlCompanionAvailable: true
         ))
         let client = SMARTServiceClient(
+            isHelperInstalled: { true },
             fetchHelperHandshake: { handshake },
             readSMARTData: { _ in
                 reads.increment()
