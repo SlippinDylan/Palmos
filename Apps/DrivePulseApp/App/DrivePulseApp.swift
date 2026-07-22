@@ -94,9 +94,10 @@ struct DrivePulseApp: App {
                 onInstallOrUpdateHelper: controller.installSMARTHelper,
                 onRefreshHelperStatus: controller.refreshSMARTHelperStatus
             )
-            .onDisappear {
-                settingsWindowActivator.settingsWindowDidClose()
-            }
+            .background(
+                SettingsWindowAccessor(activator: settingsWindowActivator)
+                    .frame(width: 0, height: 0)
+            )
         }
         .windowResizability(.contentSize)
     }

@@ -2,6 +2,51 @@ import AppKit
 import Combine
 import SwiftUI
 
+@MainActor
+protocol SettingsWindowRepresenting: AnyObject {
+    var windowIdentifier: String? { get set }
+    var isVisible: Bool { get }
+
+    func makeKeyAndOrderFront()
+}
+
+extension NSWindow: SettingsWindowRepresenting {
+    var windowIdentifier: String? {
+        get { identifier?.rawValue }
+        set {
+            identifier = newValue.map { NSUserInterfaceItemIdentifier(rawValue: $0) }
+        }
+    }
+
+    func makeKeyAndOrderFront() {
+        makeKeyAndOrderFront(nil)
+        orderFrontRegardless()
+    }
+}
+
+@MainActor
+protocol SettingsApplicationProviding: AnyObject {
+    var windows: [any SettingsWindowRepresenting] { get }
+
+    func setActivationPolicy(_ policy: NSApplication.ActivationPolicy)
+    func activate()
+}
+
+@MainActor
+private final class LiveSettingsApplication: SettingsApplicationProviding {
+    var windows: [any SettingsWindowRepresenting] {
+        NSApp.windows.map { $0 }
+    }
+
+    func setActivationPolicy(_ policy: NSApplication.ActivationPolicy) {
+        NSApp.setActivationPolicy(policy)
+    }
+
+    func activate() {
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
 /// Bridges SwiftUI's `openSettings()` environment action into an `LSUIElement`
 /// (accessory, no Dock icon) menu-bar-only app.
 ///
@@ -19,74 +64,196 @@ import SwiftUI
 @MainActor
 final class SettingsWindowActivator: ObservableObject {
     static let hiddenHostWindowID = "settings-activation-bridge"
+    static let settingsWindowID = "drivepulse-settings-window"
 
     /// How long to wait for the Settings window to materialize before giving
     /// up and reverting the activation policy, so a dropped request or a
     /// failed scene never strands the app promoted to `.regular` forever.
-    private static let pollInterval: Duration = .milliseconds(100)
-    private static let maxPollAttempts = 15 // ~1.5s at pollInterval
-
-    fileprivate let openRequests = PassthroughSubject<Void, Never>()
+    let openRequests = PassthroughSubject<Void, Never>()
+    private let application: any SettingsApplicationProviding
+    private let initialDelay: Duration
+    private let pollInterval: Duration
+    private let maxPollAttempts: Int
+    private let waitOperation: @MainActor (Duration) async -> Bool
     private var openTask: Task<Void, Never>?
+    private var openGeneration = 0
 
     /// The Settings window, once identified. SwiftUI reuses the same window
     /// on subsequent `openSettings()` calls rather than creating a new one,
     /// so later opens can just re-raise this instead of re-running discovery.
-    private weak var knownSettingsWindow: NSWindow?
+    private weak var knownSettingsWindow: (any SettingsWindowRepresenting)?
+
+    init(
+        application: any SettingsApplicationProviding = LiveSettingsApplication(),
+        initialDelay: Duration = .milliseconds(50),
+        pollInterval: Duration = .milliseconds(100),
+        maxPollAttempts: Int = 15,
+        wait: @escaping @MainActor (Duration) async -> Bool = SettingsWindowActivator.wait
+    ) {
+        self.application = application
+        self.initialDelay = initialDelay
+        self.pollInterval = pollInterval
+        self.maxPollAttempts = maxPollAttempts
+        self.waitOperation = wait
+    }
 
     func open() {
-        NSApp.setActivationPolicy(.regular)
+        openTask?.cancel()
+        openGeneration += 1
+        let generation = openGeneration
+        application.setActivationPolicy(.regular)
 
-        if let window = knownSettingsWindow, window.isVisible {
-            NSApp.activate(ignoringOtherApps: true)
+        if let window = knownSettingsWindow {
+            application.activate()
             raise(window)
             return
         }
 
-        let precedingWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
+        let precedingWindows = windowVisibilitySnapshot()
 
-        openTask?.cancel()
         openTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
-            guard Task.isCancelled == false, let self else { return }
+            guard let self, await self.waitOperation(self.initialDelay) else { return }
+            guard self.isCurrent(generation) else { return }
 
-            NSApp.activate(ignoringOtherApps: true)
+            self.application.activate()
             self.openRequests.send()
 
-            for _ in 0..<Self.maxPollAttempts {
-                if let window = self.newlyOpenedWindow(excluding: precedingWindows) {
-                    self.knownSettingsWindow = window
+            for _ in 0..<self.maxPollAttempts {
+                if let window = self.settingsWindow(after: precedingWindows) {
+                    self.registerSettingsWindow(window)
                     self.raise(window)
                     return
                 }
 
-                try? await Task.sleep(for: Self.pollInterval)
-                guard Task.isCancelled == false else { return }
+                guard await self.waitOperation(self.pollInterval) else { return }
+                guard self.isCurrent(generation) else { return }
             }
 
             // The Settings scene never materialized (dropped request, scene
             // failure, etc.) — don't strand the app promoted to `.regular`.
-            self.settingsWindowDidClose()
+            self.restoreAccessoryPolicy(for: generation)
         }
     }
 
-    func settingsWindowDidClose() {
+    func registerSettingsWindow(_ window: any SettingsWindowRepresenting) {
+        window.windowIdentifier = Self.settingsWindowID
+        knownSettingsWindow = window
+    }
+
+    func settingsWindowDidClose(_ window: any SettingsWindowRepresenting) {
+        if let knownSettingsWindow,
+           ObjectIdentifier(knownSettingsWindow) != ObjectIdentifier(window) {
+            return
+        }
+
         openTask?.cancel()
-        knownSettingsWindow = nil
-        NSApp.setActivationPolicy(.accessory)
+        openGeneration += 1
+        application.setActivationPolicy(.accessory)
     }
 
-    private func raise(_ window: NSWindow) {
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
+    private func raise(_ window: any SettingsWindowRepresenting) {
+        window.makeKeyAndOrderFront()
     }
 
-    private func newlyOpenedWindow(excluding precedingWindows: Set<ObjectIdentifier>) -> NSWindow? {
-        NSApp.windows.first { window in
-            window.isVisible
-                && window.identifier?.rawValue != Self.hiddenHostWindowID
-                && precedingWindows.contains(ObjectIdentifier(window)) == false
+    private func windowVisibilitySnapshot() -> [ObjectIdentifier: Bool] {
+        Dictionary(uniqueKeysWithValues: application.windows.map {
+            (ObjectIdentifier($0), $0.isVisible)
+        })
+    }
+
+    private func settingsWindow(
+        after precedingWindows: [ObjectIdentifier: Bool]
+    ) -> (any SettingsWindowRepresenting)? {
+        if let identifiedWindow = application.windows.first(where: {
+            $0.windowIdentifier == Self.settingsWindowID
+        }) {
+            return identifiedWindow
         }
+
+        return application.windows.first { window in
+            guard window.windowIdentifier != Self.hiddenHostWindowID,
+                  window.isVisible else {
+                return false
+            }
+
+            return precedingWindows[ObjectIdentifier(window)] != true
+        }
+    }
+
+    private static func wait(for duration: Duration) async -> Bool {
+        do {
+            try await Task.sleep(for: duration)
+            return Task.isCancelled == false
+        } catch {
+            return false
+        }
+    }
+
+    private func isCurrent(_ generation: Int) -> Bool {
+        Task.isCancelled == false && generation == openGeneration
+    }
+
+    private func restoreAccessoryPolicy(for generation: Int) {
+        guard isCurrent(generation) else { return }
+        application.setActivationPolicy(.accessory)
+    }
+}
+
+/// Registers the concrete SwiftUI Settings window and observes its real close
+/// event. View disappearance is not equivalent to an `NSWindow` closing.
+struct SettingsWindowAccessor: NSViewRepresentable {
+    let activator: SettingsWindowActivator
+
+    func makeNSView(context: Context) -> SettingsWindowObservationView {
+        SettingsWindowObservationView(activator: activator)
+    }
+
+    func updateNSView(_ nsView: SettingsWindowObservationView, context: Context) {
+        nsView.activator = activator
+        nsView.registerCurrentWindow()
+    }
+}
+
+@MainActor
+final class SettingsWindowObservationView: NSView {
+    weak var activator: SettingsWindowActivator?
+
+    init(activator: SettingsWindowActivator) {
+        self.activator = activator
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        registerCurrentWindow()
+    }
+
+    func registerCurrentWindow() {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSWindow.willCloseNotification,
+            object: nil
+        )
+        guard let window else { return }
+
+        activator?.registerSettingsWindow(window)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(settingsWindowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
+    }
+
+    @objc
+    private func settingsWindowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        activator?.settingsWindowDidClose(window)
     }
 }
 
