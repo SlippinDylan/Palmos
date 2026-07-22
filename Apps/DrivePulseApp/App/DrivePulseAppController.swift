@@ -65,6 +65,7 @@ final class DrivePulseAppController: ObservableObject {
     private let systemProfilerProvider: any SystemProfilerProviding
     private let diskUtilAPFSProvider: any DiskUtilAPFSProviding
     private let volumeCapacityRefresher: VolumeCapacityRefresher
+    private let deviceContextMerger = DeviceContextMerger()
     let deviceIOTracker: DeviceIOTracker
     let deviceIOQuiescer: DeviceIOQuiescer
     private let actionSuccessFeedbackDuration: TimeInterval
@@ -692,118 +693,18 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     private func mergeDevicesPreservingKnownContext(_ devices: [ExternalDevice]) -> [ExternalDevice] {
-        let existingDevicesByID = Dictionary(uniqueKeysWithValues: state.devices.map { ($0.id, $0) })
-        return devices.map { incoming in
-            guard let existing = existingDevicesByID[incoming.id] else {
-                return incoming
-            }
-            return mergeKnownContext(from: existing, into: incoming)
-        }
-    }
-
-    private func mergeKnownContext(from existing: ExternalDevice, into incoming: ExternalDevice) -> ExternalDevice {
-        var merged = incoming
-
-        if isGenericDisplayName(
-            merged.displayName,
-            forPhysicalBSDName: merged.physicalStoreBSDName
-        ) {
-            merged.displayName = existing.displayName
-        }
-        if shouldPrefer(existing.transportName, over: merged.transportName) {
-            merged.transportName = existing.transportName
-        }
-        if merged.capacityBytes == nil {
-            merged.capacityBytes = existing.capacityBytes
-        }
-        if merged.apfsContainerBSDName == nil {
-            merged.apfsContainerBSDName = existing.apfsContainerBSDName
-        }
-        if merged.volumes.isEmpty,
-           isEjectWorkflowActive,
-           ejectWorkflowDeviceID == incoming.id {
-            merged.volumes = existing.volumes
-        }
-        if merged.nvmeInfo == nil {
-            merged.nvmeInfo = existing.nvmeInfo
-        }
-        if merged.thunderboltInfo == nil {
-            merged.thunderboltInfo = existing.thunderboltInfo
-        }
-        if merged.pciInfo == nil {
-            merged.pciInfo = existing.pciInfo
-        }
-        if merged.apfsContainerDetails == nil {
-            merged.apfsContainerDetails = existing.apfsContainerDetails
-        }
-        if merged.physicalPartitions.isEmpty {
-            merged.physicalPartitions = existing.physicalPartitions
-        }
-
-        return merged
-    }
-
-    private func isGenericDisplayName(
-        _ displayName: String,
-        forPhysicalBSDName physicalBSDName: String
-    ) -> Bool {
-        displayName.caseInsensitiveCompare(physicalBSDName) == .orderedSame
-    }
-
-    private func shouldPrefer(_ existingTransportName: String, over incomingTransportName: String) -> Bool {
-        transportQualityScore(existingTransportName) > transportQualityScore(incomingTransportName)
-    }
-
-    private func transportQualityScore(_ transportName: String) -> Int {
-        let normalizedTransport = transportName
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-
-        switch normalizedTransport {
-        case "thunderbolt":
-            return 40
-        case "usb4":
-            return 30
-        case "usb", "usb-c", "sd":
-            return 20
-        case "external", "":
-            return 0
-        default:
-            if normalizedTransport.hasPrefix("io")
-                || normalizedTransport.contains("controller")
-                || normalizedTransport.contains("storage") {
-                return 0
-            }
-            return 10
-        }
+        deviceContextMerger.merge(
+            incoming: devices,
+            existing: state.devices,
+            preservingMountedVolumesFor: isEjectWorkflowActive ? ejectWorkflowDeviceID : nil
+        )
     }
 
     private func enrichDevicesWithAPFS(
         _ devices: [ExternalDevice],
         diskUtilAPFSProvider: any DiskUtilAPFSProviding
     ) async -> [ExternalDevice] {
-        var result = devices
-        for i in result.indices {
-            var device = result[i]
-            // APFS container
-            if let containerBSDName = device.apfsContainerBSDName {
-                let containerDetails = await diskUtilAPFSProvider.containerInfo(
-                    forContainerBSDName: containerBSDName
-                )
-                device.apfsContainerDetails = mergeMountedVolumeMetadata(
-                    into: containerDetails,
-                    mountedVolumes: device.volumes
-                )
-            }
-            // Physical partitions (skip if already populated by discovery)
-            if device.physicalPartitions.isEmpty {
-                device.physicalPartitions = await diskUtilAPFSProvider.physicalPartitions(
-                    forDiskBSDName: device.physicalStoreBSDName
-                )
-            }
-            result[i] = device
-        }
-        return result
+        await APFSDeviceEnricher().enrich(devices, using: diskUtilAPFSProvider)
     }
 
     private func enrichDevicesWithSystemProfiler(_ devices: [ExternalDevice]) -> [ExternalDevice] {
@@ -886,36 +787,6 @@ final class DrivePulseAppController: ObservableObject {
                 physicalBSDNames: physicalBSDNames
             )
         }
-    }
-
-    private func mergeMountedVolumeMetadata(
-        into containerDetails: APFSContainerInfo?,
-        mountedVolumes: [MountedVolume]
-    ) -> APFSContainerInfo? {
-        guard var containerDetails else {
-            return nil
-        }
-
-        let mountPointPairs: [(String, String)] = mountedVolumes.compactMap { volume in
-                guard let mountPoint = volume.mountPoint, mountPoint.isEmpty == false else {
-                    return nil
-                }
-                return (volume.bsdName, mountPoint)
-            }
-        let mountPointsByBSDName = Dictionary(uniqueKeysWithValues: mountPointPairs)
-
-        guard mountPointsByBSDName.isEmpty == false else {
-            return containerDetails
-        }
-
-        for index in containerDetails.volumes.indices {
-            let bsdName = containerDetails.volumes[index].bsdName
-            if containerDetails.volumes[index].mountPoint == nil {
-                containerDetails.volumes[index].mountPoint = mountPointsByBSDName[bsdName]
-            }
-        }
-
-        return containerDetails
     }
 
     private func refreshSMART(
