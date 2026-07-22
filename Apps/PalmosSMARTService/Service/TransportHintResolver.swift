@@ -1,0 +1,4 @@
+import PalmosCore
+
+typealias TransportHintResolver = PalmosCore.TransportHintResolver
+typealias SmartctlTransportHint = PalmosCore.SmartctlTransportHint

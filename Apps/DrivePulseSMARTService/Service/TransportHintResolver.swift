@@ -1,4 +1,0 @@
-import DrivePulseCore
-
-typealias TransportHintResolver = DrivePulseCore.TransportHintResolver
-typealias SmartctlTransportHint = DrivePulseCore.SmartctlTransportHint

@@ -8,11 +8,11 @@ unset BASH_ENV ENV CDPATH PLIST_BUDDY
 
 readonly APP_PATH="${1:?Usage: code-signing.sh <app-path> [expected-team-id]}"
 readonly EXPECTED_TEAM_ID="${2:-}"
-readonly APP_IDENTIFIER="com.drivepulse.app"
-readonly HELPER_IDENTIFIER="com.drivepulse.smartservice"
-readonly APP_EXECUTABLE="$APP_PATH/Contents/MacOS/DrivePulseApp"
+readonly APP_IDENTIFIER="com.palmos.app"
+readonly HELPER_IDENTIFIER="com.palmos.smartservice"
+readonly APP_EXECUTABLE="$APP_PATH/Contents/MacOS/PalmosApp"
 readonly HELPER_PATH="$APP_PATH/Contents/Library/LaunchServices/$HELPER_IDENTIFIER"
-readonly COMPANION_IDENTIFIER="com.drivepulse.smartservice.smartctl"
+readonly COMPANION_IDENTIFIER="com.palmos.smartservice.smartctl"
 readonly COMPANION_PATH="$APP_PATH/Contents/Library/Helpers/$COMPANION_IDENTIFIER"
 readonly SMARTMONTOOLS_LICENSE_PATH="$APP_PATH/Contents/Resources/smartmontools-COPYING.txt"
 readonly SMARTMONTOOLS_LICENSE_SHA256="8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
@@ -28,7 +28,7 @@ fail() {
 cleanup() {
   if [[ -n "$verification_directory" && -d "$verification_directory" && ! -L "$verification_directory" ]]; then
     case "$verification_directory" in
-      "${TMPDIR:-/tmp}"/drivepulse-signing-verify.*) /bin/rm -rf -- "$verification_directory" ;;
+      "${TMPDIR:-/tmp}"/palmos-signing-verify.*) /bin/rm -rf -- "$verification_directory" ;;
     esac
   fi
 }
@@ -207,9 +207,9 @@ helper_requirement="$(
 )"
 [[ -n "$helper_requirement" ]] || fail "app contains an empty helper requirement"
 
-verification_directory="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/drivepulse-signing-verify.XXXXXX")"
+verification_directory="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/palmos-signing-verify.XXXXXX")"
 case "$verification_directory" in
-  "${TMPDIR:-/tmp}"/drivepulse-signing-verify.*) ;;
+  "${TMPDIR:-/tmp}"/palmos-signing-verify.*) ;;
   *) fail "mktemp returned an unexpected verification path: $verification_directory" ;;
 esac
 [[ -d "$verification_directory" && ! -L "$verification_directory" ]] \
@@ -228,7 +228,7 @@ for architecture in $helper_architectures; do
   extract_helper_info_plist "$architecture" "$helper_info_plist"
 
   companion_requirement="$(/usr/libexec/PlistBuddy \
-    -c "Print :DrivePulseSmartctlCompanionRequirement" \
+    -c "Print :PalmosSmartctlCompanionRequirement" \
     "$helper_info_plist")"
   [[ -n "$companion_requirement" ]] \
     || fail "helper contains an empty smartctl companion requirement in architecture '$architecture'"
@@ -237,7 +237,7 @@ for architecture in $helper_architectures; do
   /usr/bin/codesign --verify --strict --all-architectures -R="$companion_requirement" "$COMPANION_PATH"
 
   expected_companion_sha256="$(/usr/libexec/PlistBuddy \
-    -c "Print :DrivePulseSmartctlCompanionSHA256" \
+    -c "Print :PalmosSmartctlCompanionSHA256" \
     "$helper_info_plist")"
   [[ "$expected_companion_sha256" =~ ^[[:xdigit:]]{64}$ ]] \
     || fail "helper contains an invalid smartctl companion SHA-256 in architecture '$architecture'"
@@ -286,4 +286,4 @@ for architecture in $helper_architectures; do
     || fail "none of the helper SMAuthorizedClients requirements accepts the app in architecture '$architecture'"
 done
 
-echo "Verified universal DrivePulse app, helper, and companion signatures for Team ID $app_team_id."
+echo "Verified universal Palmos app, helper, and companion signatures for Team ID $app_team_id."

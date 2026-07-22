@@ -47,9 +47,9 @@ done
 readonly TEMPORARY_ROOT="${TMPDIR:-/tmp}"
 [[ "$TEMPORARY_ROOT" == /* && -d "$TEMPORARY_ROOT" ]] \
   || fail "TMPDIR must name an existing absolute directory"
-work_directory="$(/usr/bin/mktemp -d "$TEMPORARY_ROOT/drivepulse-smartctl.XXXXXX")"
+work_directory="$(/usr/bin/mktemp -d "$TEMPORARY_ROOT/palmos-smartctl.XXXXXX")"
 case "$work_directory" in
-  "$TEMPORARY_ROOT"/drivepulse-smartctl.*) ;;
+  "$TEMPORARY_ROOT"/palmos-smartctl.*) ;;
   *) fail "mktemp returned an unexpected path: $work_directory" ;;
 esac
 [[ -d "$work_directory" && ! -L "$work_directory" ]] \
@@ -104,7 +104,7 @@ for architecture in $BUILD_ARCHITECTURES; do
     LDFLAGS="$common_flags" \
     "$source_directory/configure" \
       --host="$configure_host" \
-      --prefix=/Library/PrivilegedHelperTools/DrivePulseSmartctl \
+      --prefix=/Library/PrivilegedHelperTools/PalmosSmartctl \
       --with-drivedbdir=no \
       --without-gnupg \
       --without-libcap-ng \

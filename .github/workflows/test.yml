@@ -34,27 +34,27 @@ jobs:
           Scripts/verify/code-signing-tests.sh
           Scripts/verify/local-smart-build-tests.sh
 
-      - name: Run DrivePulseCore Tests
-        working-directory: Packages/DrivePulseCore
+      - name: Run PalmosCore Tests
+        working-directory: Packages/PalmosCore
         run: swift test
 
-      - name: Run DrivePulseApp Tests
+      - name: Run PalmosApp Tests
         run: |
           set -o pipefail
           xcodebuild test \
-            -workspace DrivePulse.xcworkspace \
-            -scheme DrivePulseApp \
+            -workspace Palmos.xcworkspace \
+            -scheme PalmosApp \
             -destination 'platform=macOS,arch=arm64' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
-      - name: Run DrivePulseSMARTService Tests
+      - name: Run PalmosSMARTService Tests
         run: |
           set -o pipefail
           xcodebuild test \
-            -workspace DrivePulse.xcworkspace \
-            -scheme DrivePulseSMARTServiceTests \
+            -workspace Palmos.xcworkspace \
+            -scheme PalmosSMARTServiceTests \
             -destination 'platform=macOS,arch=arm64' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \

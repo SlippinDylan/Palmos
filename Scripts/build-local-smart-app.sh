@@ -7,17 +7,17 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
 unset BASH_ENV ENV CDPATH PLIST_BUDDY
 
 readonly REPOSITORY_ROOT="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-readonly COMPANION_IDENTIFIER="com.drivepulse.smartservice.smartctl"
+readonly COMPANION_IDENTIFIER="com.palmos.smartservice.smartctl"
 readonly LOCAL_SUPPORT_DIRECTORY="$REPOSITORY_ROOT/DerivedData/LocalSMART"
 readonly SIGNED_COMPANION_DIRECTORY="$LOCAL_SUPPORT_DIRECTORY/SignedCompanions"
 readonly TEMPORARY_DIRECTORY="$LOCAL_SUPPORT_DIRECTORY/Temporary"
 readonly BUILD_LOCK_DIRECTORY="$LOCAL_SUPPORT_DIRECTORY/.build-local-smart-app.lock"
-readonly DERIVED_DATA_PATH="${DRIVEPULSE_DERIVED_DATA_PATH:-$LOCAL_SUPPORT_DIRECTORY/AppBuild}"
+readonly DERIVED_DATA_PATH="${PALMOS_DERIVED_DATA_PATH:-$LOCAL_SUPPORT_DIRECTORY/AppBuild}"
 readonly LOCAL_CONFIG_PATH="$REPOSITORY_ROOT/Config/xcconfigs/Local.xcconfig"
 readonly COMPANION_BUILD_SCRIPT="$REPOSITORY_ROOT/Scripts/build-smartctl-companion.sh"
 readonly CODE_SIGNING_VERIFIER="$REPOSITORY_ROOT/Scripts/verify/code-signing.sh"
 
-requested_identity="${DRIVEPULSE_SIGNING_IDENTITY:-}"
+requested_identity="${PALMOS_SIGNING_IDENTITY:-}"
 run_directory=""
 local_config_temporary=""
 lock_acquired=false
@@ -35,8 +35,8 @@ Options:
   -h, --help            Show this help.
 
 Environment equivalents:
-  DRIVEPULSE_SIGNING_IDENTITY
-  DRIVEPULSE_DERIVED_DATA_PATH
+  PALMOS_SIGNING_IDENTITY
+  PALMOS_DERIVED_DATA_PATH
   SMARTMONTOOLS_SOURCE_ARCHIVE
 
 On success the script writes the git-ignored Config/xcconfigs/Local.xcconfig.
@@ -176,16 +176,16 @@ if [[ -n "$requested_identity" ]]; then
 fi
 
 [[ "$DERIVED_DATA_PATH" == /* ]] \
-  || fail "DRIVEPULSE_DERIVED_DATA_PATH must be an absolute path"
+  || fail "PALMOS_DERIVED_DATA_PATH must be an absolute path"
 [[ ! -L "$DERIVED_DATA_PATH" ]] \
-  || fail "DRIVEPULSE_DERIVED_DATA_PATH must not be a symbolic link"
+  || fail "PALMOS_DERIVED_DATA_PATH must not be a symbolic link"
 case "$DERIVED_DATA_PATH" in
   /|"$REPOSITORY_ROOT"|"$REPOSITORY_ROOT/Config"|"$LOCAL_SUPPORT_DIRECTORY"|"$SIGNED_COMPANION_DIRECTORY"|"$TEMPORARY_DIRECTORY")
-    fail "DRIVEPULSE_DERIVED_DATA_PATH is too broad or overlaps protected build state"
+    fail "PALMOS_DERIVED_DATA_PATH is too broad or overlaps protected build state"
     ;;
 esac
 case "$REPOSITORY_ROOT/" in
-  "$DERIVED_DATA_PATH"/*) fail "DRIVEPULSE_DERIVED_DATA_PATH must not be an ancestor of the repository" ;;
+  "$DERIVED_DATA_PATH"/*) fail "PALMOS_DERIVED_DATA_PATH must not be an ancestor of the repository" ;;
 esac
 [[ ! -L "$LOCAL_CONFIG_PATH" ]] \
   || fail "refusing symbolic-link Local.xcconfig at $LOCAL_CONFIG_PATH"
@@ -295,10 +295,10 @@ signing_team_id="$(signature_field "$SIGNED_STAGING_PATH" TeamIdentifier)"
   || fail "the selected identity did not produce a valid TeamIdentifier"
 
 companion_sha256="$(sha256 "$SIGNED_STAGING_PATH")"
-echo "Building DrivePulse with Apple Development identity: $signing_certificate_name"
+echo "Building Palmos with Apple Development identity: $signing_certificate_name"
 /usr/bin/xcodebuild build \
-  -workspace "$REPOSITORY_ROOT/DrivePulse.xcworkspace" \
-  -scheme DrivePulseApp \
+  -workspace "$REPOSITORY_ROOT/Palmos.xcworkspace" \
+  -scheme PalmosApp \
   -configuration Release \
   -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED_DATA_PATH" \
@@ -311,7 +311,7 @@ echo "Building DrivePulse with Apple Development identity: $signing_certificate_
   SMARTCTL_COMPANION_SHA256="$companion_sha256" \
   SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD=YES
 
-readonly APP_PATH="$DERIVED_DATA_PATH/Build/Products/Release/DrivePulseApp.app"
+readonly APP_PATH="$DERIVED_DATA_PATH/Build/Products/Release/PalmosApp.app"
 "$CODE_SIGNING_VERIFIER" "$APP_PATH" "$signing_team_id"
 
 readonly IMMUTABLE_COMPANION_DIRECTORY="$SIGNED_COMPANION_DIRECTORY/$companion_sha256"

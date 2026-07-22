@@ -2,12 +2,12 @@
 set -euo pipefail
 umask 077
 
-readonly STATE_DIR="${TMPDIR:-/tmp}/drivepulse-safe-eject-fixture-${UID}"
+readonly STATE_DIR="${TMPDIR:-/tmp}/palmos-safe-eject-fixture-${UID}"
 readonly RISK_FLAG="--i-understand-this-volume-is-disposable"
 
 usage() {
   cat <<'EOF'
-DrivePulse safe-eject disposable-media fixture
+Palmos safe-eject disposable-media fixture
 
 Read-only inspection:
   safe-eject-fixture.sh check --device diskN
@@ -115,7 +115,7 @@ case "$command_name" in
   open-file-holder)
     check_device >/dev/null
     validate_disposable_volume
-    holder_file="$volume/.drivepulse-safe-eject-holder"
+    holder_file="$volume/.palmos-safe-eject-holder"
     : >"$holder_file"
     nohup /usr/bin/perl -e 'open my $holder, "<", $ARGV[0] or die $!; sleep 86400' "$holder_file" >/dev/null 2>&1 &
     record_holder open-file "$!"
@@ -167,7 +167,7 @@ case "$command_name" in
     path_file="$STATE_DIR/${device}-holder-file.path"
     if [[ -f "$path_file" ]]; then
       holder_file="$(<"$path_file")"
-      [[ "$holder_file" == /Volumes/*/.drivepulse-safe-eject-holder ]] && rm -f "$holder_file"
+      [[ "$holder_file" == /Volumes/*/.palmos-safe-eject-holder ]] && rm -f "$holder_file"
       rm -f "$path_file"
     fi
     [[ "$found" == true ]] || echo "No recorded holders for $device"

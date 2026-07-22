@@ -1,0 +1,1253 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		4D1700000000000000000001 /* AboutSettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1700000000000000000002 /* AboutSettingsPane.swift */; };
+		100000000000000000000001 /* PalmosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* PalmosApp.swift */; };
+		100000000000000000000002 /* PalmosAppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* PalmosAppController.swift */; };
+		100000000000000000000003 /* PalmosAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* PalmosAppState.swift */; };
+		100000000000000000000004 /* MenuBarRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* MenuBarRootView.swift */; };
+		100000000000000000000005 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* DevicePickerView.swift */; };
+		100000000000000000000006 /* OverviewCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* OverviewCardView.swift */; };
+		100000000000000000000007 /* ThroughputCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* ThroughputCardView.swift */; };
+		100000000000000000000008 /* VolumesSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* VolumesSectionView.swift */; };
+		10000000000000000000000A /* ActionBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* ActionBarView.swift */; };
+		10000000000000000000000B /* PalmosAppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* PalmosAppStateTests.swift */; };
+		10000000000000000000000C /* PalmosCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000001 /* PalmosCore */; };
+		10000000000000000000000D /* PalmosCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000002 /* PalmosCore */; };
+		10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* Task6SettingsAndActionsTests.swift */; };
+		10000000000000000000000F /* SystemActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000012 /* SystemActions.swift */; };
+		100000000000000000000010 /* LaunchAtLoginController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* LaunchAtLoginController.swift */; };
+		100000000000000000000011 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* SettingsView.swift */; };
+		100000000000000000000012 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* Localizable.xcstrings */; };
+		100000000000000000000013 /* PalmosAppControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* PalmosAppControllerTests.swift */; };
+		100000000000000000000014 /* ExternalDeviceDiscoveryMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */; };
+		4B4000000000000000000001 /* ExternalDeviceDiscoveryObservationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4000000000000000000002 /* ExternalDeviceDiscoveryObservationTests.swift */; };
+		100000000000000000000015 /* ExternalDeviceDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* ExternalDeviceDiscovery.swift */; };
+		4D1100000000000000000001 /* DiskArbitrationDeviceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000001 /* DiskArbitrationDeviceMonitor.swift */; };
+		4D1100000000000000000002 /* DiskDiscoveryRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000002 /* DiskDiscoveryRecord.swift */; };
+		4D1100000000000000000003 /* DiskDiscoveryEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000003 /* DiskDiscoveryEnumerator.swift */; };
+		4D1100000000000000000004 /* DeviceIdentitySessionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000004 /* DeviceIdentitySessionRegistry.swift */; };
+		4D1100000000000000000005 /* ExternalDeviceDiscoveryMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1120000000000000000005 /* ExternalDeviceDiscoveryMapper.swift */; };
+		100000000000000000000016 /* SMARTServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000019 /* SMARTServiceClient.swift */; };
+		4D1500000000000000000001 /* SMARTXPCConnectionFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000001 /* SMARTXPCConnectionFactory.swift */; };
+		4D1500000000000000000002 /* SMARTHandshakeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000002 /* SMARTHandshakeClient.swift */; };
+		4D1500000000000000000003 /* SMARTReadXPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000003 /* SMARTReadXPCSession.swift */; };
+		4D1500000000000000000004 /* OccupancyXPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000004 /* OccupancyXPCClient.swift */; };
+		4D1500000000000000000005 /* XPCReplyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000005 /* XPCReplyGate.swift */; };
+		4D1500000000000000000006 /* SMARTServiceErrorMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1520000000000000000006 /* SMARTServiceErrorMapper.swift */; };
+		4D1600000000000000000001 /* DeviceContextMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1620000000000000000001 /* DeviceContextMergerTests.swift */; };
+		4D1600000000000000000002 /* DeviceContextMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1620000000000000000002 /* DeviceContextMerger.swift */; };
+		4D1600000000000000000003 /* APFSDeviceEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1620000000000000000003 /* APFSDeviceEnricher.swift */; };
+		100000000000000000000017 /* PalmosXPCContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001A /* PalmosXPCContracts.swift */; };
+		100000000000000000000018 /* PalmosXPCMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001B /* PalmosXPCMessages.swift */; };
+		100000000000000000000019 /* PalmosSMARTServiceMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001D /* PalmosSMARTServiceMain.swift */; };
+		10000000000000000000001A /* HelperVersionHandshake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001E /* HelperVersionHandshake.swift */; };
+		10000000000000000000001B /* PalmosXPCContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001A /* PalmosXPCContracts.swift */; };
+		10000000000000000000001C /* PalmosXPCMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001B /* PalmosXPCMessages.swift */; };
+		10000000000000000000001D /* SMARTServiceClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001F /* SMARTServiceClientTests.swift */; };
+		10000000000000000000001E /* com.palmos.smartservice in Embed Helper */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001C /* com.palmos.smartservice */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000022 /* Task7HelperPackagingTests.swift */; };
+		100000000000000000000023 /* PalmosSMARTXPCDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000024 /* PalmosSMARTXPCDelegate.swift */; };
+		100000000000000000000024 /* PalmosSMARTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000025 /* PalmosSMARTService.swift */; };
+		100000000000000000000025 /* SmartctlRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000026 /* SmartctlRunner.swift */; };
+		100000000000000000000026 /* TransportHintResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000027 /* TransportHintResolver.swift */; };
+		100000000000000000000027 /* PalmosCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000004 /* PalmosCore */; };
+		100000000000000000000028 /* HelperInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000028 /* HelperInstaller.swift */; };
+		4D1400000000000000000001 /* HelperInstallationPreflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1420000000000000000001 /* HelperInstallationPreflight.swift */; };
+		4D1400000000000000000002 /* BundledSMARTCompanionReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1420000000000000000002 /* BundledSMARTCompanionReader.swift */; };
+		100000000000000000000029 /* PanelSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000029 /* PanelSection.swift */; };
+		10000000000000000000002A /* IOKitDiskSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002A /* IOKitDiskSampler.swift */; };
+		10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002B /* ThroughputChartModelTests.swift */; };
+		4D1800000000000000000001 /* IOKitDiskSamplerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1820000000000000000001 /* IOKitDiskSamplerTests.swift */; };
+		10000000000000000000002C /* SystemProfilerProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002C /* SystemProfilerProvider.swift */; };
+		10000000000000000000002D /* DiskUtilAPFSProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002D /* DiskUtilAPFSProvider.swift */; };
+		10000000000000000000002E /* VolumeCapacityRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002E /* VolumeCapacityRefresher.swift */; };
+		100000000000000000000030 /* VolumesPartitionsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000030 /* VolumesPartitionsCardView.swift */; };
+		100000000000000000000031 /* ConnectionNVMeCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000031 /* ConnectionNVMeCardView.swift */; };
+		100000000000000000000032 /* DeviceIdentityCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000032 /* DeviceIdentityCardView.swift */; };
+		100000000000000000000033 /* HealthSMARTCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000033 /* HealthSMARTCardView.swift */; };
+		100000000000000000000034 /* TemperatureCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000034 /* TemperatureCardView.swift */; };
+		100000000000000000000035 /* DeviceIdentityCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000035 /* DeviceIdentityCardViewTests.swift */; };
+		100000000000000000000036 /* PanelPlaceholderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000036 /* PanelPlaceholderTests.swift */; };
+		100000000000000000000037 /* StorageLocationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000037 /* StorageLocationsTests.swift */; };
+		100000000000000000000038 /* StorageLocations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000038 /* StorageLocations.swift */; };
+		100000000000000000000039 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000039 /* PrivacyInfo.xcprivacy */; };
+		10000000000000000000003A /* OverviewCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003A /* OverviewCardViewTests.swift */; };
+		10000000000000000000003B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003B /* Assets.xcassets */; };
+		10000000000000000000003C /* SettingsWindowActivator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003C /* SettingsWindowActivator.swift */; };
+		10000000000000000000003D /* EjectModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003D /* EjectModelsTests.swift */; };
+		10000000000000000000003E /* EjectModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003E /* EjectModels.swift */; };
+		10000000000000000000003F /* EjectTargetResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000003F /* EjectTargetResolverTests.swift */; };
+		100000000000000000000040 /* EjectTargetResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000040 /* EjectTargetResolver.swift */; };
+		100000000000000000000041 /* DiskArbitrationErrorClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000041 /* DiskArbitrationErrorClassifierTests.swift */; };
+		100000000000000000000042 /* DiskArbitrationErrorClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000042 /* DiskArbitrationErrorClassifier.swift */; };
+		100000000000000000000045 /* DiskArbitrationEjectClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000044 /* DiskArbitrationEjectClientTests.swift */; };
+		100000000000000000000046 /* DiskArbitrationEjectClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000045 /* DiskArbitrationEjectClient.swift */; };
+		100000000000000000000047 /* DeviceIOQuiescer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000046 /* DeviceIOQuiescer.swift */; };
+		100000000000000000000048 /* DeviceIOQuiescerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000047 /* DeviceIOQuiescerTests.swift */; };
+		100000000000000000000043 /* unix-ebusy-status.json in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000043 /* unix-ebusy-status.json */; };
+		100000000000000000000049 /* AppOccupancyScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000048 /* AppOccupancyScannerTests.swift */; };
+		10000000000000000000004D /* OccupancyXPCMessageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004C /* OccupancyXPCMessageTests.swift */; };
+		10000000000000000000004A /* process-fd-snapshot.json in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000049 /* process-fd-snapshot.json */; };
+		10000000000000000000004B /* AppOccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004A /* AppOccupancyScanner.swift */; };
+		10000000000000000000004C /* libproc.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004B /* libproc.tbd */; };
+		100000000000000000000050 /* HelperOccupancyRequestValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000050 /* HelperOccupancyRequestValidator.swift */; };
+		100000000000000000000051 /* HelperDiskTopologyResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000051 /* HelperDiskTopologyResolver.swift */; };
+		100000000000000000000052 /* HelperOccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000052 /* HelperOccupancyScanner.swift */; };
+		100000000000000000000053 /* HelperOccupancySecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000053 /* HelperOccupancySecurityTests.swift */; };
+		100000000000000000000054 /* HelperOccupancyRequestValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000050 /* HelperOccupancyRequestValidator.swift */; };
+		100000000000000000000055 /* HelperDiskTopologyResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000051 /* HelperDiskTopologyResolver.swift */; };
+		100000000000000000000056 /* HelperOccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000052 /* HelperOccupancyScanner.swift */; };
+		100000000000000000000057 /* PalmosXPCMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001B /* PalmosXPCMessages.swift */; };
+		100000000000000000000058 /* PalmosXPCContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001A /* PalmosXPCContracts.swift */; };
+		100000000000000000000059 /* libproc.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004B /* libproc.tbd */; };
+		10000000000000000000005A /* libproc.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 20000000000000000000004B /* libproc.tbd */; };
+		10000000000000000000005B /* HelperOccupancyEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000055 /* HelperOccupancyEndpoint.swift */; };
+		10000000000000000000005C /* HelperOccupancyEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000055 /* HelperOccupancyEndpoint.swift */; };
+		10000000000000000000005D /* HelperTopologyCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000056 /* HelperTopologyCommandRunner.swift */; };
+		10000000000000000000005E /* HelperTopologyCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000056 /* HelperTopologyCommandRunner.swift */; };
+		10000000000000000000005F /* HelperAuthoritativeSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000057 /* HelperAuthoritativeSnapshot.swift */; };
+		100000000000000000000070 /* PalmosSMARTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000025 /* PalmosSMARTService.swift */; };
+		100000000000000000000071 /* SmartctlRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000026 /* SmartctlRunner.swift */; };
+		100000000000000000000072 /* PalmosSMARTXPCDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000024 /* PalmosSMARTXPCDelegate.swift */; };
+		100000000000000000000073 /* TransportHintResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000027 /* TransportHintResolver.swift */; };
+		100000000000000000000074 /* HelperVersionHandshake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001E /* HelperVersionHandshake.swift */; };
+		100000000000000000000075 /* PalmosCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000004 /* PalmosCore */; };
+		100000000000000000000077 /* SmartctlCompanionInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000065 /* SmartctlCompanionInstaller.swift */; };
+		100000000000000000000078 /* SmartctlCompanionInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000065 /* SmartctlCompanionInstaller.swift */; };
+		100000000000000000000079 /* smartmontools-COPYING.txt in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000066 /* smartmontools-COPYING.txt */; };
+		100000000000000000000060 /* HelperAuthoritativeSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000057 /* HelperAuthoritativeSnapshot.swift */; };
+		100000000000000000000061 /* OccupancyScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000058 /* OccupancyScannerTests.swift */; };
+		100000000000000000000062 /* OccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000059 /* OccupancyScanner.swift */; };
+		100000000000000000000063 /* EjectCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005A /* EjectCoordinatorTests.swift */; };
+		100000000000000000000064 /* EjectCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005B /* EjectCoordinator.swift */; };
+		100000000000000000000080 /* BoundedProcessFDEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* BoundedProcessFDEnumerator.swift */; };
+		100000000000000000000085 /* ThroughputSamplingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000085 /* ThroughputSamplingCoordinator.swift */; };
+		100000000000000000000081 /* BoundedProcessFDEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* BoundedProcessFDEnumerator.swift */; };
+		100000000000000000000082 /* BoundedProcessFDEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* BoundedProcessFDEnumerator.swift */; };
+		100000000000000000000083 /* BoundedProcessFDEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* BoundedProcessFDEnumerator.swift */; };
+		100000000000000000000084 /* SettingsWindowActivatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000084 /* SettingsWindowActivatorTests.swift */; };
+		100000000000000000000086 /* SystemProfilerParserBoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000086 /* SystemProfilerParserBoundaryTests.swift */; };
+		100000000000000000000087 /* SubprocessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000087 /* SubprocessRunner.swift */; };
+		100000000000000000000088 /* LatestRequestCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000088 /* LatestRequestCoordinator.swift */; };
+		100000000000000000000089 /* SystemProfilerParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000089 /* SystemProfilerParser.swift */; };
+		10000000000000000000008A /* ThroughputMetricsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000008A /* ThroughputMetricsStore.swift */; };
+		100000000000000000000065 /* EjectLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005C /* EjectLocalization.swift */; };
+		100000000000000000000066 /* EjectRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005D /* EjectRecoveryView.swift */; };
+		100000000000000000000067 /* EjectForceConfirmationModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005E /* EjectForceConfirmationModifier.swift */; };
+		100000000000000000000068 /* EjectRecoveryViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005F /* EjectRecoveryViewTests.swift */; };
+		100000000000000000000069 /* EjectLocalizationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000060 /* EjectLocalizationCatalogTests.swift */; };
+		10000000000000000000006E /* LocalizationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000067 /* LocalizationCatalogTests.swift */; };
+		10000000000000000000006F /* PanelValueFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000068 /* PanelValueFormatter.swift */; };
+		10000000000000000000006A /* SafeEjectIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000061 /* SafeEjectIntegrationTests.swift */; };
+		10000000000000000000006B /* CapacityUsageCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000062 /* CapacityUsageCardView.swift */; };
+		10000000000000000000006C /* SMARTHelperManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000063 /* SMARTHelperManager.swift */; };
+		10000000000000000000006D /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000064 /* SettingsComponents.swift */; };
+		E268DE9D187C136F974A3F7E /* MenuBarExtraAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 322662F17F85D329F8C03472 /* MenuBarExtraAccess */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		100000000000000000000020 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 300000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 400000000000000000000001;
+			remoteInfo = PalmosApp;
+		};
+		100000000000000000000021 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 300000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 400000000000000000000004;
+			remoteInfo = PalmosSMARTService;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		300000000000000000000019 /* Embed Helper */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchServices;
+			dstSubfolderSpec = 1;
+			files = (
+				10000000000000000000001E /* com.palmos.smartservice in Embed Helper */,
+			);
+			name = "Embed Helper";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		4D1700000000000000000002 /* AboutSettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsPane.swift; sourceTree = "<group>"; };
+		200000000000000000000001 /* PalmosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* PalmosAppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosAppController.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* PalmosAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosAppState.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* MenuBarRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarRootView.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
+		200000000000000000000006 /* OverviewCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000007 /* ThroughputCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* VolumesSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumesSectionView.swift; sourceTree = "<group>"; };
+		20000000000000000000000A /* ActionBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionBarView.swift; sourceTree = "<group>"; };
+		20000000000000000000000B /* PalmosAppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosAppStateTests.swift; sourceTree = "<group>"; };
+		20000000000000000000000C /* PalmosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PalmosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000D /* PalmosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PalmosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000E /* App.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xcconfigs/App.xcconfig; sourceTree = "<group>"; };
+		20000000000000000000000F /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xcconfigs/Base.xcconfig; sourceTree = "<group>"; };
+		200000000000000000000010 /* PalmosApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Plists/PalmosApp-Info.plist"; sourceTree = "<group>"; };
+		200000000000000000000011 /* Task6SettingsAndActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Task6SettingsAndActionsTests.swift; sourceTree = "<group>"; };
+		200000000000000000000012 /* SystemActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemActions.swift; sourceTree = "<group>"; };
+		200000000000000000000013 /* LaunchAtLoginController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginController.swift; sourceTree = "<group>"; };
+		200000000000000000000014 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		200000000000000000000015 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		200000000000000000000016 /* PalmosAppControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosAppControllerTests.swift; sourceTree = "<group>"; };
+		200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscoveryMapperTests.swift; sourceTree = "<group>"; };
+		4B4000000000000000000002 /* ExternalDeviceDiscoveryObservationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscoveryObservationTests.swift; sourceTree = "<group>"; };
+		200000000000000000000018 /* ExternalDeviceDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscovery.swift; sourceTree = "<group>"; };
+		4D1120000000000000000001 /* DiskArbitrationDeviceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskArbitrationDeviceMonitor.swift; sourceTree = "<group>"; };
+		4D1120000000000000000002 /* DiskDiscoveryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskDiscoveryRecord.swift; sourceTree = "<group>"; };
+		4D1120000000000000000003 /* DiskDiscoveryEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskDiscoveryEnumerator.swift; sourceTree = "<group>"; };
+		4D1120000000000000000004 /* DeviceIdentitySessionRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentitySessionRegistry.swift; sourceTree = "<group>"; };
+		4D1120000000000000000005 /* ExternalDeviceDiscoveryMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDeviceDiscoveryMapper.swift; sourceTree = "<group>"; };
+		200000000000000000000019 /* SMARTServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTServiceClient.swift; sourceTree = "<group>"; };
+		4D1520000000000000000001 /* SMARTXPCConnectionFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTXPCConnectionFactory.swift; sourceTree = "<group>"; };
+		4D1520000000000000000002 /* SMARTHandshakeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTHandshakeClient.swift; sourceTree = "<group>"; };
+		4D1520000000000000000003 /* SMARTReadXPCSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTReadXPCSession.swift; sourceTree = "<group>"; };
+		4D1520000000000000000004 /* OccupancyXPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OccupancyXPCClient.swift; sourceTree = "<group>"; };
+		4D1520000000000000000005 /* XPCReplyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XPCReplyGate.swift; sourceTree = "<group>"; };
+		4D1520000000000000000006 /* SMARTServiceErrorMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTServiceErrorMapper.swift; sourceTree = "<group>"; };
+		4D1620000000000000000001 /* DeviceContextMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceContextMergerTests.swift; sourceTree = "<group>"; };
+		4D1620000000000000000002 /* DeviceContextMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceContextMerger.swift; sourceTree = "<group>"; };
+		4D1620000000000000000003 /* APFSDeviceEnricher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APFSDeviceEnricher.swift; sourceTree = "<group>"; };
+		20000000000000000000001A /* PalmosXPCContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosXPCContracts.swift; sourceTree = "<group>"; };
+		20000000000000000000001B /* PalmosXPCMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosXPCMessages.swift; sourceTree = "<group>"; };
+		20000000000000000000001C /* com.palmos.smartservice */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = com.palmos.smartservice; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000001D /* PalmosSMARTServiceMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosSMARTServiceMain.swift; sourceTree = "<group>"; };
+		20000000000000000000001E /* HelperVersionHandshake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperVersionHandshake.swift; sourceTree = "<group>"; };
+		20000000000000000000001F /* SMARTServiceClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTServiceClientTests.swift; sourceTree = "<group>"; };
+		200000000000000000000020 /* Helper.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xcconfigs/Helper.xcconfig; sourceTree = "<group>"; };
+		200000000000000000000021 /* PalmosSMARTService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Plists/PalmosSMARTService-Info.plist"; sourceTree = "<group>"; };
+		200000000000000000000022 /* Task7HelperPackagingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Task7HelperPackagingTests.swift; sourceTree = "<group>"; };
+		200000000000000000000023 /* com.palmos.smartservice.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Launchd/com.palmos.smartservice.plist; sourceTree = "<group>"; };
+		200000000000000000000024 /* PalmosSMARTXPCDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosSMARTXPCDelegate.swift; sourceTree = "<group>"; };
+		200000000000000000000025 /* PalmosSMARTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosSMARTService.swift; sourceTree = "<group>"; };
+		200000000000000000000026 /* SmartctlRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartctlRunner.swift; sourceTree = "<group>"; };
+		200000000000000000000065 /* SmartctlCompanionInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartctlCompanionInstaller.swift; sourceTree = "<group>"; };
+		200000000000000000000066 /* smartmontools-COPYING.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "smartmontools-COPYING.txt"; sourceTree = "<group>"; };
+		200000000000000000000080 /* BoundedProcessFDEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedProcessFDEnumerator.swift; sourceTree = "<group>"; };
+		200000000000000000000085 /* ThroughputSamplingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputSamplingCoordinator.swift; sourceTree = "<group>"; };
+		200000000000000000000084 /* SettingsWindowActivatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowActivatorTests.swift; sourceTree = "<group>"; };
+		200000000000000000000027 /* TransportHintResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportHintResolver.swift; sourceTree = "<group>"; };
+		200000000000000000000028 /* HelperInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperInstaller.swift; sourceTree = "<group>"; };
+		4D1420000000000000000001 /* HelperInstallationPreflight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperInstallationPreflight.swift; sourceTree = "<group>"; };
+		4D1420000000000000000002 /* BundledSMARTCompanionReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundledSMARTCompanionReader.swift; sourceTree = "<group>"; };
+		200000000000000000000029 /* PanelSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelSection.swift; sourceTree = "<group>"; };
+		20000000000000000000002A /* IOKitDiskSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOKitDiskSampler.swift; sourceTree = "<group>"; };
+		20000000000000000000002B /* ThroughputChartModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputChartModelTests.swift; sourceTree = "<group>"; };
+		4D1820000000000000000001 /* IOKitDiskSamplerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOKitDiskSamplerTests.swift; sourceTree = "<group>"; };
+		20000000000000000000002C /* SystemProfilerProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProfilerProvider.swift; sourceTree = "<group>"; };
+		20000000000000000000002D /* DiskUtilAPFSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskUtilAPFSProvider.swift; sourceTree = "<group>"; };
+		20000000000000000000002E /* VolumeCapacityRefresher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeCapacityRefresher.swift; sourceTree = "<group>"; };
+		200000000000000000000030 /* VolumesPartitionsCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumesPartitionsCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000031 /* ConnectionNVMeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionNVMeCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000032 /* DeviceIdentityCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentityCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000033 /* HealthSMARTCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSMARTCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000034 /* TemperatureCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemperatureCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000035 /* DeviceIdentityCardViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentityCardViewTests.swift; sourceTree = "<group>"; };
+		200000000000000000000036 /* PanelPlaceholderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelPlaceholderTests.swift; sourceTree = "<group>"; };
+		200000000000000000000037 /* StorageLocationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageLocationsTests.swift; sourceTree = "<group>"; };
+		200000000000000000000038 /* StorageLocations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageLocations.swift; sourceTree = "<group>"; };
+		200000000000000000000039 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		20000000000000000000003A /* OverviewCardViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewCardViewTests.swift; sourceTree = "<group>"; };
+		20000000000000000000003B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		20000000000000000000003C /* SettingsWindowActivator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowActivator.swift; sourceTree = "<group>"; };
+		20000000000000000000003D /* EjectModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectModelsTests.swift; sourceTree = "<group>"; };
+		20000000000000000000003E /* EjectModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectModels.swift; sourceTree = "<group>"; };
+		20000000000000000000003F /* EjectTargetResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectTargetResolverTests.swift; sourceTree = "<group>"; };
+		200000000000000000000040 /* EjectTargetResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectTargetResolver.swift; sourceTree = "<group>"; };
+		200000000000000000000041 /* DiskArbitrationErrorClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskArbitrationErrorClassifierTests.swift; sourceTree = "<group>"; };
+		200000000000000000000042 /* DiskArbitrationErrorClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskArbitrationErrorClassifier.swift; sourceTree = "<group>"; };
+		200000000000000000000043 /* unix-ebusy-status.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Fixtures/DiskArbitration/unix-ebusy-status.json; sourceTree = "<group>"; };
+		200000000000000000000044 /* DiskArbitrationEjectClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskArbitrationEjectClientTests.swift; sourceTree = "<group>"; };
+		200000000000000000000045 /* DiskArbitrationEjectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskArbitrationEjectClient.swift; sourceTree = "<group>"; };
+		200000000000000000000046 /* DeviceIOQuiescer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIOQuiescer.swift; sourceTree = "<group>"; };
+		200000000000000000000047 /* DeviceIOQuiescerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIOQuiescerTests.swift; sourceTree = "<group>"; };
+		200000000000000000000048 /* AppOccupancyScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppOccupancyScannerTests.swift; sourceTree = "<group>"; };
+		200000000000000000000049 /* process-fd-snapshot.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Fixtures/OccupancyScanner/process-fd-snapshot.json; sourceTree = "<group>"; };
+		20000000000000000000004A /* AppOccupancyScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppOccupancyScanner.swift; sourceTree = "<group>"; };
+		20000000000000000000004B /* libproc.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libproc.tbd; path = usr/lib/libproc.tbd; sourceTree = SDKROOT; };
+		20000000000000000000004C /* OccupancyXPCMessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OccupancyXPCMessageTests.swift; sourceTree = "<group>"; };
+		200000000000000000000050 /* HelperOccupancyRequestValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperOccupancyRequestValidator.swift; sourceTree = "<group>"; };
+		200000000000000000000051 /* HelperDiskTopologyResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperDiskTopologyResolver.swift; sourceTree = "<group>"; };
+		200000000000000000000052 /* HelperOccupancyScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperOccupancyScanner.swift; sourceTree = "<group>"; };
+		200000000000000000000053 /* HelperOccupancySecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperOccupancySecurityTests.swift; sourceTree = "<group>"; };
+		200000000000000000000054 /* PalmosSMARTServiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PalmosSMARTServiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000055 /* HelperOccupancyEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperOccupancyEndpoint.swift; sourceTree = "<group>"; };
+		200000000000000000000056 /* HelperTopologyCommandRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperTopologyCommandRunner.swift; sourceTree = "<group>"; };
+		200000000000000000000057 /* HelperAuthoritativeSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperAuthoritativeSnapshot.swift; sourceTree = "<group>"; };
+		200000000000000000000058 /* OccupancyScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OccupancyScannerTests.swift; sourceTree = "<group>"; };
+		200000000000000000000059 /* OccupancyScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OccupancyScanner.swift; sourceTree = "<group>"; };
+		20000000000000000000005A /* EjectCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectCoordinatorTests.swift; sourceTree = "<group>"; };
+		20000000000000000000005B /* EjectCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectCoordinator.swift; sourceTree = "<group>"; };
+		20000000000000000000005C /* EjectLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectLocalization.swift; sourceTree = "<group>"; };
+		20000000000000000000005D /* EjectRecoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectRecoveryView.swift; sourceTree = "<group>"; };
+		20000000000000000000005E /* EjectForceConfirmationModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectForceConfirmationModifier.swift; sourceTree = "<group>"; };
+		20000000000000000000005F /* EjectRecoveryViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectRecoveryViewTests.swift; sourceTree = "<group>"; };
+		200000000000000000000060 /* EjectLocalizationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EjectLocalizationCatalogTests.swift; sourceTree = "<group>"; };
+		200000000000000000000067 /* LocalizationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationCatalogTests.swift; sourceTree = "<group>"; };
+		200000000000000000000068 /* PanelValueFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelValueFormatter.swift; sourceTree = "<group>"; };
+		200000000000000000000061 /* SafeEjectIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeEjectIntegrationTests.swift; sourceTree = "<group>"; };
+		200000000000000000000062 /* CapacityUsageCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapacityUsageCardView.swift; sourceTree = "<group>"; };
+		200000000000000000000063 /* SMARTHelperManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMARTHelperManager.swift; sourceTree = "<group>"; };
+		200000000000000000000064 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsComponents.swift; sourceTree = "<group>"; };
+		200000000000000000000086 /* SystemProfilerParserBoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProfilerParserBoundaryTests.swift; sourceTree = "<group>"; };
+		200000000000000000000087 /* SubprocessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubprocessRunner.swift; sourceTree = "<group>"; };
+		200000000000000000000088 /* LatestRequestCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatestRequestCoordinator.swift; sourceTree = "<group>"; };
+		200000000000000000000089 /* SystemProfilerParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProfilerParser.swift; sourceTree = "<group>"; };
+		20000000000000000000008A /* ThroughputMetricsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputMetricsStore.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		300000000000000000000010 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000004C /* libproc.tbd in Frameworks */,
+				10000000000000000000000C /* PalmosCore in Frameworks */,
+				E268DE9D187C136F974A3F7E /* MenuBarExtraAccess in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000011 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000000D /* PalmosCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000016 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000005A /* libproc.tbd in Frameworks */,
+				100000000000000000000027 /* PalmosCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000020 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000059 /* libproc.tbd in Frameworks */,
+				100000000000000000000075 /* PalmosCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		300000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000003 /* PalmosApp */,
+				30000000000000000000000D /* PalmosSMARTService */,
+				300000000000000000000023 /* PalmosSMARTServiceTests */,
+				300000000000000000000008 /* PalmosAppTests */,
+				300000000000000000000009 /* Config */,
+				30000000000000000000000B /* Shared */,
+				30000000000000000000000A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		300000000000000000000003 /* PalmosApp */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000004 /* App */,
+				30000000000000000000001C /* Metrics */,
+				300000000000000000000006 /* Integration */,
+				300000000000000000000005 /* UI */,
+				300000000000000000000007 /* Localization */,
+				30000000000000000000001D /* Resources */,
+				30000000000000000000001E /* Eject */,
+				200000000000000000000039 /* PrivacyInfo.xcprivacy */,
+			);
+			path = Apps/PalmosApp;
+			sourceTree = "<group>";
+		};
+		300000000000000000000004 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* PalmosApp.swift */,
+				200000000000000000000002 /* PalmosAppController.swift */,
+				4D1620000000000000000002 /* DeviceContextMerger.swift */,
+				200000000000000000000003 /* PalmosAppState.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		30000000000000000000001E /* Eject */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000005C /* EjectLocalization.swift */,
+				200000000000000000000042 /* DiskArbitrationErrorClassifier.swift */,
+				200000000000000000000045 /* DiskArbitrationEjectClient.swift */,
+				200000000000000000000046 /* DeviceIOQuiescer.swift */,
+				20000000000000000000004A /* AppOccupancyScanner.swift */,
+				200000000000000000000059 /* OccupancyScanner.swift */,
+				20000000000000000000005B /* EjectCoordinator.swift */,
+				20000000000000000000003E /* EjectModels.swift */,
+				200000000000000000000040 /* EjectTargetResolver.swift */,
+			);
+			path = Eject;
+			sourceTree = "<group>";
+		};
+		300000000000000000000005 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				4D1700000000000000000002 /* AboutSettingsPane.swift */,
+				200000000000000000000068 /* PanelValueFormatter.swift */,
+				20000000000000000000005D /* EjectRecoveryView.swift */,
+				20000000000000000000005E /* EjectForceConfirmationModifier.swift */,
+				200000000000000000000004 /* MenuBarRootView.swift */,
+				200000000000000000000005 /* DevicePickerView.swift */,
+				200000000000000000000006 /* OverviewCardView.swift */,
+				200000000000000000000062 /* CapacityUsageCardView.swift */,
+				200000000000000000000007 /* ThroughputCardView.swift */,
+				200000000000000000000008 /* VolumesSectionView.swift */,
+				20000000000000000000000A /* ActionBarView.swift */,
+				200000000000000000000029 /* PanelSection.swift */,
+				200000000000000000000030 /* VolumesPartitionsCardView.swift */,
+				200000000000000000000031 /* ConnectionNVMeCardView.swift */,
+				200000000000000000000032 /* DeviceIdentityCardView.swift */,
+				200000000000000000000033 /* HealthSMARTCardView.swift */,
+				200000000000000000000034 /* TemperatureCardView.swift */,
+				200000000000000000000014 /* SettingsView.swift */,
+				200000000000000000000064 /* SettingsComponents.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		300000000000000000000006 /* Integration */ = {
+			isa = PBXGroup;
+			children = (
+				4D1620000000000000000003 /* APFSDeviceEnricher.swift */,
+				200000000000000000000018 /* ExternalDeviceDiscovery.swift */,
+				4D1120000000000000000001 /* DiskArbitrationDeviceMonitor.swift */,
+				4D1120000000000000000002 /* DiskDiscoveryRecord.swift */,
+				4D1120000000000000000003 /* DiskDiscoveryEnumerator.swift */,
+				4D1120000000000000000004 /* DeviceIdentitySessionRegistry.swift */,
+				4D1120000000000000000005 /* ExternalDeviceDiscoveryMapper.swift */,
+				200000000000000000000019 /* SMARTServiceClient.swift */,
+				4D1520000000000000000001 /* SMARTXPCConnectionFactory.swift */,
+				4D1520000000000000000002 /* SMARTHandshakeClient.swift */,
+				4D1520000000000000000003 /* SMARTReadXPCSession.swift */,
+				4D1520000000000000000004 /* OccupancyXPCClient.swift */,
+				4D1520000000000000000005 /* XPCReplyGate.swift */,
+				4D1520000000000000000006 /* SMARTServiceErrorMapper.swift */,
+				200000000000000000000063 /* SMARTHelperManager.swift */,
+				200000000000000000000028 /* HelperInstaller.swift */,
+				4D1420000000000000000001 /* HelperInstallationPreflight.swift */,
+				4D1420000000000000000002 /* BundledSMARTCompanionReader.swift */,
+				200000000000000000000012 /* SystemActions.swift */,
+				20000000000000000000003C /* SettingsWindowActivator.swift */,
+				200000000000000000000013 /* LaunchAtLoginController.swift */,
+				20000000000000000000002C /* SystemProfilerProvider.swift */,
+				200000000000000000000087 /* SubprocessRunner.swift */,
+				200000000000000000000088 /* LatestRequestCoordinator.swift */,
+				200000000000000000000089 /* SystemProfilerParser.swift */,
+				20000000000000000000002D /* DiskUtilAPFSProvider.swift */,
+				20000000000000000000002E /* VolumeCapacityRefresher.swift */,
+				200000000000000000000038 /* StorageLocations.swift */,
+			);
+			path = Integration;
+			sourceTree = "<group>";
+		};
+		300000000000000000000007 /* Localization */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000015 /* Localizable.xcstrings */,
+			);
+			path = Localization;
+			sourceTree = "<group>";
+		};
+		300000000000000000000008 /* PalmosAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				4D1620000000000000000001 /* DeviceContextMergerTests.swift */,
+				200000000000000000000086 /* SystemProfilerParserBoundaryTests.swift */,
+				200000000000000000000061 /* SafeEjectIntegrationTests.swift */,
+				4B4000000000000000000002 /* ExternalDeviceDiscoveryObservationTests.swift */,
+				20000000000000000000005F /* EjectRecoveryViewTests.swift */,
+				200000000000000000000060 /* EjectLocalizationCatalogTests.swift */,
+				200000000000000000000067 /* LocalizationCatalogTests.swift */,
+				200000000000000000000017 /* ExternalDeviceDiscoveryMapperTests.swift */,
+				200000000000000000000016 /* PalmosAppControllerTests.swift */,
+				20000000000000000000000B /* PalmosAppStateTests.swift */,
+				200000000000000000000035 /* DeviceIdentityCardViewTests.swift */,
+				200000000000000000000036 /* PanelPlaceholderTests.swift */,
+				20000000000000000000001F /* SMARTServiceClientTests.swift */,
+				200000000000000000000037 /* StorageLocationsTests.swift */,
+				20000000000000000000003A /* OverviewCardViewTests.swift */,
+				20000000000000000000003D /* EjectModelsTests.swift */,
+				20000000000000000000003F /* EjectTargetResolverTests.swift */,
+				200000000000000000000041 /* DiskArbitrationErrorClassifierTests.swift */,
+				200000000000000000000044 /* DiskArbitrationEjectClientTests.swift */,
+				200000000000000000000047 /* DeviceIOQuiescerTests.swift */,
+				200000000000000000000048 /* AppOccupancyScannerTests.swift */,
+				20000000000000000000004C /* OccupancyXPCMessageTests.swift */,
+				200000000000000000000058 /* OccupancyScannerTests.swift */,
+				20000000000000000000005A /* EjectCoordinatorTests.swift */,
+				200000000000000000000049 /* process-fd-snapshot.json */,
+				200000000000000000000043 /* unix-ebusy-status.json */,
+				200000000000000000000022 /* Task7HelperPackagingTests.swift */,
+				200000000000000000000011 /* Task6SettingsAndActionsTests.swift */,
+				20000000000000000000002B /* ThroughputChartModelTests.swift */,
+				4D1820000000000000000001 /* IOKitDiskSamplerTests.swift */,
+				200000000000000000000084 /* SettingsWindowActivatorTests.swift */,
+			);
+			path = Apps/PalmosAppTests;
+			sourceTree = "<group>";
+		};
+		300000000000000000000009 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000E /* App.xcconfig */,
+				20000000000000000000000F /* Base.xcconfig */,
+				200000000000000000000020 /* Helper.xcconfig */,
+				200000000000000000000010 /* PalmosApp-Info.plist */,
+				200000000000000000000021 /* PalmosSMARTService-Info.plist */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000C /* PalmosApp.app */,
+				20000000000000000000000D /* PalmosAppTests.xctest */,
+				20000000000000000000001C /* com.palmos.smartservice */,
+				200000000000000000000054 /* PalmosSMARTServiceTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000B /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000026 /* ProcessInspection */,
+				30000000000000000000000C /* XPCContracts */,
+				300000000000000000000024 /* Licensing */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		300000000000000000000026 /* ProcessInspection */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000080 /* BoundedProcessFDEnumerator.swift */,
+			);
+			path = ProcessInspection;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000C /* XPCContracts */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000001A /* PalmosXPCContracts.swift */,
+				20000000000000000000001B /* PalmosXPCMessages.swift */,
+			);
+			path = XPCContracts;
+			sourceTree = "<group>";
+		};
+		300000000000000000000024 /* Licensing */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000066 /* smartmontools-COPYING.txt */,
+			);
+			path = Licensing;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000D /* PalmosSMARTService */ = {
+			isa = PBXGroup;
+			children = (
+				30000000000000000000000E /* Service */,
+				30000000000000000000001B /* XPC */,
+				30000000000000000000001F /* Occupancy */,
+				200000000000000000000023 /* com.palmos.smartservice.plist */,
+			);
+			path = Apps/PalmosSMARTService;
+			sourceTree = "<group>";
+		};
+		30000000000000000000001F /* Occupancy */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000050 /* HelperOccupancyRequestValidator.swift */,
+				200000000000000000000051 /* HelperDiskTopologyResolver.swift */,
+				200000000000000000000052 /* HelperOccupancyScanner.swift */,
+				200000000000000000000055 /* HelperOccupancyEndpoint.swift */,
+				200000000000000000000056 /* HelperTopologyCommandRunner.swift */,
+				200000000000000000000057 /* HelperAuthoritativeSnapshot.swift */,
+			);
+			path = Occupancy;
+			sourceTree = "<group>";
+		};
+		300000000000000000000023 /* PalmosSMARTServiceTests */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000053 /* HelperOccupancySecurityTests.swift */,
+			);
+			path = Apps/PalmosSMARTServiceTests;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000E /* Service */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000001D /* PalmosSMARTServiceMain.swift */,
+				20000000000000000000001E /* HelperVersionHandshake.swift */,
+				200000000000000000000025 /* PalmosSMARTService.swift */,
+				200000000000000000000026 /* SmartctlRunner.swift */,
+				200000000000000000000065 /* SmartctlCompanionInstaller.swift */,
+				200000000000000000000027 /* TransportHintResolver.swift */,
+			);
+			path = Service;
+			sourceTree = "<group>";
+		};
+		30000000000000000000001B /* XPC */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000024 /* PalmosSMARTXPCDelegate.swift */,
+			);
+			path = XPC;
+			sourceTree = "<group>";
+		};
+		30000000000000000000001C /* Metrics */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000002A /* IOKitDiskSampler.swift */,
+				20000000000000000000008A /* ThroughputMetricsStore.swift */,
+				200000000000000000000085 /* ThroughputSamplingCoordinator.swift */,
+			);
+			path = Metrics;
+			sourceTree = "<group>";
+		};
+		30000000000000000000001D /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000003B /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		400000000000000000000001 /* PalmosApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 600000000000000000000002 /* Build configuration list for PBXNativeTarget "PalmosApp" */;
+			buildPhases = (
+				300000000000000000000012 /* Sources */,
+				300000000000000000000010 /* Frameworks */,
+				300000000000000000000013 /* Resources */,
+				300000000000000000000019 /* Embed Helper */,
+				300000000000000000000025 /* Embed smartctl Companion */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				400000000000000000000005 /* PBXTargetDependency */,
+			);
+			name = PalmosApp;
+			packageProductDependencies = (
+				500000000000000000000001 /* PalmosCore */,
+				322662F17F85D329F8C03472 /* MenuBarExtraAccess */,
+			);
+			productName = PalmosApp;
+			productReference = 20000000000000000000000C /* PalmosApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		400000000000000000000002 /* PalmosAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 600000000000000000000003 /* Build configuration list for PBXNativeTarget "PalmosAppTests" */;
+			buildPhases = (
+				300000000000000000000014 /* Sources */,
+				300000000000000000000011 /* Frameworks */,
+				300000000000000000000015 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				400000000000000000000003 /* PBXTargetDependency */,
+			);
+			name = PalmosAppTests;
+			packageProductDependencies = (
+				500000000000000000000002 /* PalmosCore */,
+			);
+			productName = PalmosAppTests;
+			productReference = 20000000000000000000000D /* PalmosAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		400000000000000000000004 /* PalmosSMARTService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60000000000000000000000C /* Build configuration list for PBXNativeTarget "PalmosSMARTService" */;
+			buildPhases = (
+				30000000000000000000001A /* Prepare Launchd Plist */,
+				300000000000000000000018 /* Sources */,
+				300000000000000000000016 /* Frameworks */,
+				300000000000000000000017 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PalmosSMARTService;
+			packageProductDependencies = (
+				500000000000000000000004 /* PalmosCore */,
+			);
+			productName = PalmosSMARTService;
+			productReference = 20000000000000000000001C /* com.palmos.smartservice */;
+			productType = "com.apple.product-type.tool";
+		};
+		400000000000000000000006 /* PalmosSMARTServiceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60000000000000000000000D /* Build configuration list for PBXNativeTarget "PalmosSMARTServiceTests" */;
+			buildPhases = (
+				300000000000000000000021 /* Sources */,
+				300000000000000000000020 /* Frameworks */,
+				300000000000000000000022 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = PalmosSMARTServiceTests;
+			packageProductDependencies = (
+				500000000000000000000004 /* PalmosCore */,
+			);
+			productName = PalmosSMARTServiceTests;
+			productReference = 200000000000000000000054 /* PalmosSMARTServiceTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		300000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					400000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					400000000000000000000002 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					400000000000000000000004 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					400000000000000000000006 = { CreatedOnToolsVersion = 16.0; };
+				};
+			};
+			buildConfigurationList = 600000000000000000000001 /* Build configuration list for PBXProject "Palmos" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+				"zh-Hant",
+			);
+			mainGroup = 300000000000000000000002;
+			packageReferences = (
+				500000000000000000000003 /* XCLocalSwiftPackageReference "PalmosCore" */,
+				8832A9379E3BBB9A435FCE32 /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */,
+			);
+			productRefGroup = 30000000000000000000000A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				400000000000000000000001 /* PalmosApp */,
+				400000000000000000000002 /* PalmosAppTests */,
+				400000000000000000000004 /* PalmosSMARTService */,
+				400000000000000000000006 /* PalmosSMARTServiceTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		300000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000003B /* Assets.xcassets in Resources */,
+				100000000000000000000012 /* Localizable.xcstrings in Resources */,
+				100000000000000000000039 /* PrivacyInfo.xcprivacy in Resources */,
+				100000000000000000000079 /* smartmontools-COPYING.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000015 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000043 /* unix-ebusy-status.json in Resources */,
+				10000000000000000000004A /* process-fd-snapshot.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000017 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000022 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		300000000000000000000025 /* Embed smartctl Companion */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed smartctl Companion";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/Helpers/com.palmos.smartservice.smartctl",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "set -euo pipefail\n\nexport PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\"\nunset BASH_ENV ENV CDPATH\n\ndestination=\"$SCRIPT_OUTPUT_FILE_0\"\nif [[ \"${CODE_SIGNING_ALLOWED:-YES}\" == \"NO\" ]]; then\n  /bin/rm -f \"$destination\"\n  exit 0\nfi\n\nsource_path=\"${SMARTCTL_COMPANION_PATH:-}\"\nif [[ -z \"$source_path\" ]]; then\n  /bin/rm -f \"$destination\"\n  if [[ \"${SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD:-NO}\" == \"YES\" ]]; then\n    echo \"A signed SMART build requires SMARTCTL_COMPANION_PATH.\" >&2\n    exit 1\n  fi\n  exit 0\nfi\n\n[[ -f \"$source_path\" && ! -L \"$source_path\" ]] || {\n  echo \"smartctl companion is not a regular file at $source_path.\" >&2\n  exit 1\n}\nexpected_sha256=\"${SMARTCTL_COMPANION_SHA256:-}\"\n[[ \"$expected_sha256\" =~ ^[[:xdigit:]]{64}$ ]] || {\n  echo \"A signed SMART build requires a valid SMARTCTL_COMPANION_SHA256.\" >&2\n  exit 1\n}\nactual_sha256=\"$(/usr/bin/shasum -a 256 \"$source_path\" | /usr/bin/awk '{ print $1 }')\"\n[[ \"$actual_sha256\" == \"$expected_sha256\" ]] || {\n  echo \"smartctl companion SHA-256 does not match SMARTCTL_COMPANION_SHA256.\" >&2\n  exit 1\n}\n/usr/bin/codesign --verify --strict --all-architectures \"$source_path\"\n/bin/mkdir -p \"${destination%/*}\"\n/usr/bin/ditto \"$source_path\" \"$destination\"\n/bin/chmod 0755 \"$destination\"\n";
+		};
+		30000000000000000000001A /* Prepare Launchd Plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(HELPER_LAUNCHD_PLIST_SOURCE_FILE)",
+			);
+			name = "Prepare Launchd Plist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(HELPER_LAUNCHD_PLIST_DERIVED_FILE)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "output_dir=${SCRIPT_OUTPUT_FILE_0%/*}\nmkdir -p \"$output_dir\"\ncp -f \"$SCRIPT_INPUT_FILE_0\" \"$SCRIPT_OUTPUT_FILE_0\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		300000000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D1700000000000000000001 /* AboutSettingsPane.swift in Sources */,
+				100000000000000000000065 /* EjectLocalization.swift in Sources */,
+				100000000000000000000066 /* EjectRecoveryView.swift in Sources */,
+				100000000000000000000067 /* EjectForceConfirmationModifier.swift in Sources */,
+				100000000000000000000001 /* PalmosApp.swift in Sources */,
+				100000000000000000000002 /* PalmosAppController.swift in Sources */,
+				4D1600000000000000000002 /* DeviceContextMerger.swift in Sources */,
+				4D1600000000000000000003 /* APFSDeviceEnricher.swift in Sources */,
+				100000000000000000000003 /* PalmosAppState.swift in Sources */,
+				100000000000000000000004 /* MenuBarRootView.swift in Sources */,
+				100000000000000000000005 /* DevicePickerView.swift in Sources */,
+				100000000000000000000006 /* OverviewCardView.swift in Sources */,
+				10000000000000000000006B /* CapacityUsageCardView.swift in Sources */,
+				100000000000000000000007 /* ThroughputCardView.swift in Sources */,
+				100000000000000000000008 /* VolumesSectionView.swift in Sources */,
+				10000000000000000000000A /* ActionBarView.swift in Sources */,
+				100000000000000000000029 /* PanelSection.swift in Sources */,
+				100000000000000000000030 /* VolumesPartitionsCardView.swift in Sources */,
+				100000000000000000000031 /* ConnectionNVMeCardView.swift in Sources */,
+				100000000000000000000032 /* DeviceIdentityCardView.swift in Sources */,
+				100000000000000000000033 /* HealthSMARTCardView.swift in Sources */,
+				100000000000000000000034 /* TemperatureCardView.swift in Sources */,
+				10000000000000000000006F /* PanelValueFormatter.swift in Sources */,
+				100000000000000000000015 /* ExternalDeviceDiscovery.swift in Sources */,
+				4D1100000000000000000001 /* DiskArbitrationDeviceMonitor.swift in Sources */,
+				4D1100000000000000000002 /* DiskDiscoveryRecord.swift in Sources */,
+				4D1100000000000000000003 /* DiskDiscoveryEnumerator.swift in Sources */,
+				4D1100000000000000000004 /* DeviceIdentitySessionRegistry.swift in Sources */,
+				4D1100000000000000000005 /* ExternalDeviceDiscoveryMapper.swift in Sources */,
+				100000000000000000000016 /* SMARTServiceClient.swift in Sources */,
+				4D1500000000000000000001 /* SMARTXPCConnectionFactory.swift in Sources */,
+				4D1500000000000000000002 /* SMARTHandshakeClient.swift in Sources */,
+				4D1500000000000000000003 /* SMARTReadXPCSession.swift in Sources */,
+				4D1500000000000000000004 /* OccupancyXPCClient.swift in Sources */,
+				4D1500000000000000000005 /* XPCReplyGate.swift in Sources */,
+				4D1500000000000000000006 /* SMARTServiceErrorMapper.swift in Sources */,
+				10000000000000000000006C /* SMARTHelperManager.swift in Sources */,
+				100000000000000000000028 /* HelperInstaller.swift in Sources */,
+				4D1400000000000000000001 /* HelperInstallationPreflight.swift in Sources */,
+				4D1400000000000000000002 /* BundledSMARTCompanionReader.swift in Sources */,
+				10000000000000000000002A /* IOKitDiskSampler.swift in Sources */,
+				10000000000000000000000F /* SystemActions.swift in Sources */,
+				10000000000000000000003C /* SettingsWindowActivator.swift in Sources */,
+				100000000000000000000010 /* LaunchAtLoginController.swift in Sources */,
+				10000000000000000000002C /* SystemProfilerProvider.swift in Sources */,
+				100000000000000000000087 /* SubprocessRunner.swift in Sources */,
+				100000000000000000000088 /* LatestRequestCoordinator.swift in Sources */,
+				100000000000000000000089 /* SystemProfilerParser.swift in Sources */,
+				10000000000000000000002D /* DiskUtilAPFSProvider.swift in Sources */,
+				10000000000000000000002E /* VolumeCapacityRefresher.swift in Sources */,
+				100000000000000000000038 /* StorageLocations.swift in Sources */,
+				100000000000000000000011 /* SettingsView.swift in Sources */,
+				10000000000000000000006D /* SettingsComponents.swift in Sources */,
+				100000000000000000000017 /* PalmosXPCContracts.swift in Sources */,
+				100000000000000000000018 /* PalmosXPCMessages.swift in Sources */,
+				10000000000000000000003E /* EjectModels.swift in Sources */,
+				100000000000000000000040 /* EjectTargetResolver.swift in Sources */,
+				100000000000000000000042 /* DiskArbitrationErrorClassifier.swift in Sources */,
+				100000000000000000000046 /* DiskArbitrationEjectClient.swift in Sources */,
+				100000000000000000000047 /* DeviceIOQuiescer.swift in Sources */,
+				10000000000000000000004B /* AppOccupancyScanner.swift in Sources */,
+				100000000000000000000062 /* OccupancyScanner.swift in Sources */,
+				100000000000000000000064 /* EjectCoordinator.swift in Sources */,
+				100000000000000000000080 /* BoundedProcessFDEnumerator.swift in Sources */,
+				10000000000000000000008A /* ThroughputMetricsStore.swift in Sources */,
+				100000000000000000000085 /* ThroughputSamplingCoordinator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000014 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D1600000000000000000001 /* DeviceContextMergerTests.swift in Sources */,
+				10000000000000000000006A /* SafeEjectIntegrationTests.swift in Sources */,
+				4B4000000000000000000001 /* ExternalDeviceDiscoveryObservationTests.swift in Sources */,
+				100000000000000000000068 /* EjectRecoveryViewTests.swift in Sources */,
+				100000000000000000000069 /* EjectLocalizationCatalogTests.swift in Sources */,
+				10000000000000000000006E /* LocalizationCatalogTests.swift in Sources */,
+				100000000000000000000014 /* ExternalDeviceDiscoveryMapperTests.swift in Sources */,
+				100000000000000000000013 /* PalmosAppControllerTests.swift in Sources */,
+				10000000000000000000000B /* PalmosAppStateTests.swift in Sources */,
+				100000000000000000000035 /* DeviceIdentityCardViewTests.swift in Sources */,
+				100000000000000000000036 /* PanelPlaceholderTests.swift in Sources */,
+				10000000000000000000001D /* SMARTServiceClientTests.swift in Sources */,
+				100000000000000000000037 /* StorageLocationsTests.swift in Sources */,
+				10000000000000000000003A /* OverviewCardViewTests.swift in Sources */,
+				10000000000000000000003D /* EjectModelsTests.swift in Sources */,
+				10000000000000000000003F /* EjectTargetResolverTests.swift in Sources */,
+				100000000000000000000041 /* DiskArbitrationErrorClassifierTests.swift in Sources */,
+				100000000000000000000045 /* DiskArbitrationEjectClientTests.swift in Sources */,
+				100000000000000000000048 /* DeviceIOQuiescerTests.swift in Sources */,
+				100000000000000000000049 /* AppOccupancyScannerTests.swift in Sources */,
+				10000000000000000000004D /* OccupancyXPCMessageTests.swift in Sources */,
+				100000000000000000000061 /* OccupancyScannerTests.swift in Sources */,
+				100000000000000000000063 /* EjectCoordinatorTests.swift in Sources */,
+				100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */,
+				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
+				10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */,
+				4D1800000000000000000001 /* IOKitDiskSamplerTests.swift in Sources */,
+				100000000000000000000081 /* BoundedProcessFDEnumerator.swift in Sources */,
+				100000000000000000000084 /* SettingsWindowActivatorTests.swift in Sources */,
+				100000000000000000000086 /* SystemProfilerParserBoundaryTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000018 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000019 /* PalmosSMARTServiceMain.swift in Sources */,
+				10000000000000000000001A /* HelperVersionHandshake.swift in Sources */,
+				10000000000000000000001B /* PalmosXPCContracts.swift in Sources */,
+				10000000000000000000001C /* PalmosXPCMessages.swift in Sources */,
+				100000000000000000000023 /* PalmosSMARTXPCDelegate.swift in Sources */,
+				100000000000000000000024 /* PalmosSMARTService.swift in Sources */,
+				100000000000000000000025 /* SmartctlRunner.swift in Sources */,
+				100000000000000000000077 /* SmartctlCompanionInstaller.swift in Sources */,
+				100000000000000000000026 /* TransportHintResolver.swift in Sources */,
+				100000000000000000000050 /* HelperOccupancyRequestValidator.swift in Sources */,
+				100000000000000000000051 /* HelperDiskTopologyResolver.swift in Sources */,
+				100000000000000000000052 /* HelperOccupancyScanner.swift in Sources */,
+				10000000000000000000005B /* HelperOccupancyEndpoint.swift in Sources */,
+				10000000000000000000005D /* HelperTopologyCommandRunner.swift in Sources */,
+				10000000000000000000005F /* HelperAuthoritativeSnapshot.swift in Sources */,
+				100000000000000000000082 /* BoundedProcessFDEnumerator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		300000000000000000000021 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000053 /* HelperOccupancySecurityTests.swift in Sources */,
+				100000000000000000000054 /* HelperOccupancyRequestValidator.swift in Sources */,
+				100000000000000000000055 /* HelperDiskTopologyResolver.swift in Sources */,
+				100000000000000000000056 /* HelperOccupancyScanner.swift in Sources */,
+				10000000000000000000005C /* HelperOccupancyEndpoint.swift in Sources */,
+				10000000000000000000005E /* HelperTopologyCommandRunner.swift in Sources */,
+				100000000000000000000060 /* HelperAuthoritativeSnapshot.swift in Sources */,
+				100000000000000000000057 /* PalmosXPCMessages.swift in Sources */,
+				100000000000000000000058 /* PalmosXPCContracts.swift in Sources */,
+				100000000000000000000070 /* PalmosSMARTService.swift in Sources */,
+				100000000000000000000071 /* SmartctlRunner.swift in Sources */,
+				100000000000000000000078 /* SmartctlCompanionInstaller.swift in Sources */,
+				100000000000000000000072 /* PalmosSMARTXPCDelegate.swift in Sources */,
+				100000000000000000000073 /* TransportHintResolver.swift in Sources */,
+				100000000000000000000074 /* HelperVersionHandshake.swift in Sources */,
+				100000000000000000000083 /* BoundedProcessFDEnumerator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		400000000000000000000003 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 400000000000000000000001 /* PalmosApp */;
+			targetProxy = 100000000000000000000020 /* PBXContainerItemProxy */;
+		};
+		400000000000000000000005 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 400000000000000000000004 /* PalmosSMARTService */;
+			targetProxy = 100000000000000000000021 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		600000000000000000000004 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		600000000000000000000005 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		600000000000000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000E /* App.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_TESTABILITY = YES;
+				MARKETING_VERSION = 1.0.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		600000000000000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000E /* App.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		600000000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000F /* Base.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.palmos.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PalmosApp.app/Contents/MacOS/PalmosApp";
+			};
+			name = Debug;
+		};
+		600000000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000F /* Base.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.palmos.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PalmosApp.app/Contents/MacOS/PalmosApp";
+			};
+			name = Release;
+		};
+		60000000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 200000000000000000000020 /* Helper.xcconfig */;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_TESTABILITY = YES;
+				MARKETING_VERSION = 1.0.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		60000000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 200000000000000000000020 /* Helper.xcconfig */;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0.0;
+			};
+			name = Release;
+		};
+		60000000000000000000000C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000F /* Base.xcconfig */;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.palmos.smartservice.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		60000000000000000000000C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 20000000000000000000000F /* Base.xcconfig */;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.palmos.smartservice.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		600000000000000000000001 /* Build configuration list for PBXProject "Palmos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				600000000000000000000004 /* Debug */,
+				600000000000000000000005 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		600000000000000000000002 /* Build configuration list for PBXNativeTarget "PalmosApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				600000000000000000000006 /* Debug */,
+				600000000000000000000007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		600000000000000000000003 /* Build configuration list for PBXNativeTarget "PalmosAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				600000000000000000000008 /* Debug */,
+				600000000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60000000000000000000000C /* Build configuration list for PBXNativeTarget "PalmosSMARTService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60000000000000000000000A /* Debug */,
+				60000000000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60000000000000000000000D /* Build configuration list for PBXNativeTarget "PalmosSMARTServiceTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60000000000000000000000C1 /* Debug */,
+				60000000000000000000000C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		500000000000000000000003 /* XCLocalSwiftPackageReference "PalmosCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/PalmosCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8832A9379E3BBB9A435FCE32 /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/orchetect/MenuBarExtraAccess";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		322662F17F85D329F8C03472 /* MenuBarExtraAccess */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8832A9379E3BBB9A435FCE32 /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */;
+			productName = MenuBarExtraAccess;
+		};
+		500000000000000000000001 /* PalmosCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 500000000000000000000003 /* XCLocalSwiftPackageReference "PalmosCore" */;
+			productName = PalmosCore;
+		};
+		500000000000000000000002 /* PalmosCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 500000000000000000000003 /* XCLocalSwiftPackageReference "PalmosCore" */;
+			productName = PalmosCore;
+		};
+		500000000000000000000004 /* PalmosCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 500000000000000000000003 /* XCLocalSwiftPackageReference "PalmosCore" */;
+			productName = PalmosCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 300000000000000000000001 /* Project object */;
+}

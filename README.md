@@ -1,4 +1,4 @@
-# DrivePulse
+# Palmos
 
 A macOS menu bar app that monitors connected external physical storage devices and presents device health, connection metadata, capacity, mounted volumes, and real-time throughput in a native menu bar window.
 
@@ -19,31 +19,31 @@ Network volumes, internal storage, and iPhone / iPad style mounted devices are e
 
 ## Architecture
 
-DrivePulse uses three targets:
+Palmos uses three targets:
 
-- **DrivePulseApp** — Menu bar app, UI, device browsing, throughput visualization, settings, launch-at-login, safe eject.
-- **DrivePulseCore** — Shared domain and application logic. No UI or privileged dependency.
-- **DrivePulseSMARTService** — Privileged helper installed via `SMJobBless`, accessed over XPC, restricted to SMART-related operations and installation of DrivePulse's signed `smartctl` companion.
+- **PalmosApp** — Menu bar app, UI, device browsing, throughput visualization, settings, launch-at-login, safe eject.
+- **PalmosCore** — Shared domain and application logic. No UI or privileged dependency.
+- **PalmosSMARTService** — Privileged helper installed via `SMJobBless`, accessed over XPC, restricted to SMART-related operations and installation of Palmos's signed `smartctl` companion.
 
 The app remains fully functional without the privileged helper. SMART capability is a layered, opt-in feature.
 
 ## Installing a GitHub Release
 
-DrivePulse releases use a free Apple Development certificate so the app and its privileged helper can authenticate each other. They are not notarized, so after moving `DrivePulseApp.app` to `/Applications`, remove the downloaded bundle's quarantine attribute once:
+Palmos releases use a free Apple Development certificate so the app and its privileged helper can authenticate each other. They are not notarized, so after moving `PalmosApp.app` to `/Applications`, remove the downloaded bundle's quarantine attribute once:
 
 ```sh
-sudo xattr -rd com.apple.quarantine /Applications/DrivePulseApp.app
+sudo xattr -rd com.apple.quarantine /Applications/PalmosApp.app
 ```
 
-The recursive command covers the embedded helper inside the app bundle. Do not copy the helper out or run a separate `xattr` command for it. Open DrivePulse normally, then install the SMART Helper from Settings when needed.
+The recursive command covers the embedded helper inside the app bundle. Do not copy the helper out or run a separate `xattr` command for it. Open Palmos normally, then install the SMART Helper from Settings when needed.
 
 Removing quarantine only bypasses Gatekeeper's download quarantine check. It does not replace code signing; the release workflow signs both the app and helper with the same Apple Development team.
 
 ## Privileged SMART Helper
 
-DrivePulse installs a privileged helper the first time advanced SMART monitoring is requested. This helper is required for broad Thunderbolt and USB enclosure coverage because Apple's app-sandboxed APIs do not expose SMART telemetry for most external enclosures.
+Palmos installs a privileged helper the first time advanced SMART monitoring is requested. This helper is required for broad Thunderbolt and USB enclosure coverage because Apple's app-sandboxed APIs do not expose SMART telemetry for most external enclosures.
 
-The helper is installed to `/Library/PrivilegedHelperTools/com.drivepulse.smartservice` and registered as a launchd daemon. The system prompts for administrator credentials during installation. The same workflow installs the bundled companion to `/Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl` only after the helper verifies its fixed code-signing identifier and matching Team ID. The installed file is root-owned and is never loaded from Homebrew or another user-writable command path.
+The helper is installed to `/Library/PrivilegedHelperTools/com.palmos.smartservice` and registered as a launchd daemon. The system prompts for administrator credentials during installation. The same workflow installs the bundled companion to `/Library/PrivilegedHelperTools/com.palmos.smartservice.smartctl` only after the helper verifies its fixed code-signing identifier and matching Team ID. The installed file is root-owned and is never loaded from Homebrew or another user-writable command path.
 
 ### Helper Versioning
 
@@ -54,23 +54,23 @@ The app validates XPC contract compatibility before each SMART operation:
 
 ### Removing the Helper
 
-Deleting the app bundle does **not** remove the privileged helper automatically. The current app does not provide an uninstall action, so remove the helper manually before or after deleting DrivePulse:
+Deleting the app bundle does **not** remove the privileged helper automatically. The current app does not provide an uninstall action, so remove the helper manually before or after deleting Palmos:
 
 ```sh
-sudo launchctl bootout system /Library/LaunchDaemons/com.drivepulse.smartservice.plist
-sudo rm /Library/LaunchDaemons/com.drivepulse.smartservice.plist
-sudo rm /Library/PrivilegedHelperTools/com.drivepulse.smartservice
-sudo rm /Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl
+sudo launchctl bootout system /Library/LaunchDaemons/com.palmos.smartservice.plist
+sudo rm /Library/LaunchDaemons/com.palmos.smartservice.plist
+sudo rm /Library/PrivilegedHelperTools/com.palmos.smartservice
+sudo rm /Library/PrivilegedHelperTools/com.palmos.smartservice.smartctl
 ```
 
 ## Building
 
-Open `DrivePulse.xcworkspace` in Xcode, select the `DrivePulseApp` scheme, and build.
+Open `Palmos.xcworkspace` in Xcode, select the `PalmosApp` scheme, and build.
 An unsigned build can run without SMART, but the privileged SMART path requires a stable
 code-signing identity so the App, Helper, and `smartctl` companion can authenticate each
 other.
 
-The `DrivePulseSMARTService` scheme builds the privileged helper binary. The repository
+The `PalmosSMARTService` scheme builds the privileged helper binary. The repository
 defaults to the maintainer's public Team ID. Xcode can create an Apple Development identity
 for a free Personal Team under **Settings → Accounts → Manage Certificates**. No paid Apple
 Developer Program membership, Developer ID certificate, or notarization is required for
@@ -133,17 +133,17 @@ Free Apple Development certificates expire periodically. When renewing one, expo
 
 ```sh
 # Core package tests
-cd Packages/DrivePulseCore && swift test
+cd Packages/PalmosCore && swift test
 
 # App target tests
-xcodebuild test -workspace DrivePulse.xcworkspace \
-  -scheme DrivePulseApp \
+xcodebuild test -workspace Palmos.xcworkspace \
+  -scheme PalmosApp \
   -destination 'platform=macOS'
 ```
 
 ## Third-Party Licenses
 
-DrivePulse release artifacts include a separately signed `smartctl` executable built from
+Palmos release artifacts include a separately signed `smartctl` executable built from
 smartmontools 7.5 with its external drive database disabled, so the root helper never reads
 configuration or database files from `/usr/local` or Homebrew locations. smartmontools is
 distributed under GNU GPL version 2 or later. The exact

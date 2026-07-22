@@ -25,27 +25,27 @@ jobs:
       - name: Select Xcode 26.4
         run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
 
-      - name: Run DrivePulseCore Tests
-        working-directory: Packages/DrivePulseCore
+      - name: Run PalmosCore Tests
+        working-directory: Packages/PalmosCore
         run: swift test
 
-      - name: Run DrivePulseApp Tests
+      - name: Run PalmosApp Tests
         run: |
           set -o pipefail
           xcodebuild test \
-            -workspace DrivePulse.xcworkspace \
-            -scheme DrivePulseApp \
+            -workspace Palmos.xcworkspace \
+            -scheme PalmosApp \
             -destination 'platform=macOS,arch=arm64' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
-      - name: Run DrivePulseSMARTService Tests
+      - name: Run PalmosSMARTService Tests
         run: |
           set -o pipefail
           xcodebuild test \
-            -workspace DrivePulse.xcworkspace \
-            -scheme DrivePulseSMARTServiceTests \
+            -workspace Palmos.xcworkspace \
+            -scheme PalmosSMARTServiceTests \
             -destination 'platform=macOS,arch=arm64' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -58,8 +58,8 @@ jobs:
           set -euo pipefail
 
           BUILD_SETTINGS="$(xcodebuild \
-            -workspace DrivePulse.xcworkspace \
-            -scheme DrivePulseApp \
+            -workspace Palmos.xcworkspace \
+            -scheme PalmosApp \
             -showBuildSettings 2>/dev/null)"
           VERSION="$(
             awk '
@@ -102,7 +102,7 @@ jobs:
 
           umask 077
           CERTIFICATE_PATH="$RUNNER_TEMP/apple-development.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/drivepulse-signing.keychain-db"
+          KEYCHAIN_PATH="$RUNNER_TEMP/palmos-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
           echo "SIGNING_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
@@ -175,7 +175,7 @@ jobs:
           codesign \
             --force \
             --sign "$SIGNING_IDENTITY" \
-            --identifier com.drivepulse.smartservice.smartctl \
+            --identifier com.palmos.smartservice.smartctl \
             --options runtime \
             --timestamp=none \
             --keychain "$SIGNING_KEYCHAIN_PATH" \
@@ -194,8 +194,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild build \
-            -workspace DrivePulse.xcworkspace \
-            -scheme DrivePulseApp \
+            -workspace Palmos.xcworkspace \
+            -scheme PalmosApp \
             -configuration Release \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             CODE_SIGN_STYLE=Manual \
@@ -211,7 +211,7 @@ jobs:
       - name: Verify Release signatures
         if: steps.check.outputs.exists == 'false'
         run: |
-          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/DrivePulseApp.app"
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/PalmosApp.app"
           Scripts/verify/code-signing.sh "$APP_PATH" "$SIGNING_TEAM_ID"
 
       # ditto preserves symlinks and resource forks inside .app bundles.
@@ -221,12 +221,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/DrivePulseApp.app"
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/PalmosApp.app"
           if [[ ! -d "$APP_PATH" ]]; then
             echo "Built app bundle not found at $APP_PATH." >&2
             exit 1
           fi
-          ZIP_NAME="DrivePulse-${{ steps.version.outputs.tag }}.zip"
+          ZIP_NAME="Palmos-${{ steps.version.outputs.tag }}.zip"
           ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/$ZIP_NAME"
           echo "zip=$RUNNER_TEMP/$ZIP_NAME" >> "$GITHUB_OUTPUT"
           echo "name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
@@ -237,7 +237,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
-            --title "DrivePulse ${{ steps.version.outputs.tag }}" \
+            --title "Palmos ${{ steps.version.outputs.tag }}" \
             --generate-notes \
             "${{ steps.package.outputs.zip }}#${{ steps.package.outputs.name }}" \
             "$SMARTMONTOOLS_SOURCE_ARCHIVE#smartmontools-7.5.tar.gz"

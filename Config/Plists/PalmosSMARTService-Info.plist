@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleName</key>
+    <string>PalmosSMARTService</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>PalmosSmartctlCompanionRequirement</key>
+    <string>anchor apple generic and certificate leaf[subject.OU] = "$(TEAM_IDENTIFIER)" and identifier "com.palmos.smartservice.smartctl"</string>
+    <key>PalmosSmartctlCompanionSHA256</key>
+    <string>$(SMARTCTL_COMPANION_SHA256)</string>
+    <key>SMAuthorizedClients</key>
+    <array>
+        <string>anchor apple generic and certificate leaf[subject.OU] = "$(TEAM_IDENTIFIER)" and identifier "$(APP_BUNDLE_IDENTIFIER)"</string>
+    </array>
+</dict>
+</plist>

@@ -7,9 +7,9 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
 unset BASH_ENV ENV CDPATH
 
 readonly REPOSITORY_ROOT="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-work_directory="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/drivepulse-local-smart-tests.XXXXXX")"
+work_directory="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/palmos-local-smart-tests.XXXXXX")"
 case "$work_directory" in
-  "${TMPDIR:-/tmp}"/drivepulse-local-smart-tests.*) ;;
+  "${TMPDIR:-/tmp}"/palmos-local-smart-tests.*) ;;
   *) echo "Unexpected test directory: $work_directory" >&2; exit 1 ;;
 esac
 cleanup() {
@@ -47,7 +47,7 @@ assert_file_unchanged() {
     || fail "$path changed after a failed build"
 }
 
-readonly FIXTURE_ROOT="$work_directory/Drive Pulse Fixture"
+readonly FIXTURE_ROOT="$work_directory/Palmos Fixture"
 readonly MOCK_TOOLS="$FIXTURE_ROOT/mock tools"
 readonly SCRIPT_UNDER_TEST="$FIXTURE_ROOT/Scripts/build-local-smart-app.sh"
 readonly CONFIG_PATH="$FIXTURE_ROOT/Config/xcconfigs/Local.xcconfig"
@@ -85,7 +85,7 @@ done
 case " $* " in
   *" -d "*)
     team="$(/usr/bin/awk -F: '/^signed-team:/ { print $2; exit }' "$path")"
-    printf 'Identifier=com.drivepulse.smartservice.smartctl\n' >&2
+    printf 'Identifier=com.palmos.smartservice.smartctl\n' >&2
     printf 'TeamIdentifier=%s\n' "$team" >&2
     ;;
   *" --force "*)
@@ -127,7 +127,7 @@ while (($# > 0)); do
   shift
 done
 [[ -n "$derived_data_path" ]]
-/bin/mkdir -p "$derived_data_path/Build/Products/Release/DrivePulseApp.app"
+/bin/mkdir -p "$derived_data_path/Build/Products/Release/PalmosApp.app"
 EOF
 
 /bin/cat > "$FIXTURE_ROOT/Scripts/build-smartctl-companion.sh" <<'EOF'

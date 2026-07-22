@@ -1,10 +1,10 @@
 #include "Base.xcconfig"
 
-INFOPLIST_FILE = Config/Plists/DrivePulseSMARTService-Info.plist
-PRODUCT_BUNDLE_IDENTIFIER = com.drivepulse.smartservice
-APP_BUNDLE_IDENTIFIER = com.drivepulse.app
-HELPER_LAUNCHD_PLIST_SOURCE_FILE = $(SRCROOT)/Apps/DrivePulseSMARTService/Launchd/com.drivepulse.smartservice.plist
-HELPER_LAUNCHD_PLIST_DERIVED_FILE = $(TARGET_TEMP_DIR)/com.drivepulse.smartservice.launchd.plist
+INFOPLIST_FILE = Config/Plists/PalmosSMARTService-Info.plist
+PRODUCT_BUNDLE_IDENTIFIER = com.palmos.smartservice
+APP_BUNDLE_IDENTIFIER = com.palmos.app
+HELPER_LAUNCHD_PLIST_SOURCE_FILE = $(SRCROOT)/Apps/PalmosSMARTService/Launchd/com.palmos.smartservice.plist
+HELPER_LAUNCHD_PLIST_DERIVED_FILE = $(TARGET_TEMP_DIR)/com.palmos.smartservice.launchd.plist
 CREATE_INFOPLIST_SECTION_IN_BINARY = YES
 GENERATE_INFOPLIST_FILE = NO
 OTHER_LDFLAGS = $(inherited) -sectcreate __TEXT __launchd_plist $(HELPER_LAUNCHD_PLIST_DERIVED_FILE)
@@ -12,4 +12,4 @@ PRODUCT_NAME = $(PRODUCT_BUNDLE_IDENTIFIER)
 SKIP_INSTALL = YES
 SWIFT_EMIT_LOC_STRINGS = YES
 // Bare `xcodebuild -target` places local package modules under the package build root.
-SWIFT_INCLUDE_PATHS = $(inherited) $(PROJECT_DIR)/Packages/DrivePulseCore/build/$(CONFIGURATION)
+SWIFT_INCLUDE_PATHS = $(inherited) $(PROJECT_DIR)/Packages/PalmosCore/build/$(CONFIGURATION)

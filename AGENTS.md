@@ -2,7 +2,7 @@
 
 ## 1. 项目定位
 
-DrivePulse 是面向 macOS 15+ 的菜单栏 App，以外接物理存储设备为顶层对象，展示实时读写、容量、卷/分区、连接链路与 SMART 健康信息。代码使用 Swift 6、SwiftUI、DiskArbitration、IOKit、ServiceManagement/XPC；原生 API 无法覆盖的数据由受控的 `system_profiler`、`diskutil`、`smartctl` 子进程补齐。为与 CI 一致，使用 Xcode 26.4/macOS 26 SDK；macOS 26 API 即使有 availability guard，也需要对应 SDK 才能编译。
+Palmos 是面向 macOS 15+ 的菜单栏 App，以外接物理存储设备为顶层对象，展示实时读写、容量、卷/分区、连接链路与 SMART 健康信息。代码使用 Swift 6、SwiftUI、DiskArbitration、IOKit、ServiceManagement/XPC；原生 API 无法覆盖的数据由受控的 `system_profiler`、`diskutil`、`smartctl` 子进程补齐。为与 CI 一致，使用 Xcode 26.4/macOS 26 SDK；macOS 26 API 即使有 availability guard，也需要对应 SDK 才能编译。
 
 本文件是 Agent 的项目导航与硬约束。产品说明、安装/签名方式和常用命令见 [README.md](README.md)；实现细节以当前源码和测试为准。
 
@@ -12,29 +12,29 @@ DrivePulse 是面向 macOS 15+ 的菜单栏 App，以外接物理存储设备为
 
 ```sh
 # 查看 workspace、scheme 与 target
-xcodebuild -workspace DrivePulse.xcworkspace -list
+xcodebuild -workspace Palmos.xcworkspace -list
 
 # Core 单元测试（与 CI 一致）
-cd Packages/DrivePulseCore && swift test
+cd Packages/PalmosCore && swift test
 
 # App 与集成测试
 xcodebuild test \
-  -workspace DrivePulse.xcworkspace \
-  -scheme DrivePulseApp \
+  -workspace Palmos.xcworkspace \
+  -scheme PalmosApp \
   -destination 'platform=macOS,arch=arm64' \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 
 # Privileged Helper 安全测试
 xcodebuild test \
-  -workspace DrivePulse.xcworkspace \
-  -scheme DrivePulseSMARTServiceTests \
+  -workspace Palmos.xcworkspace \
+  -scheme PalmosSMARTServiceTests \
   -destination 'platform=macOS,arch=arm64' \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 
 # Debug build
 xcodebuild build \
-  -workspace DrivePulse.xcworkspace \
-  -scheme DrivePulseApp \
+  -workspace Palmos.xcworkspace \
+  -scheme PalmosApp \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
@@ -51,9 +51,9 @@ xcodebuild build \
 ## 3. 仓库地图
 
 ```text
-DrivePulse/
+Palmos/
 ├── Apps/
-│   ├── DrivePulseApp/                  # 菜单栏 App
+│   ├── PalmosApp/                  # 菜单栏 App
 │   │   ├── App/                        # composition root、控制器、界面状态
 │   │   ├── Integration/                # 系统 API、子进程、Helper/XPC 客户端
 │   │   ├── Metrics/                    # IOKit 实时磁盘采样
@@ -61,27 +61,27 @@ DrivePulse/
 │   │   ├── UI/                         # SwiftUI 视图与展示模型
 │   │   ├── Localization/               # String Catalog
 │   │   └── Resources/                  # App 图标等资源
-│   ├── DrivePulseAppTests/             # App、集成层、UI 模型与打包测试
-│   ├── DrivePulseSMARTService/         # root Helper、smartctl、占用扫描
-│   └── DrivePulseSMARTServiceTests/    # Helper 输入边界与安全测试
-├── Packages/DrivePulseCore/            # 无 AppKit/IOKit/特权依赖的共享逻辑
-│   ├── Sources/DrivePulseCore/
+│   ├── PalmosAppTests/             # App、集成层、UI 模型与打包测试
+│   ├── PalmosSMARTService/         # root Helper、smartctl、占用扫描
+│   └── PalmosSMARTServiceTests/    # Helper 输入边界与安全测试
+├── Packages/PalmosCore/            # 无 AppKit/IOKit/特权依赖的共享逻辑
+│   ├── Sources/PalmosCore/
 │   │   ├── Domain/                     # 设备、卷、SMART、链路领域模型
 │   │   ├── Discovery/                  # 身份解析与设备列表 reducer
 │   │   ├── Metrics/                    # 会话吞吐 reducer
 │   │   ├── SMART/                      # smartctl JSON 解析与温度选择
 │   │   └── Settings/                   # 可持久化用户设置
-│   └── Tests/DrivePulseCoreTests/
+│   └── Tests/PalmosCoreTests/
 ├── Shared/XPCContracts/                # App/Helper 共同编译的版本化 XPC 合约
 ├── Shared/Licensing/                   # bundled third-party license
 ├── Config/xcconfigs/                   # Swift、部署版本、签名、bundle ID
 ├── Config/Plists/                      # App/Helper Info.plist 与 SMJobBless 约束
 ├── Scripts/verify/                     # 签名与真机 smoke 验证
-├── DrivePulse.xcworkspace              # 日常构建入口
+├── Palmos.xcworkspace              # 日常构建入口
 └── .github/workflows/                  # PR 测试与 main 分支 release
 ```
 
-新增或移动 Swift 文件时，必须同步检查 `DrivePulse.xcodeproj/project.pbxproj` 的 file reference、target membership 与 build phase；仅在磁盘上创建文件不代表 Xcode target 会编译它。
+新增或移动 Swift 文件时，必须同步检查 `Palmos.xcodeproj/project.pbxproj` 的 file reference、target membership 与 build phase；仅在磁盘上创建文件不代表 Xcode target 会编译它。
 
 ## 4. 架构与数据流
 
@@ -90,22 +90,22 @@ DiskArbitration / IOKit / NSURL resourceValues
                   │
                   ├── 缺失信息：system_profiler / diskutil
                   ▼
-        DrivePulseApp Integration
+        PalmosApp Integration
                   │
                   ▼
-          DrivePulseAppController
-          ├── DrivePulseCore reducers/models
+          PalmosAppController
+          ├── PalmosCore reducers/models
           └── SwiftUI state and views
 
 Optional SMART / privileged occupancy path:
-DrivePulseApp ── versioned XPC ──> DrivePulseSMARTService ──> smartctl / bounded root scan
+PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bounded root scan
 ```
 
-- `DrivePulseApp.swift` 是依赖组装入口；协议与依赖注入用于隔离系统副作用并支持测试。
-- `DrivePulseAppController` 统一协调发现、增量 enrich、吞吐采样、SMART、容量刷新与 eject；不要让 View 直接启动系统调用。
-- `DrivePulseCore` 保存可复用领域模型和纯逻辑。能在无 UI、无 root、无机器环境下测试的逻辑优先放这里。
+- `PalmosApp.swift` 是依赖组装入口；协议与依赖注入用于隔离系统副作用并支持测试。
+- `PalmosAppController` 统一协调发现、增量 enrich、吞吐采样、SMART、容量刷新与 eject；不要让 View 直接启动系统调用。
+- `PalmosCore` 保存可复用领域模型和纯逻辑。能在无 UI、无 root、无机器环境下测试的逻辑优先放这里。
 - `Shared/XPCContracts` 是跨进程 ABI/协议边界，不是普通 DTO 目录；两端与兼容性测试必须一起修改。
-- `DrivePulseSMARTService` 只承载确实需要特权的能力。App 在未安装 Helper 时仍必须可用，SMART 以明确 capability state 降级。
+- `PalmosSMARTService` 只承载确实需要特权的能力。App 在未安装 Helper 时仍必须可用，SMART 以明确 capability state 降级。
 
 ## 5. 不可破坏的项目约束
 
@@ -135,7 +135,7 @@ DrivePulseApp ── versioned XPC ──> DrivePulseSMARTService ──> smartc
 ### 5.4 安全弹出
 
 - eject workflow 必须锁定并在关键阶段重新验证同一个 whole-disk target，防止 BSD name 被重用后作用于新设备。
-- 顺序保持：quiesce DrivePulse-owned I/O → normal whole-disk unmount → eject → busy diagnostics → 用户明确确认后的 force path。
+- 顺序保持：quiesce Palmos-owned I/O → normal whole-disk unmount → eject → busy diagnostics → 用户明确确认后的 force path。
 - 未完成 eject 不得展示“safe to remove”；force-unmount 成功但 eject 失败仍是失败状态。
 - force eject 是破坏性操作，必须二次确认，安全/取消操作保持默认优先。
 - 占用扫描必须精确匹配 device node、mount descendants 与 APFS 拓扑，保持结果上限、deadline、取消与隐私边界。
@@ -147,29 +147,29 @@ DrivePulseApp ── versioned XPC ──> DrivePulseSMARTService ──> smartc
 - 错误必须转换为明确的领域/capability state 或 `LocalizedError`；禁止吞异常、返回含义不明的 `nil`、仅写日志后假装成功。
 - macOS 15 是 deployment target；macOS 26 专属 API 必须以 `#available`/`@available` 守卫并保留 macOS 15 路径。
 - 保持原生 SwiftUI 菜单栏体验，不引入重型 UI 依赖；当前唯一远程 Swift Package 是 `MenuBarExtraAccess`，不要无理由扩展依赖面。
-- 用户可见字符串进入 `Apps/DrivePulseApp/Localization/Localizable.xcstrings`；至少检查 English、Simplified Chinese、Traditional Chinese，并更新相关 catalog/UI 测试。
+- 用户可见字符串进入 `Apps/PalmosApp/Localization/Localizable.xcstrings`；至少检查 English、Simplified Chinese、Traditional Chinese，并更新相关 catalog/UI 测试。
 
 ## 6. 修改路由
 
 | 需求 | 首选位置 | 同步检查 |
 | --- | --- | --- |
-| 领域模型、SMART parser、吞吐 reducer | `Packages/DrivePulseCore/Sources/DrivePulseCore/` | Core tests；public API 的 App 调用点 |
-| 设备发现、容量、APFS/链路 enrich | `Apps/DrivePulseApp/Integration/` | mapper/controller tests；设备 identity 与 stale-write 防护 |
-| 菜单栏状态协调 | `Apps/DrivePulseApp/App/` | `DrivePulseAppControllerTests.swift`；MainActor/cancellation |
-| SwiftUI 布局与展示 | `Apps/DrivePulseApp/UI/` | 360 pt 面板、空/错误/加载状态、三种语言 |
-| 安全弹出与占用诊断 | `Apps/DrivePulseApp/Eject/` | eject unit/integration tests；manual disposable-media checklist |
+| 领域模型、SMART parser、吞吐 reducer | `Packages/PalmosCore/Sources/PalmosCore/` | Core tests；public API 的 App 调用点 |
+| 设备发现、容量、APFS/链路 enrich | `Apps/PalmosApp/Integration/` | mapper/controller tests；设备 identity 与 stale-write 防护 |
+| 菜单栏状态协调 | `Apps/PalmosApp/App/` | `PalmosAppControllerTests.swift`；MainActor/cancellation |
+| SwiftUI 布局与展示 | `Apps/PalmosApp/UI/` | 360 pt 面板、空/错误/加载状态、三种语言 |
+| 安全弹出与占用诊断 | `Apps/PalmosApp/Eject/` | eject unit/integration tests；manual disposable-media checklist |
 | SMART/Helper 客户端 | `Integration/SMARTServiceClient.swift`、`SMARTHelperManager.swift` | XPC compatibility、取消、helper absent/outdated states |
 | XPC schema/capability | `Shared/XPCContracts/` | App + Helper + Core compatibility tests |
-| root-side 实现 | `Apps/DrivePulseSMARTService/` | 输入验证、deadline/limit、Helper security tests |
+| root-side 实现 | `Apps/PalmosSMARTService/` | 输入验证、deadline/limit、Helper security tests |
 | bundle、签名、Helper packaging | `Config/`、project file、verify scripts | `Task7HelperPackagingTests`、signed build、code-signing script |
 
 ## 7. 验证矩阵
 
 按改动范围运行最小充分集合；跨边界改动扩大到所有受影响 target。
 
-- 仅 `DrivePulseCore`：`swift test`。
-- App UI/state/integration：`DrivePulseApp` scheme tests；涉及 Core 时再跑 Core tests。
-- Helper/XPC/签名：Core compatibility tests + App tests + `DrivePulseSMARTServiceTests`；当前 PR CI 未运行 Helper scheme，因此相关改动必须本地补跑；打包改动再做 signed build 与 `code-signing.sh`。
+- 仅 `PalmosCore`：`swift test`。
+- App UI/state/integration：`PalmosApp` scheme tests；涉及 Core 时再跑 Core tests。
+- Helper/XPC/签名：Core compatibility tests + App tests + `PalmosSMARTServiceTests`；PR CI 会运行 Helper scheme，本地仍需在交付前确认退出码为 0；打包改动再做 signed build 与 `code-signing.sh`。
 - 发现、吞吐、SMART、eject 的真实硬件行为：自动测试后执行相关 manual smoke 项；不要声称已验证未连接的硬件或未安装的 Helper。
 - 发布相关：对照 `.github/workflows/test.yml` 和 `.github/workflows/release.yml`，不要把本地无签名成功等同于可安装 Helper 的 release 成功。
 
@@ -195,9 +195,9 @@ DrivePulseApp ── versioned XPC ──> DrivePulseSMARTService ──> smartc
 | 文档/位置 | 用途 |
 | --- | --- |
 | [README.md](README.md) | 产品范围、支持设备、安装、Helper、构建、签名与发布说明 |
-| [Packages/DrivePulseCore/Package.swift](Packages/DrivePulseCore/Package.swift) | Core 平台、product 和 test target 定义 |
+| [Packages/PalmosCore/Package.swift](Packages/PalmosCore/Package.swift) | Core 平台、product 和 test target 定义 |
 | [Config/xcconfigs/Base.xcconfig](Config/xcconfigs/Base.xcconfig) | Swift、deployment target、签名基线 |
-| [Shared/XPCContracts/DrivePulseXPCContracts.swift](Shared/XPCContracts/DrivePulseXPCContracts.swift) | XPC 版本与协议入口 |
+| [Shared/XPCContracts/PalmosXPCContracts.swift](Shared/XPCContracts/PalmosXPCContracts.swift) | XPC 版本与协议入口 |
 | [Scripts/verify/manual-smoke-checklist.md](Scripts/verify/manual-smoke-checklist.md) | 真机与 release smoke checklist |
 | [.github/workflows/test.yml](.github/workflows/test.yml) | PR CI 的权威测试环境和命令 |
 | [.github/workflows/release.yml](.github/workflows/release.yml) | 构建、签名、校验、打包与 GitHub Release 流程 |

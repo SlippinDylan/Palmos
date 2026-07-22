@@ -1,6 +1,6 @@
 #include "Base.xcconfig"
 
-INFOPLIST_FILE = Config/Plists/DrivePulseApp-Info.plist
-PRODUCT_BUNDLE_IDENTIFIER = com.drivepulse.app
-HELPER_BUNDLE_IDENTIFIER = com.drivepulse.smartservice
+INFOPLIST_FILE = Config/Plists/PalmosApp-Info.plist
+PRODUCT_BUNDLE_IDENTIFIER = com.palmos.app
+HELPER_BUNDLE_IDENTIFIER = com.palmos.smartservice
 SWIFT_EMIT_LOC_STRINGS = YES

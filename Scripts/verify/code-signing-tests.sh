@@ -7,9 +7,9 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
 unset BASH_ENV ENV CDPATH
 
 readonly REPOSITORY_ROOT="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-work_directory="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/drivepulse-signing-tests.XXXXXX")"
+work_directory="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/palmos-signing-tests.XXXXXX")"
 case "$work_directory" in
-  "${TMPDIR:-/tmp}"/drivepulse-signing-tests.*) ;;
+  "${TMPDIR:-/tmp}"/palmos-signing-tests.*) ;;
   *) echo "Unexpected test directory: $work_directory" >&2; exit 1 ;;
 esac
 trap '/bin/rm -rf -- "$work_directory"' EXIT
@@ -35,9 +35,9 @@ assert_fails() {
 
 readonly FIXTURE_ROOT="$work_directory/Signing Fixture"
 readonly MOCK_TOOLS="$FIXTURE_ROOT/mock tools"
-readonly APP_PATH="$FIXTURE_ROOT/DrivePulseApp.app"
-readonly HELPER_PATH="$APP_PATH/Contents/Library/LaunchServices/com.drivepulse.smartservice"
-readonly COMPANION_PATH="$APP_PATH/Contents/Library/Helpers/com.drivepulse.smartservice.smartctl"
+readonly APP_PATH="$FIXTURE_ROOT/PalmosApp.app"
+readonly HELPER_PATH="$APP_PATH/Contents/Library/LaunchServices/com.palmos.smartservice"
+readonly COMPANION_PATH="$APP_PATH/Contents/Library/Helpers/com.palmos.smartservice.smartctl"
 readonly VERIFIER="$FIXTURE_ROOT/code-signing.sh"
 readonly TEAM_ID="TESTTEAM12"
 
@@ -47,7 +47,7 @@ readonly TEAM_ID="TESTTEAM12"
   "$APP_PATH/Contents/Library/LaunchServices" \
   "$APP_PATH/Contents/Library/Helpers" \
   "$APP_PATH/Contents/Resources"
-/usr/bin/touch "$APP_PATH/Contents/MacOS/DrivePulseApp" "$HELPER_PATH" "$APP_PATH/Contents/Info.plist"
+/usr/bin/touch "$APP_PATH/Contents/MacOS/PalmosApp" "$HELPER_PATH" "$APP_PATH/Contents/Info.plist"
 /bin/cat > "$COMPANION_PATH" <<'EOF'
 #!/bin/bash
 if [[ "${1:-}" == "--version" ]]; then
@@ -81,9 +81,9 @@ done
 case " $* " in
   *" -d "*)
     case "$path" in
-      *.app) identifier="com.drivepulse.app" ;;
-      */LaunchServices/*) identifier="com.drivepulse.smartservice" ;;
-      */Helpers/*) identifier="com.drivepulse.smartservice.smartctl" ;;
+      *.app) identifier="com.palmos.app" ;;
+      */LaunchServices/*) identifier="com.palmos.smartservice" ;;
+      */Helpers/*) identifier="com.palmos.smartservice.smartctl" ;;
       *) exit 71 ;;
     esac
     printf 'Identifier=%s\n' "$identifier" >&2
@@ -101,7 +101,7 @@ for argument in "$@"; do
   path="$argument"
 done
 case "$path" in
-  */MacOS/DrivePulseApp) printf '%s\n' "${MOCK_APP_ARCHS:-arm64 x86_64}" ;;
+  */MacOS/PalmosApp) printf '%s\n' "${MOCK_APP_ARCHS:-arm64 x86_64}" ;;
   */LaunchServices/*) printf '%s\n' "${MOCK_HELPER_ARCHS:-arm64 x86_64}" ;;
   */Helpers/*) printf '%s\n' "${MOCK_COMPANION_ARCHS:-arm64 x86_64}" ;;
   *) exit 73 ;;
@@ -155,20 +155,20 @@ while (($# > 0)); do
 done
 case "$command" in
   "Print :SMPrivilegedExecutables:"*)
-    printf 'identifier "com.drivepulse.smartservice" and anchor apple generic\n'
+    printf 'identifier "com.palmos.smartservice" and anchor apple generic\n'
     ;;
-  "Print :DrivePulseSmartctlCompanionRequirement")
+  "Print :PalmosSmartctlCompanionRequirement")
     if [[ "${MOCK_MISMATCH_SLICE:-0}" == 1 && "$path" == *helper-x86_64.plist ]]; then
-      printf 'identifier "com.drivepulse.smartservice.smartctl" and anchor apple generic and true\n'
+      printf 'identifier "com.palmos.smartservice.smartctl" and anchor apple generic and true\n'
     else
-      printf 'identifier "com.drivepulse.smartservice.smartctl" and anchor apple generic\n'
+      printf 'identifier "com.palmos.smartservice.smartctl" and anchor apple generic\n'
     fi
     ;;
-  "Print :DrivePulseSmartctlCompanionSHA256")
+  "Print :PalmosSmartctlCompanionSHA256")
     printf '%s\n' "${MOCK_COMPANION_SHA256:?}"
     ;;
   "Print :SMAuthorizedClients:0")
-    printf 'identifier "com.drivepulse.app" and anchor apple generic\n'
+    printf 'identifier "com.palmos.app" and anchor apple generic\n'
     ;;
   "Print :SMAuthorizedClients:"*) exit 1 ;;
   *) exit 75 ;;
