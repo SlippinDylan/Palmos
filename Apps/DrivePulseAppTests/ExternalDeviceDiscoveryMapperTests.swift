@@ -98,6 +98,223 @@ final class ExternalDeviceDiscoveryMapperTests: XCTestCase {
         XCTAssertEqual(devices[0].volumes, [])
     }
 
+    func testMapRejectsVirtualDiskImageWholeMedia() {
+        let diskImage = DiskDiscoveryRecord(
+            bsdName: "disk90",
+            parentBSDName: nil,
+            deviceInternal: false,
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            volumePath: nil,
+            mediaUUID: "redacted-image",
+            mediaName: "Temporary Image",
+            deviceModel: "Disk Image",
+            deviceVendor: nil,
+            busName: "Disk Image",
+            deviceProtocol: "Disk Image",
+            capacityBytes: 1_024,
+            mediaContent: nil,
+            ioClassPath: ["IOHDIXHDDrive", "IOMedia"]
+        )
+
+        XCTAssertEqual(ExternalDeviceDiscoveryMapper().map([diskImage]), [])
+    }
+
+    func testMapAcceptsThunderboltPCIePhysicalEvidence() {
+        let enclosure = DiskDiscoveryRecord(
+            bsdName: "disk91",
+            parentBSDName: nil,
+            deviceInternal: false,
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            volumePath: nil,
+            mediaUUID: "redacted-tb-pcie",
+            mediaName: "External NVMe",
+            deviceModel: "NVMe enclosure",
+            deviceVendor: "Acme",
+            busName: "Thunderbolt",
+            deviceProtocol: "PCI-Express",
+            capacityBytes: 2_048,
+            mediaContent: nil,
+            ioClassPath: ["AppleThunderboltPCIDownAdapter", "IONVMeController", "IOMedia"]
+        )
+
+        let devices = ExternalDeviceDiscoveryMapper().map([enclosure])
+
+        XCTAssertEqual(devices.count, 1)
+        XCTAssertEqual(devices.first?.transportName, "Thunderbolt")
+    }
+
+    func testMapAcceptsTunnelledPCIeNVMeWithoutThunderboltClassName() {
+        let enclosure = DiskDiscoveryRecord(
+            bsdName: "disk91",
+            parentBSDName: nil,
+            deviceInternal: false,
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            isPCITunnelled: true,
+            volumePath: nil,
+            mediaUUID: "redacted-tunnelled-pcie",
+            mediaName: "External NVMe",
+            deviceModel: "NVMe enclosure",
+            deviceVendor: "Acme",
+            busName: "IONVMeController",
+            deviceProtocol: "PCI-Express",
+            capacityBytes: 2_048,
+            mediaContent: nil,
+            ioClassPath: [
+                "IOMedia",
+                "IOBlockStorageDriver",
+                "IONVMeBlockStorageDevice",
+                "IONVMeController",
+                "IOPCIDevice",
+                "IOPCI2PCIBridge",
+                "AppleT6000PCIeC"
+            ]
+        )
+
+        let devices = ExternalDeviceDiscoveryMapper().map([enclosure])
+
+        XCTAssertEqual(devices.count, 1)
+        XCTAssertEqual(devices.first?.transportName, "PCIe")
+    }
+
+    func testMapRejectsVirtualEvidenceBeforeTunnelledPCIeEvidence() {
+        let diskImage = DiskDiscoveryRecord(
+            bsdName: "disk92",
+            parentBSDName: nil,
+            deviceInternal: false,
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            isPCITunnelled: true,
+            volumePath: nil,
+            mediaUUID: "redacted-virtual-pcie",
+            mediaName: "Virtual NVMe",
+            deviceModel: "Disk Image",
+            deviceVendor: nil,
+            busName: "Disk Image",
+            deviceProtocol: "PCI-Express",
+            capacityBytes: 2_048,
+            mediaContent: nil,
+            ioClassPath: ["IOHDIXHDDrive", "IONVMeController", "IOMedia"]
+        )
+
+        XCTAssertEqual(ExternalDeviceDiscoveryMapper().map([diskImage]), [])
+    }
+
+    func testMapRejectsTunnelledPCIeWhenMediaIsInternal() {
+        let internalNVMe = DiskDiscoveryRecord(
+            bsdName: "disk93",
+            parentBSDName: nil,
+            deviceInternal: true,
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            isPCITunnelled: true,
+            volumePath: nil,
+            mediaUUID: "redacted-internal-pcie",
+            mediaName: "Internal NVMe",
+            deviceModel: nil,
+            deviceVendor: nil,
+            busName: "IONVMeController",
+            deviceProtocol: "PCI-Express",
+            capacityBytes: 2_048,
+            mediaContent: nil,
+            ioClassPath: ["IONVMeController", "IOPCIDevice", "IOMedia"]
+        )
+
+        XCTAssertEqual(ExternalDeviceDiscoveryMapper().map([internalNVMe]), [])
+    }
+
+    func testMapRejectsTunnelledMediaWithoutPCIeEvidence() {
+        let unsupported = DiskDiscoveryRecord(
+            bsdName: "disk94",
+            parentBSDName: nil,
+            deviceInternal: false,
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            isPCITunnelled: true,
+            volumePath: nil,
+            mediaUUID: "redacted-tunnelled-unknown",
+            mediaName: "Unknown",
+            deviceModel: nil,
+            deviceVendor: nil,
+            busName: nil,
+            deviceProtocol: "SCSI",
+            capacityBytes: 2_048,
+            mediaContent: nil,
+            ioClassPath: ["IOBlockStorageDevice", "IOMedia"]
+        )
+
+        XCTAssertEqual(ExternalDeviceDiscoveryMapper().map([unsupported]), [])
+    }
+
+    func testMapRejectsExternalFlagWithoutSupportedTransportEvidence() {
+        let unsupported = DiskDiscoveryRecord(
+            bsdName: "disk92",
+            parentBSDName: nil,
+            deviceInternal: false,
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            volumePath: nil,
+            mediaUUID: "redacted-unknown",
+            mediaName: "Unknown",
+            deviceModel: "PCI storage",
+            deviceVendor: nil,
+            busName: "PCI",
+            deviceProtocol: "PCI-Express",
+            capacityBytes: 2_048,
+            mediaContent: nil,
+            ioClassPath: ["IONVMeController", "IOMedia"]
+        )
+
+        XCTAssertEqual(ExternalDeviceDiscoveryMapper().map([unsupported]), [])
+    }
+
+    func testMapNeverPromotesAPFSContainerToTopLevelDevice() {
+        let container = DiskDiscoveryRecord(
+            bsdName: "disk93",
+            parentBSDName: nil,
+            deviceInternal: false,
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            isPCITunnelled: true,
+            volumePath: nil,
+            mediaUUID: "redacted-container",
+            mediaName: "Container",
+            deviceModel: nil,
+            deviceVendor: nil,
+            busName: "USB",
+            deviceProtocol: "USB",
+            capacityBytes: 2_048,
+            mediaContent: "Apple_APFS",
+            ioClassPath: ["AppleAPFSMedia", "IOMedia"]
+        )
+
+        XCTAssertEqual(ExternalDeviceDiscoveryMapper().map([container]), [])
+    }
+
+    func testMapDoesNotTreatIOSDisplayClassAsSDTransportEvidence() {
+        let displayBackedMedia = DiskDiscoveryRecord(
+            bsdName: "disk94",
+            parentBSDName: nil,
+            deviceInternal: false,
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            volumePath: nil,
+            mediaUUID: "redacted-display",
+            mediaName: "Unsupported Media",
+            deviceModel: nil,
+            deviceVendor: nil,
+            busName: nil,
+            deviceProtocol: nil,
+            capacityBytes: 2_048,
+            mediaContent: nil,
+            ioClassPath: ["IOSDisplayWrangler", "IOMedia"]
+        )
+
+        XCTAssertEqual(ExternalDeviceDiscoveryMapper().map([displayBackedMedia]), [])
+    }
+
     func testMapUsesDiskArbitrationWholeDiskRelationshipForMountedVolumes() {
         let records = [
             DiskDiscoveryRecord(

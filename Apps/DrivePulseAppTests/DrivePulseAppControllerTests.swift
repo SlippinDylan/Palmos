@@ -3523,18 +3523,20 @@ private final class StubDiskArbitrationMonitoringSession: DiskArbitrationMonitor
     private(set) var activateCallCount = 0
     private(set) var deactivateCallCount = 0
 
-    func activate(
-        on queue: DispatchQueue,
+    func registerCallbacks(
         context: UnsafeMutableRawPointer,
         appearedCallback: @escaping DADiskAppearedCallback,
         disappearedCallback: @escaping DADiskDisappearedCallback,
         descriptionChangedCallback: @escaping DADiskDescriptionChangedCallback
     ) {
-        _ = queue
         _ = context
         _ = appearedCallback
         _ = disappearedCallback
         _ = descriptionChangedCallback
+    }
+
+    func activate(on queue: DispatchQueue) {
+        _ = queue
         activateCallCount += 1
     }
 

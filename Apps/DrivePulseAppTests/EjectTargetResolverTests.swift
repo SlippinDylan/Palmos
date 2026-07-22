@@ -149,6 +149,123 @@ final class EjectTargetResolverTests: XCTestCase {
         XCTAssertEqual(resolved.scope.deviceNodes, Set(["/dev/disk4", "/dev/rdisk4"]))
         XCTAssertTrue(resolved.scope.mountURLs.isEmpty)
     }
+
+    func testDiscoveryMapperAndEjectSnapshotProviderAgreeOnPhysicalTopLevelRecords() {
+        let identityRegistry = DeviceIdentitySessionRegistry()
+        let mapper = ExternalDeviceDiscoveryMapper(identityRegistry: identityRegistry)
+        let provider = LiveEjectTargetSnapshotProvider(mapper: mapper)
+        let records = [
+            discoveryRecord(
+                bsdName: "disk20",
+                parentBSDName: nil,
+                isWholeMedia: true,
+                registryEntryID: 20,
+                mediaUUID: "usb-media",
+                busName: "USB",
+                deviceProtocol: "USB"
+            ),
+            discoveryRecord(
+                bsdName: "disk21",
+                parentBSDName: nil,
+                isWholeMedia: true,
+                registryEntryID: 21,
+                mediaUUID: "thunderbolt-media",
+                busName: "Thunderbolt",
+                deviceProtocol: "Thunderbolt",
+                ioClassPath: ["AppleThunderboltPCIDownAdapter", "IOMedia"]
+            ),
+            discoveryRecord(
+                bsdName: "disk22",
+                parentBSDName: nil,
+                isWholeMedia: true,
+                registryEntryID: 22,
+                mediaUUID: "usb4-media",
+                busName: "USB4",
+                deviceProtocol: "USB4"
+            ),
+            discoveryRecord(
+                bsdName: "disk23",
+                parentBSDName: nil,
+                isWholeMedia: true,
+                registryEntryID: 23,
+                mediaUUID: "sd-media",
+                busName: nil,
+                deviceProtocol: nil,
+                ioClassPath: ["IOSDHostDevice", "IOMedia"]
+            ),
+            discoveryRecord(
+                bsdName: "disk24",
+                parentBSDName: nil,
+                isWholeMedia: true,
+                isPCITunnelled: true,
+                registryEntryID: 24,
+                mediaUUID: "tunnelled-pcie-media",
+                busName: "IONVMeController",
+                deviceProtocol: "PCI-Express",
+                ioClassPath: ["IONVMeController", "IOPCIDevice", "IOMedia"]
+            ),
+            discoveryRecord(
+                bsdName: "disk30",
+                parentBSDName: nil,
+                isWholeMedia: true,
+                registryEntryID: 30,
+                mediaUUID: "virtual-media",
+                busName: "Disk Image",
+                deviceProtocol: "Disk Image",
+                ioClassPath: ["IOHDIXHDDrive", "IOMedia"]
+            ),
+            discoveryRecord(
+                bsdName: "disk31",
+                parentBSDName: nil,
+                isWholeMedia: true,
+                registryEntryID: 31,
+                mediaUUID: "unknown-media",
+                busName: "PCI",
+                deviceProtocol: "PCI-Express",
+                ioClassPath: ["IONVMeController", "IOMedia"]
+            ),
+            discoveryRecord(
+                bsdName: "disk40",
+                parentBSDName: "disk20",
+                isWholeMedia: true,
+                registryEntryID: 40,
+                mediaUUID: "apfs-container",
+                busName: "USB",
+                deviceProtocol: "USB",
+                mediaContent: "Apple_APFS",
+                ioClassPath: ["AppleAPFSMedia", "IOMedia"]
+            ),
+            discoveryRecord(
+                bsdName: "disk40s1",
+                parentBSDName: "disk40",
+                wholeDiskBSDName: "disk40",
+                volumePath: URL(fileURLWithPath: "/Volumes/USB Data"),
+                mediaName: "USB Data",
+                busName: "USB",
+                deviceProtocol: "USB",
+                mediaContent: "Apple_APFS"
+            )
+        ]
+
+        let discoveredBSDNames = Set(mapper.map(records).map(\.physicalStoreBSDName))
+        let snapshots = provider.snapshots(from: records)
+        let ejectablePhysicalBSDNames = Set(
+            snapshots
+                .filter { $0.isWhole && $0.isExternal && $0.deviceID != nil }
+                .map(\.bsdName)
+        )
+
+        XCTAssertEqual(
+            discoveredBSDNames,
+            Set(["disk20", "disk21", "disk22", "disk23", "disk24"])
+        )
+        XCTAssertEqual(ejectablePhysicalBSDNames, discoveredBSDNames)
+        for rejectedBSDName in ["disk30", "disk31", "disk40", "disk40s1"] {
+            let snapshot = snapshots.first { $0.bsdName == rejectedBSDName }
+            XCTAssertEqual(snapshot?.isExternal, false, rejectedBSDName)
+            XCTAssertNil(snapshot?.deviceID, rejectedBSDName)
+        }
+    }
 }
 
 private actor SnapshotAdapter: EjectTargetSnapshotProviding {
@@ -178,31 +295,39 @@ private func discoveryRecord(
     bsdName: String,
     parentBSDName: String?,
     wholeDiskBSDName: String? = nil,
+    deviceInternal: Bool? = false,
+    isNetworkVolume: Bool = false,
     isWholeMedia: Bool = false,
+    isPCITunnelled: Bool = false,
     registryEntryID: UInt64? = nil,
     mediaUUID: String? = nil,
     volumePath: URL? = nil,
-    mediaName: String = "Disk"
+    mediaName: String = "Disk",
+    busName: String? = "USB",
+    deviceProtocol: String? = "USB",
+    mediaContent: String? = nil,
+    ioClassPath: [String] = ["IOMedia"]
 ) -> DiskDiscoveryRecord {
     DiskDiscoveryRecord(
         bsdName: bsdName,
         parentBSDName: parentBSDName,
         wholeDiskBSDName: wholeDiskBSDName,
-        deviceInternal: false,
-        isNetworkVolume: false,
+        deviceInternal: deviceInternal,
+        isNetworkVolume: isNetworkVolume,
         isWholeMedia: isWholeMedia,
         isEjectable: true,
+        isPCITunnelled: isPCITunnelled,
         registryEntryID: registryEntryID,
         volumePath: volumePath,
         mediaUUID: mediaUUID,
         mediaName: mediaName,
         deviceModel: nil,
         deviceVendor: nil,
-        busName: "USB",
-        deviceProtocol: "USB",
+        busName: busName,
+        deviceProtocol: deviceProtocol,
         capacityBytes: 1_000,
-        mediaContent: nil,
-        ioClassPath: ["IOMedia"]
+        mediaContent: mediaContent,
+        ioClassPath: ioClassPath
     )
 }
 

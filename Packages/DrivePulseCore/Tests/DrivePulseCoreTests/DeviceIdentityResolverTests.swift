@@ -61,18 +61,19 @@ final class DeviceIdentityResolverTests: XCTestCase {
 
     func testResolverAcceptsSupportedExternalTransportPaths() {
         let transportPaths = [
-            "USB Mass Storage",
-            "Thunderbolt Port",
-            "USB4 Root Hub",
-            "SD Card Reader"
+            ("USB Mass Storage", ExternalPhysicalTransport.usb),
+            ("Thunderbolt Port", ExternalPhysicalTransport.thunderbolt),
+            ("USB4 Root Hub", ExternalPhysicalTransport.usb4),
+            ("SD Card Reader", ExternalPhysicalTransport.sd)
         ]
 
-        for transportPath in transportPaths {
+        for (transportPath, transport) in transportPaths {
             let descriptor = ExternalDeviceDescriptor(
                 deviceInternal: false,
                 transportPath: [transportPath],
                 isNetworkVolume: false,
-                isWholeMedia: true
+                isWholeMedia: true,
+                backingEvidence: .physical(transport)
             )
 
             XCTAssertTrue(
@@ -104,14 +105,15 @@ final class DeviceIdentityResolverTests: XCTestCase {
         XCTAssertFalse(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
     }
 
-    func testResolverAcceptsExplicitExternalFlagRegardlessOfTransportPath() {
+    func testResolverAcceptsExplicitTunnelledPCIeEvidence() {
         // Thunderbolt 3 PCIe-tunneled NVMe enclosures report Protocol=PCI-Express,
         // which doesn't match usb/thunderbolt/usb4. DA still marks them external.
         let descriptor = ExternalDeviceDescriptor(
             deviceInternal: false,
             transportPath: ["PCI-Express", "IONVMeController", "AppleT6000PCIeC"],
             isNetworkVolume: false,
-            isWholeMedia: true
+            isWholeMedia: true,
+            backingEvidence: .physical(.tunnelledPCIe)
         )
 
         XCTAssertTrue(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
@@ -126,5 +128,41 @@ final class DeviceIdentityResolverTests: XCTestCase {
         )
 
         XCTAssertFalse(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
+    }
+
+    func testResolverRejectsExternalFlagWithoutPhysicalBackingEvidence() {
+        let descriptor = ExternalDeviceDescriptor(
+            deviceInternal: false,
+            transportPath: ["PCI-Express", "UnknownBridge"],
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            backingEvidence: .unknown
+        )
+
+        XCTAssertFalse(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
+    }
+
+    func testResolverRejectsKnownVirtualWholeMedia() {
+        let descriptor = ExternalDeviceDescriptor(
+            deviceInternal: false,
+            transportPath: ["IOHDIXHDDrive", "IOMedia"],
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            backingEvidence: .virtual
+        )
+
+        XCTAssertFalse(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
+    }
+
+    func testResolverAcceptsTunnelledPCIeWithPhysicalEvidence() {
+        let descriptor = ExternalDeviceDescriptor(
+            deviceInternal: false,
+            transportPath: ["PCI-Express", "Thunderbolt"],
+            isNetworkVolume: false,
+            isWholeMedia: true,
+            backingEvidence: .physical(.tunnelledPCIe)
+        )
+
+        XCTAssertTrue(DeviceIdentityResolver.isExternalPhysicalDevice(descriptor))
     }
 }
