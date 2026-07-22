@@ -878,8 +878,18 @@ final class DrivePulseAppControllerTests: XCTestCase {
             deviceDiscovery: StubExternalDeviceDiscovery(results: [[initialDevice]])
         )
 
-        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 1_000))
-        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 1_001))
+        publishThroughputSample(
+            controller,
+            timestamp: Date(timeIntervalSince1970: 1_000),
+            elapsed: nil,
+            samples: [(initialDevice, DiskIOCounters(readBytes: 1_000, writeBytes: 2_000))]
+        )
+        publishThroughputSample(
+            controller,
+            timestamp: Date(timeIntervalSince1970: 1_001),
+            elapsed: .seconds(1),
+            samples: [(initialDevice, DiskIOCounters(readBytes: 2_500, writeBytes: 2_750))]
+        )
 
         let sampledDevice = try XCTUnwrap(controller.state.selectedDevice)
         XCTAssertGreaterThan(
@@ -1305,8 +1315,18 @@ final class DrivePulseAppControllerTests: XCTestCase {
         controller.selectDevice(secondDevice.id)
 
         XCTAssertTrue(controller.isPerformingSystemAction)
-        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 1))
-        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 2))
+        publishThroughputSample(
+            controller,
+            timestamp: Date(timeIntervalSince1970: 1),
+            elapsed: nil,
+            samples: [(secondDevice, DiskIOCounters(readBytes: 100, writeBytes: 200))]
+        )
+        publishThroughputSample(
+            controller,
+            timestamp: Date(timeIntervalSince1970: 2),
+            elapsed: .seconds(1),
+            samples: [(secondDevice, DiskIOCounters(readBytes: 400, writeBytes: 700))]
+        )
         let metrics = try XCTUnwrap(controller.state.device(id: secondDevice.id)?.sessionMetrics)
         XCTAssertEqual(metrics.currentReadBytesPerSecond, 300)
         XCTAssertEqual(metrics.currentWriteBytesPerSecond, 500)
@@ -1533,8 +1553,18 @@ final class DrivePulseAppControllerTests: XCTestCase {
         let disk5DiskUtilCallCount = await probe.diskUtilCallCount(for: "disk5")
         XCTAssertGreaterThan(disk5DiskUtilCallCount, 0)
 
-        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 1))
-        controller.sampleDeviceThroughput(at: Date(timeIntervalSince1970: 2))
+        publishThroughputSample(
+            controller,
+            timestamp: Date(timeIntervalSince1970: 1),
+            elapsed: nil,
+            samples: [(disk5, DiskIOCounters(readBytes: 10, writeBytes: 20))]
+        )
+        publishThroughputSample(
+            controller,
+            timestamp: Date(timeIntervalSince1970: 2),
+            elapsed: .seconds(1),
+            samples: [(disk5, DiskIOCounters(readBytes: 110, writeBytes: 220))]
+        )
         let disk5Metrics = try XCTUnwrap(controller.state.device(id: disk5.id)?.sessionMetrics)
         XCTAssertEqual(disk5Metrics.currentReadBytesPerSecond, 100)
         XCTAssertEqual(disk5Metrics.currentWriteBytesPerSecond, 200)
@@ -2459,6 +2489,170 @@ final class DrivePulseAppControllerTests: XCTestCase {
     }
 }
 
+extension DrivePulseAppControllerTests {
+    func testThroughputSamplingResultGateRejectsStaleGenerationAndBSDReuse() {
+        let oldDevice = ThroughputSamplingDeviceSnapshot(
+            deviceID: DeviceID(rawValue: "old"),
+            physicalBSDName: "disk4"
+        )
+        let currentDevice = ThroughputSamplingDeviceSnapshot(
+            deviceID: DeviceID(rawValue: "new"),
+            physicalBSDName: "disk4"
+        )
+        let result = ThroughputSamplingResult(
+            generation: 4,
+            tick: ThroughputSamplingTick(
+                displayTimestamp: Date(timeIntervalSince1970: 4),
+                elapsedSincePrevious: nil
+            ),
+            samples: [
+                ThroughputSamplingDeviceResult(
+                    deviceID: oldDevice.deviceID,
+                    physicalBSDName: oldDevice.physicalBSDName,
+                    counters: DiskIOCounters(readBytes: 10, writeBytes: 20)
+                )
+            ]
+        )
+
+        let accepted = ThroughputSamplingResultGate.acceptedSamples(
+            result,
+            for: ThroughputSamplingSnapshot(generation: 5, devices: [currentDevice])
+        )
+
+        XCTAssertTrue(accepted.isEmpty)
+    }
+
+    func testThroughputCoordinatorSamplesOffMainThreadAndCoversAllDevices() async {
+        let sampler = CoordinatorProbeSampler(counters: [
+            "disk4": DiskIOCounters(readBytes: 10, writeBytes: 20),
+            "disk5": DiskIOCounters(readBytes: 30, writeBytes: 40)
+        ])
+        let coordinator = ThroughputSamplingCoordinator(sampler: sampler)
+        let snapshot = ThroughputSamplingSnapshot(
+            generation: 1,
+            devices: [
+                .init(deviceID: DeviceID(rawValue: "a"), physicalBSDName: "disk4"),
+                .init(deviceID: DeviceID(rawValue: "b"), physicalBSDName: "disk5")
+            ]
+        )
+
+        let result = await coordinator.sample(
+            snapshot: snapshot,
+            tick: ThroughputSamplingTick(displayTimestamp: Date(), elapsedSincePrevious: nil)
+        )
+
+        XCTAssertEqual(result.samples.count, 2)
+        XCTAssertTrue(sampler.mainThreadCalls.allSatisfy { $0 == false })
+    }
+
+    func testSlowThroughputSamplerDoesNotBlockMainActorProbe() async {
+        let sampler = CoordinatorProbeSampler(
+            counters: ["disk4": DiskIOCounters(readBytes: 1, writeBytes: 1)],
+            delay: .milliseconds(150)
+        )
+        let coordinator = ThroughputSamplingCoordinator(sampler: sampler)
+        let snapshot = ThroughputSamplingSnapshot(
+            generation: 1,
+            devices: [.init(deviceID: DeviceID(rawValue: "a"), physicalBSDName: "disk4")]
+        )
+        let samplingTask = Task {
+            await coordinator.sample(
+                snapshot: snapshot,
+                tick: ThroughputSamplingTick(displayTimestamp: Date(), elapsedSincePrevious: nil)
+            )
+        }
+
+        let probeStart = ContinuousClock.now
+        await Task.yield()
+        let probeElapsed = probeStart.duration(to: ContinuousClock.now)
+        _ = await samplingTask.value
+
+        XCTAssertLessThan(probeElapsed, .milliseconds(100))
+    }
+
+    func testThroughputCoordinatorDoesNotOverlapSlowSamples() async throws {
+        let sampler = CoordinatorProbeSampler(
+            counters: ["disk4": DiskIOCounters(readBytes: 1, writeBytes: 1)],
+            delay: .milliseconds(20)
+        )
+        let coordinator = ThroughputSamplingCoordinator(
+            sampler: sampler,
+            interval: .milliseconds(1)
+        )
+        let results = ControllerTestLockedArray<ThroughputSamplingResult>()
+        let snapshot = ThroughputSamplingSnapshot(
+            generation: 1,
+            devices: [.init(deviceID: DeviceID(rawValue: "a"), physicalBSDName: "disk4")]
+        )
+
+        await coordinator.start(
+            snapshotProvider: { @MainActor in snapshot },
+            resultHandler: { @MainActor result in results.append(result) }
+        )
+        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while results.values.count < 2, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        await coordinator.stop()
+
+        XCTAssertGreaterThanOrEqual(results.values.count, 2)
+        XCTAssertEqual(sampler.maximumInFlight, 1)
+    }
+
+    func testThroughputCoordinatorStopPreventsFurtherResultPublication() async throws {
+        let sampler = CoordinatorProbeSampler(
+            counters: ["disk4": DiskIOCounters(readBytes: 1, writeBytes: 1)],
+            delay: .milliseconds(5)
+        )
+        let coordinator = ThroughputSamplingCoordinator(
+            sampler: sampler,
+            interval: .milliseconds(1)
+        )
+        let results = ControllerTestLockedArray<ThroughputSamplingResult>()
+        let snapshot = ThroughputSamplingSnapshot(
+            generation: 1,
+            devices: [.init(deviceID: DeviceID(rawValue: "a"), physicalBSDName: "disk4")]
+        )
+
+        await coordinator.start(
+            snapshotProvider: { @MainActor in snapshot },
+            resultHandler: { @MainActor result in results.append(result) }
+        )
+        try await Task.sleep(for: .milliseconds(30))
+        await coordinator.stop()
+        let countAfterStop = results.values.count
+        try await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertEqual(results.values.count, countAfterStop)
+    }
+}
+
+private func publishThroughputSample(
+    _ controller: DrivePulseAppController,
+    timestamp: Date,
+    elapsed: Duration?,
+    samples: [(ExternalDevice, DiskIOCounters)]
+) {
+    MainActor.assumeIsolated {
+        controller.applyThroughputSamplingResult(
+            ThroughputSamplingResult(
+                generation: 0,
+                tick: ThroughputSamplingTick(
+                    displayTimestamp: timestamp,
+                    elapsedSincePrevious: elapsed
+                ),
+                samples: samples.map { device, counters in
+                    ThroughputSamplingDeviceResult(
+                        deviceID: device.id,
+                        physicalBSDName: device.physicalStoreBSDName,
+                        counters: counters
+                    )
+                }
+            )
+        )
+    }
+}
+
 private final class ControllerTestLockedArray<Element>: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [Element] = []
@@ -2508,6 +2702,43 @@ private final class StubDiskSampler: DiskSampling, @unchecked Sendable {
         let nextSample = samples.removeFirst()
         samplesByBSDName[bsdName] = samples
         return nextSample
+    }
+}
+
+private final class CoordinatorProbeSampler: DiskSampling, @unchecked Sendable {
+    private let lock = NSLock()
+    private let countersByBSDName: [String: DiskIOCounters]
+    private let delay: Duration?
+    private var inFlight = 0
+    private(set) var maximumInFlight = 0
+    private(set) var mainThreadCalls: [Bool] = []
+
+    init(counters: [String: DiskIOCounters], delay: Duration? = nil) {
+        countersByBSDName = counters
+        self.delay = delay
+    }
+
+    func counters(forBSDName bsdName: String) -> DiskIOCounters? {
+        lock.withLock {
+            inFlight += 1
+            maximumInFlight = max(maximumInFlight, inFlight)
+            mainThreadCalls.append(Thread.isMainThread)
+        }
+        defer {
+            lock.withLock { inFlight -= 1 }
+        }
+        if let delay {
+            Thread.sleep(forTimeInterval: delay.timeInterval)
+        }
+        return lock.withLock { countersByBSDName[bsdName] }
+    }
+}
+
+private extension Duration {
+    var timeInterval: TimeInterval {
+        let components = self.components
+        return TimeInterval(components.seconds)
+            + TimeInterval(components.attoseconds) / 1_000_000_000_000_000_000
     }
 }
 

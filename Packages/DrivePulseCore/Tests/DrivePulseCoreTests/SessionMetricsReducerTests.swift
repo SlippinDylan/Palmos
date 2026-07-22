@@ -15,8 +15,8 @@ final class SessionMetricsReducerTests: XCTestCase {
         let distantPast = Date(timeIntervalSince1970: 1_000)
         let now = Date(timeIntervalSince1970: 1_060)
 
-        reducer.ingest(readBytes: 100, writeBytes: 50, at: distantPast)
-        reducer.ingest(readBytes: 25, writeBytes: 75, at: now)
+        reducer.ingest(readBytes: 100, writeBytes: 50, tick: tick(distantPast))
+        reducer.ingest(readBytes: 25, writeBytes: 75, tick: tick(now, elapsed: .seconds(60)))
 
         XCTAssertEqual(reducer.metrics.cumulativeReadBytes, 125)
         XCTAssertEqual(reducer.metrics.cumulativeWriteBytes, 125)
@@ -34,9 +34,9 @@ final class SessionMetricsReducerTests: XCTestCase {
             Date(timeIntervalSince1970: 1_020)
         ]
 
-        reducer.ingest(readBytes: 10, writeBytes: 20, at: timestamps[0])
-        reducer.ingest(readBytes: 30, writeBytes: 40, at: timestamps[1])
-        reducer.ingest(readBytes: 50, writeBytes: 60, at: timestamps[2])
+        reducer.ingest(readBytes: 10, writeBytes: 20, tick: tick(timestamps[0]))
+        reducer.ingest(readBytes: 30, writeBytes: 40, tick: tick(timestamps[1], elapsed: .seconds(10)))
+        reducer.ingest(readBytes: 50, writeBytes: 60, tick: tick(timestamps[2], elapsed: .seconds(10)))
 
         XCTAssertEqual(reducer.metrics.readHistory.count, 2)
         XCTAssertEqual(reducer.metrics.writeHistory.count, 2)
@@ -52,7 +52,7 @@ final class SessionMetricsReducerTests: XCTestCase {
             reducer.ingest(
                 readBytes: Int64(index + 1),
                 writeBytes: Int64((index + 1) * 2),
-                at: timestamp
+                tick: tick(timestamp, elapsed: index == 0 ? nil : .seconds(1))
             )
         }
 
@@ -69,11 +69,125 @@ final class SessionMetricsReducerTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 2_000)
         let end = Date(timeIntervalSince1970: 2_000.25)
 
-        reducer.ingest(readBytes: 100, writeBytes: 50, at: start)
-        reducer.ingest(readBytes: 25, writeBytes: 75, at: end)
+        reducer.ingest(readBytes: 100, writeBytes: 50, tick: tick(start))
+        reducer.ingest(readBytes: 25, writeBytes: 75, tick: tick(end, elapsed: .milliseconds(250)))
 
         XCTAssertEqual(reducer.metrics.currentReadBytesPerSecond, 100, accuracy: 0.0001)
         XCTAssertEqual(reducer.metrics.currentWriteBytesPerSecond, 300, accuracy: 0.0001)
+    }
+
+    func testWallClockRollbackUsesMonotonicElapsedForRateAndChartTimestamp() throws {
+        var reducer = SessionMetricsReducer(historyLimit: 3)
+        let sessionOrigin = Date(timeIntervalSince1970: 2_000)
+
+        reducer.ingest(
+            readBytes: 0,
+            writeBytes: 0,
+            tick: ThroughputSamplingTick(
+                displayTimestamp: sessionOrigin,
+                elapsedSincePrevious: nil
+            )
+        )
+        reducer.ingest(
+            readBytes: 100,
+            writeBytes: 50,
+            tick: ThroughputSamplingTick(
+                displayTimestamp: Date(timeIntervalSince1970: 1_000),
+                elapsedSincePrevious: .seconds(2)
+            )
+        )
+
+        XCTAssertEqual(reducer.metrics.currentReadBytesPerSecond, 50, accuracy: 0.0001)
+        XCTAssertEqual(reducer.metrics.currentWriteBytesPerSecond, 25, accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(reducer.metrics.readHistory.last?.timestamp),
+            sessionOrigin.addingTimeInterval(2)
+        )
+        XCTAssertEqual(
+            reducer.metrics.readHistory.map(\.timestamp),
+            reducer.metrics.readHistory.map(\.timestamp).sorted()
+        )
+    }
+
+    func testUnchangedWallClockUsesPositiveMonotonicElapsedForRate() throws {
+        var reducer = SessionMetricsReducer(historyLimit: 3)
+        let wallClockTimestamp = Date(timeIntervalSince1970: 3_000)
+
+        reducer.ingest(
+            readBytes: 0,
+            writeBytes: 0,
+            tick: ThroughputSamplingTick(
+                displayTimestamp: wallClockTimestamp,
+                elapsedSincePrevious: nil
+            )
+        )
+        reducer.ingest(
+            readBytes: 75,
+            writeBytes: 25,
+            tick: ThroughputSamplingTick(
+                displayTimestamp: wallClockTimestamp,
+                elapsedSincePrevious: .milliseconds(250)
+            )
+        )
+
+        XCTAssertEqual(reducer.metrics.currentReadBytesPerSecond, 300, accuracy: 0.0001)
+        XCTAssertEqual(reducer.metrics.currentWriteBytesPerSecond, 100, accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(reducer.metrics.readHistory.last?.timestamp),
+            wallClockTimestamp.addingTimeInterval(0.25)
+        )
+    }
+
+    func testNonPositiveElapsedDoesNotCreateRateSpikeOrPolluteChartBaseline() throws {
+        var reducer = SessionMetricsReducer(historyLimit: 4)
+        let sessionOrigin = Date(timeIntervalSince1970: 4_000)
+
+        reducer.ingest(
+            readBytes: 0,
+            writeBytes: 0,
+            tick: ThroughputSamplingTick(
+                displayTimestamp: sessionOrigin,
+                elapsedSincePrevious: nil
+            )
+        )
+        reducer.ingest(
+            readBytes: 100,
+            writeBytes: 50,
+            tick: ThroughputSamplingTick(
+                displayTimestamp: sessionOrigin,
+                elapsedSincePrevious: .zero
+            )
+        )
+        reducer.ingest(
+            readBytes: 200,
+            writeBytes: 100,
+            tick: ThroughputSamplingTick(
+                displayTimestamp: sessionOrigin.addingTimeInterval(-10),
+                elapsedSincePrevious: .milliseconds(-250)
+            )
+        )
+
+        XCTAssertEqual(reducer.metrics.currentReadBytesPerSecond, 0)
+        XCTAssertEqual(reducer.metrics.currentWriteBytesPerSecond, 0)
+        XCTAssertEqual(reducer.metrics.readHistory.count, 1)
+        XCTAssertEqual(reducer.metrics.cumulativeReadBytes, 300)
+        XCTAssertEqual(reducer.metrics.cumulativeWriteBytes, 150)
+
+        reducer.ingest(
+            readBytes: 25,
+            writeBytes: 10,
+            tick: ThroughputSamplingTick(
+                displayTimestamp: sessionOrigin,
+                elapsedSincePrevious: .milliseconds(250)
+            )
+        )
+
+        XCTAssertEqual(reducer.metrics.currentReadBytesPerSecond, 100, accuracy: 0.0001)
+        XCTAssertEqual(reducer.metrics.currentWriteBytesPerSecond, 40, accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(reducer.metrics.readHistory.last?.timestamp),
+            sessionOrigin.addingTimeInterval(0.25)
+        )
     }
 
     func testFirstSampleDoesNotAssumeOneSecondInterval() {
@@ -82,7 +196,7 @@ final class SessionMetricsReducerTests: XCTestCase {
         reducer.ingest(
             readBytes: 100,
             writeBytes: 50,
-            at: Date(timeIntervalSince1970: 2_000)
+            tick: tick(Date(timeIntervalSince1970: 2_000))
         )
 
         XCTAssertEqual(reducer.metrics.currentReadBytesPerSecond, 0)
@@ -95,8 +209,8 @@ final class SessionMetricsReducerTests: XCTestCase {
         var original = SessionMetricsReducer(historyLimit: 3)
         var copy = original
 
-        copy.ingest(readBytes: 100, writeBytes: 50, at: timestamp)
-        original.ingest(readBytes: 10, writeBytes: 20, at: nextTimestamp)
+        copy.ingest(readBytes: 100, writeBytes: 50, tick: tick(timestamp))
+        original.ingest(readBytes: 10, writeBytes: 20, tick: tick(nextTimestamp))
 
         XCTAssertEqual(copy.metrics.cumulativeReadBytes, 100)
         XCTAssertEqual(copy.metrics.cumulativeWriteBytes, 50)
@@ -109,8 +223,8 @@ final class SessionMetricsReducerTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 4_000)
         let end = Date(timeIntervalSince1970: 4_001)
 
-        reducer.ingest(readBytes: 100, writeBytes: 50, at: start)
-        reducer.ingest(readBytes: -25, writeBytes: -10, at: end)
+        reducer.ingest(readBytes: 100, writeBytes: 50, tick: tick(start))
+        reducer.ingest(readBytes: -25, writeBytes: -10, tick: tick(end, elapsed: .seconds(1)))
 
         XCTAssertEqual(reducer.metrics.cumulativeReadBytes, 100)
         XCTAssertEqual(reducer.metrics.cumulativeWriteBytes, 50)
@@ -123,10 +237,20 @@ final class SessionMetricsReducerTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 5_000)
         let end = Date(timeIntervalSince1970: 5_001)
 
-        reducer.ingest(readBytes: Int64.max, writeBytes: Int64.max, at: start)
-        reducer.ingest(readBytes: 1, writeBytes: 1, at: end)
+        reducer.ingest(readBytes: Int64.max, writeBytes: Int64.max, tick: tick(start))
+        reducer.ingest(readBytes: 1, writeBytes: 1, tick: tick(end, elapsed: .seconds(1)))
 
         XCTAssertEqual(reducer.metrics.cumulativeReadBytes, Int64.max)
         XCTAssertEqual(reducer.metrics.cumulativeWriteBytes, Int64.max)
+    }
+
+    private func tick(
+        _ displayTimestamp: Date,
+        elapsed: Duration? = nil
+    ) -> ThroughputSamplingTick {
+        ThroughputSamplingTick(
+            displayTimestamp: displayTimestamp,
+            elapsedSincePrevious: elapsed
+        )
     }
 }

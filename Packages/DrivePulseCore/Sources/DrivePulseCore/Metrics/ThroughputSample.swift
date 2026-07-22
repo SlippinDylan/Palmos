@@ -1,5 +1,16 @@
 import Foundation
 
+/// Separates user-visible wall-clock labels from the monotonic interval used for rates.
+public struct ThroughputSamplingTick: Equatable, Sendable {
+    public let displayTimestamp: Date
+    public let elapsedSincePrevious: Duration?
+
+    public init(displayTimestamp: Date, elapsedSincePrevious: Duration?) {
+        self.displayTimestamp = displayTimestamp
+        self.elapsedSincePrevious = elapsedSincePrevious
+    }
+}
+
 struct ThroughputSample {
     let timestamp: Date
     let readBytes: Int64
@@ -7,16 +18,10 @@ struct ThroughputSample {
     let readBytesPerSecond: Double
     let writeBytesPerSecond: Double
 
-    init(readBytes: Int64, writeBytes: Int64, at timestamp: Date, previousTimestamp: Date?) {
-        let rates: (read: Double, write: Double)
-        if let previousTimestamp {
-            let measuredInterval = timestamp.timeIntervalSince(previousTimestamp)
-            let interval = measuredInterval > 0 ? measuredInterval : 1
-            rates = (Double(readBytes) / interval, Double(writeBytes) / interval)
-        } else {
-            rates = (0, 0)
-        }
-
+    init(readBytes: Int64, writeBytes: Int64, at timestamp: Date, interval: TimeInterval?) {
+        let rates = interval.map {
+            (read: Double(readBytes) / $0, write: Double(writeBytes) / $0)
+        } ?? (read: 0, write: 0)
         self.timestamp = timestamp
         self.readBytes = readBytes
         self.writeBytes = writeBytes

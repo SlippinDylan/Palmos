@@ -6,7 +6,6 @@ import DrivePulseCore
 
 @MainActor
 final class DrivePulseAppController: ObservableObject {
-    private static let throughputSamplingInterval: TimeInterval = 0.25
     private static let throughputHistoryLimit = 300
     private static let apfsEnrichmentRetryDelays: [TimeInterval] = [0.25, 0.75, 1.5]
     private static let actionSuccessFeedbackDuration: TimeInterval = 1.2
@@ -47,7 +46,7 @@ final class DrivePulseAppController: ObservableObject {
     private var systemProfilerEnrichmentTask: Task<Void, Never>?
     private var pendingSystemProfilerRefreshMode: SystemProfilerRefreshMode?
     private var discoveryWriteGeneration = 0
-    private var throughputSamplingTimer: Timer?
+    private var throughputSamplingCoordinator: ThroughputSamplingCoordinator?
     private var actionFeedbackClearTask: Task<Void, Never>?
     private var quitTask: Task<Void, Never>?
     private var smartRefreshTasksByDeviceID: [DeviceID: Task<Void, Never>] = [:]
@@ -165,7 +164,8 @@ final class DrivePulseAppController: ObservableObject {
         apfsRetryTask?.cancel()
         systemProfilerEnrichmentTask?.cancel()
         discoveryObservation?.cancel()
-        throughputSamplingTimer?.invalidate()
+        let coordinator: ThroughputSamplingCoordinator? = throughputSamplingCoordinator
+        Task { await coordinator?.stop() }
         actionFeedbackClearTask?.cancel()
         quitTask?.cancel()
         smartRefreshTasksByDeviceID.values.forEach { $0.cancel() }
@@ -414,45 +414,53 @@ final class DrivePulseAppController: ObservableObject {
         UInt64((duration * 1_000_000_000).rounded())
     }
 
-    func sampleDeviceThroughput(at timestamp: Date = Date()) {
+    func applyThroughputSamplingResult(_ result: ThroughputSamplingResult) {
         pruneSamplingState()
+        let snapshot = throughputSamplingSnapshot()
+        let acceptedSamples = ThroughputSamplingResultGate.acceptedSamples(result, for: snapshot)
 
-        for device in state.devices {
-            guard let counters = diskSampler.counters(forBSDName: device.physicalStoreBSDName) else {
-                continue
-            }
-
-            defer {
-                lastDiskCountersByDeviceID[device.id] = counters
-            }
-
-            guard let previousCounters = lastDiskCountersByDeviceID[device.id] else {
-                var reducer = sessionMetricsReducersByDeviceID[device.id]
+        for sample in acceptedSamples {
+            guard let previousCounters = lastDiskCountersByDeviceID[sample.deviceID] else {
+                var reducer = sessionMetricsReducersByDeviceID[sample.deviceID]
                     ?? SessionMetricsReducer(historyLimit: Self.throughputHistoryLimit)
-                reducer.ingest(readBytes: 0, writeBytes: 0, at: timestamp)
-                sessionMetricsReducersByDeviceID[device.id] = reducer
-                state.applySessionMetrics(reducer.metrics, for: device.id)
+                reducer.ingest(readBytes: 0, writeBytes: 0, tick: result.tick)
+                sessionMetricsReducersByDeviceID[sample.deviceID] = reducer
+                state.applySessionMetrics(reducer.metrics, for: sample.deviceID)
+                lastDiskCountersByDeviceID[sample.deviceID] = sample.counters
                 continue
             }
 
             let readDelta = Self.counterDelta(
-                current: counters.readBytes,
+                current: sample.counters.readBytes,
                 previous: previousCounters.readBytes
             )
             let writeDelta = Self.counterDelta(
-                current: counters.writeBytes,
+                current: sample.counters.writeBytes,
                 previous: previousCounters.writeBytes
             )
-            var reducer = sessionMetricsReducersByDeviceID[device.id]
+            var reducer = sessionMetricsReducersByDeviceID[sample.deviceID]
                 ?? SessionMetricsReducer(historyLimit: Self.throughputHistoryLimit)
             reducer.ingest(
                 readBytes: readDelta,
                 writeBytes: writeDelta,
-                at: timestamp
+                tick: result.tick
             )
-            sessionMetricsReducersByDeviceID[device.id] = reducer
-            state.applySessionMetrics(reducer.metrics, for: device.id)
+            sessionMetricsReducersByDeviceID[sample.deviceID] = reducer
+            state.applySessionMetrics(reducer.metrics, for: sample.deviceID)
+            lastDiskCountersByDeviceID[sample.deviceID] = sample.counters
         }
+    }
+
+    private func throughputSamplingSnapshot() -> ThroughputSamplingSnapshot {
+        ThroughputSamplingSnapshot(
+            generation: discoveryWriteGeneration,
+            devices: state.devices.map {
+                ThroughputSamplingDeviceSnapshot(
+                    deviceID: $0.id,
+                    physicalBSDName: $0.physicalStoreBSDName
+                )
+            }
+        )
     }
 
     private func loadDiscoveredDevices(
@@ -998,13 +1006,20 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     private func startThroughputSampling() {
-        throughputSamplingTimer?.invalidate()
-        throughputSamplingTimer = Timer.scheduledTimer(
-            withTimeInterval: Self.throughputSamplingInterval,
-            repeats: true
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.sampleDeviceThroughput()
+        let coordinator = ThroughputSamplingCoordinator(sampler: diskSampler)
+        throughputSamplingCoordinator = coordinator
+        Task { @MainActor [weak self, coordinator] in
+            await coordinator.start(
+                snapshotProvider: { @MainActor [weak self] in
+                    self?.throughputSamplingSnapshot()
+                },
+                resultHandler: { @MainActor [weak self] result in
+                    self?.applyThroughputSamplingResult(result)
+                }
+            )
+            guard let self, self.throughputSamplingCoordinator === coordinator else {
+                await coordinator.stop()
+                return
             }
         }
     }
