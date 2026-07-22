@@ -14,15 +14,8 @@ DrivePulse 是面向 macOS 15+ 的菜单栏 App，以外接物理存储设备为
 # 查看 workspace、scheme 与 target
 xcodebuild -workspace DrivePulse.xcworkspace -list
 
-# Core 单元测试
+# Core 单元测试（与 CI 一致）
 cd Packages/DrivePulseCore && swift test
-
-# 与 CI 一致的 Core 测试
-xcodebuild test \
-  -workspace DrivePulse.xcworkspace \
-  -scheme DrivePulseCore \
-  -destination 'platform=macOS,arch=arm64' \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 
 # App 与集成测试
 xcodebuild test \

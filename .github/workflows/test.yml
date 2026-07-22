@@ -35,15 +35,8 @@ jobs:
           Scripts/verify/local-smart-build-tests.sh
 
       - name: Run DrivePulseCore Tests
-        run: |
-          set -o pipefail
-          xcodebuild test \
-            -workspace DrivePulse.xcworkspace \
-            -scheme DrivePulseCore \
-            -destination 'platform=macOS,arch=arm64' \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+        working-directory: Packages/DrivePulseCore
+        run: swift test
 
       - name: Run DrivePulseApp Tests
         run: |
