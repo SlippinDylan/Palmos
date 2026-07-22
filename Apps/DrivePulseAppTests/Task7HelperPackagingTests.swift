@@ -184,6 +184,35 @@ final class Task7HelperPackagingTests: XCTestCase {
         )
     }
 
+    func testBundledCompanionReaderRejectsSymbolicLinkWithinSizeLimit() throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: temporaryDirectory,
+            withIntermediateDirectories: true
+        )
+        addTeardownBlock {
+            try FileManager.default.removeItem(at: temporaryDirectory)
+        }
+
+        let binaryURL = temporaryDirectory.appendingPathComponent("smartctl")
+        try Data([0xcf, 0xfa, 0xed, 0xfe]).write(to: binaryURL)
+        let symbolicLinkURL = temporaryDirectory.appendingPathComponent("smartctl-link")
+        try FileManager.default.createSymbolicLink(
+            at: symbolicLinkURL,
+            withDestinationURL: binaryURL
+        )
+
+        XCTAssertThrowsError(
+            try BundledSMARTCompanionReader.read(at: symbolicLinkURL)
+        ) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "The bundled smartctl companion is not a regular executable within the \(SMARTCompanionXPCLimits.binaryBytes)-byte installation limit."
+            )
+        }
+    }
+
     func testHelperInstallerProvisionsCompanionAfterPreparation() async throws {
         let binary = Data([0xcf, 0xfa, 0xed, 0xfe, 1])
         let provisioner = RecordingCompanionProvisioner()
