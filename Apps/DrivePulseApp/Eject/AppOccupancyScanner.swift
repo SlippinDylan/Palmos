@@ -248,23 +248,13 @@ struct LiveProcessInspector: CooperativelyProcessInspecting {
         pid: Int32,
         while shouldContinue: @escaping @Sendable () -> Bool
     ) throws -> (paths: [String], isComplete: Bool) {
-        let byteCount = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
-        guard byteCount >= 0 else { return ([], false) }
-        guard byteCount > 0 else { return ([], true) }
-
-        let descriptorCount = Int(byteCount) / MemoryLayout<proc_fdinfo>.stride
-        var descriptors = [proc_fdinfo](repeating: proc_fdinfo(), count: descriptorCount)
-        let returned = descriptors.withUnsafeMutableBytes {
-            proc_pidinfo(pid, PROC_PIDLISTFDS, 0, $0.baseAddress, Int32($0.count))
-        }
-        guard returned >= 0 else { return ([], false) }
-
         var paths: [String] = []
-        var isComplete = true
-        for descriptor in descriptors.prefix(Int(returned) / MemoryLayout<proc_fdinfo>.stride) {
+        let enumeration = BoundedProcessFDEnumerator.enumerate(pid: pid, while: shouldContinue)
+        var isComplete = enumeration.isComplete
+        for descriptor in enumeration.descriptors {
             guard shouldContinue() else { throw InspectionError.interrupted }
-            guard descriptor.proc_fdtype == PROX_FDTYPE_VNODE else { continue }
-            switch vnodePath(pid: pid, fd: descriptor.proc_fd) {
+            guard descriptor.type == UInt32(PROX_FDTYPE_VNODE) else { continue }
+            switch vnodePath(pid: pid, fd: descriptor.number) {
             case let .path(path?): paths.append(path)
             case .path(nil): break
             case let .unavailable(errorCode):

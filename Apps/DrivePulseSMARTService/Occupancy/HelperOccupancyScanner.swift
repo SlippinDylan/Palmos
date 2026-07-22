@@ -134,15 +134,13 @@ struct LiveHelperProcessInspector: HelperProcessInspecting {
             if contains(path: path, mounts: scope.mountPaths) { types.insert("workingDirectory") }
         } else { complete = false }
 
-        let bytes = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
-        guard bytes >= 0 else { throw HelperOccupancyError.scanFailed }
-        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: Int(bytes) / MemoryLayout<proc_fdinfo>.stride)
-        let returned = fds.withUnsafeMutableBytes { proc_pidinfo(pid, PROC_PIDLISTFDS, 0, $0.baseAddress, Int32($0.count)) }
-        for fd in fds.prefix(max(0, Int(returned) / MemoryLayout<proc_fdinfo>.stride)) where fd.proc_fdtype == PROX_FDTYPE_VNODE {
+        let enumeration = BoundedProcessFDEnumerator.enumerate(pid: pid, while: shouldContinue)
+        complete = complete && enumeration.isComplete
+        for fd in enumeration.descriptors where fd.type == UInt32(PROX_FDTYPE_VNODE) {
             guard shouldContinue() else { throw CancellationError() }
             var info = vnode_fdinfowithpath()
             let size = MemoryLayout<vnode_fdinfowithpath>.size
-            guard withUnsafeMutablePointer(to: &info, { proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDVNODEPATHINFO, $0, Int32(size)) }) == size else { complete = false; continue }
+            guard withUnsafeMutablePointer(to: &info, { proc_pidfdinfo(pid, fd.number, PROC_PIDFDVNODEPATHINFO, $0, Int32(size)) }) == size else { complete = false; continue }
             let path = withUnsafeBytes(of: &info.pvip.vip_path) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
             if scope.deviceNodes.contains(path) { types.insert("deviceNode") }
             else if contains(path: path, mounts: scope.mountPaths) { types.insert("openFileOrDirectory") }

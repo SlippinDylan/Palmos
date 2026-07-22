@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import XCTest
 @testable import DrivePulseApp
@@ -155,6 +156,173 @@ final class AppOccupancyScannerTests: XCTestCase {
         XCTAssertEqual(LiveProcessInspector.decodePathBuffer([97, 98, 99]), "abc")
     }
 
+    func testBoundedFDEnumeratorCapsReportedDescriptorsAndMarksIncomplete() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            limits: ProcessInspectionLimits(maxFileDescriptorsPerProcess: 2),
+            query: { _, _, _ in Int32(stride * 3) }
+        )
+
+        XCTAssertEqual(result.descriptors.count, 2)
+        XCTAssertFalse(result.isComplete)
+    }
+
+    func testBoundedFDEnumeratorRejectsNegativeAndMisalignedByteCounts() {
+        let negative = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            query: { _, _, _ in -1 }
+        )
+        let misaligned = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            query: { _, _, _ in 1 }
+        )
+
+        XCTAssertTrue(negative.descriptors.isEmpty)
+        XCTAssertFalse(negative.isComplete)
+        XCTAssertTrue(misaligned.descriptors.isEmpty)
+        XCTAssertFalse(misaligned.isComplete)
+    }
+
+    func testBoundedFDEnumeratorClampsFillCountToAllocatedBuffer() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            limits: ProcessInspectionLimits(maxFileDescriptorsPerProcess: 2),
+            query: { _, buffer, byteCount in
+                guard let buffer else { return Int32(stride * 2) }
+                buffer.initializeMemory(as: UInt8.self, repeating: 0, count: Int(byteCount))
+                return Int32(stride * 3)
+            }
+        )
+
+        XCTAssertEqual(result.descriptors.count, 2)
+        XCTAssertFalse(result.isComplete)
+    }
+
+    func testBoundedFDEnumeratorPreservesAlignedPrefixFromMisalignedFill() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let payload = makeFDInfoData(fd: 11, type: 4)
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            query: { _, buffer, _ in
+                guard let buffer else { return Int32(stride * 2) }
+                payload.withUnsafeBytes { raw in
+                    guard let source = raw.baseAddress else { return }
+                    buffer.copyMemory(from: source, byteCount: payload.count)
+                }
+                return Int32(stride + 1)
+            }
+        )
+
+        XCTAssertEqual(result.descriptors, [ProcessFileDescriptor(number: 11, type: 4)])
+        XCTAssertFalse(result.isComplete)
+    }
+
+    func testBoundedFDEnumeratorTreatsShrinkingFillAsComplete() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let payload = makeFDInfoData(fd: 3, type: 1) + makeFDInfoData(fd: 9, type: 2)
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            query: { _, buffer, _ in
+                guard let buffer else { return Int32(stride * 3) }
+                payload.withUnsafeBytes { raw in
+                    guard let source = raw.baseAddress else { return }
+                    buffer.copyMemory(from: source, byteCount: payload.count)
+                }
+                return Int32(payload.count)
+            }
+        )
+
+        XCTAssertEqual(result.descriptors.count, 2)
+        XCTAssertTrue(result.isComplete)
+    }
+
+    func testBoundedFDEnumeratorRejectsNegativeFillCount() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            query: { _, buffer, _ in buffer == nil ? Int32(stride) : -1 }
+        )
+
+        XCTAssertTrue(result.descriptors.isEmpty)
+        XCTAssertFalse(result.isComplete)
+    }
+
+    func testBoundedFDEnumeratorRechecksContinuationAfterZeroSizeQuery() {
+        let continuation = FDEnumerationContinuation()
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            while: { continuation.shouldContinue },
+            query: { _, _, _ in
+                continuation.stop()
+                return 0
+            }
+        )
+
+        XCTAssertTrue(result.descriptors.isEmpty)
+        XCTAssertFalse(result.isComplete)
+    }
+
+    func testBoundedFDEnumeratorRechecksContinuationAfterFill() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let continuation = FDEnumerationContinuation()
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            while: { continuation.shouldContinue },
+            query: { _, buffer, byteCount in
+                guard let buffer else { return Int32(stride) }
+                buffer.initializeMemory(as: UInt8.self, repeating: 0, count: Int(byteCount))
+                continuation.stop()
+                return Int32(stride)
+            }
+        )
+
+        XCTAssertTrue(result.descriptors.isEmpty)
+        XCTAssertFalse(result.isComplete)
+    }
+
+    func testBoundedFDEnumeratorTreatsExactCapAsComplete() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            limits: ProcessInspectionLimits(maxFileDescriptorsPerProcess: 2),
+            query: { _, buffer, byteCount in
+                guard let buffer else { return Int32(stride * 2) }
+                buffer.initializeMemory(as: UInt8.self, repeating: 0, count: Int(byteCount))
+                return Int32(stride * 2)
+            }
+        )
+
+        XCTAssertEqual(result.descriptors.count, 2)
+        XCTAssertTrue(result.isComplete)
+    }
+
+    func testBoundedFDEnumeratorPreservesSmallFilledDescriptorList() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let first = makeFDInfoData(fd: 3, type: 1)
+        let second = makeFDInfoData(fd: 9, type: 2)
+        let payload = first + second
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            query: { _, buffer, byteCount in
+                guard let buffer else { return Int32(payload.count) }
+                payload.withUnsafeBytes { raw in
+                    guard let source = raw.baseAddress else { return }
+                    buffer.copyMemory(from: source, byteCount: min(Int(byteCount), payload.count))
+                }
+                return Int32(payload.count)
+            }
+        )
+
+        XCTAssertEqual(result.descriptors, [
+            ProcessFileDescriptor(number: 3, type: 1),
+            ProcessFileDescriptor(number: 9, type: 2),
+        ])
+        XCTAssertTrue(result.isComplete)
+        XCTAssertEqual(stride * result.descriptors.count, payload.count)
+    }
+
     private var targetScope: OccupancyTargetScope {
         OccupancyTargetScope(
             physicalBSDName: "disk4",
@@ -214,4 +382,17 @@ private final class FixtureProcessInspector: ProcessInspecting, @unchecked Senda
         guard let snapshot = snapshots[pid] else { throw FixtureInspectionError.permissionDenied }
         return snapshot
     }
+}
+
+private func makeFDInfoData(fd: Int32, type: UInt32) -> Data {
+    var info = proc_fdinfo(proc_fd: fd, proc_fdtype: type)
+    return withUnsafeBytes(of: &info) { Data($0) }
+}
+
+private final class FDEnumerationContinuation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isRunning = true
+
+    var shouldContinue: Bool { lock.withLock { isRunning } }
+    func stop() { lock.withLock { isRunning = false } }
 }

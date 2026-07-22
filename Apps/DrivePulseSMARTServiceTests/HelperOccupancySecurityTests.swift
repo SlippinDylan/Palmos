@@ -950,6 +950,69 @@ final class HelperOccupancySecurityTests: XCTestCase {
         XCTAssertFalse(result.isComplete)
     }
 
+    func testBoundedFDEnumeratorRejectsInt32MaxAndNonStrideReports() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let huge = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            query: { _, _, _ in Int32.max }
+        )
+        let unaligned = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            query: { _, _, _ in Int32(stride - 1) }
+        )
+
+        XCTAssertTrue(huge.descriptors.isEmpty)
+        XCTAssertFalse(huge.isComplete)
+        XCTAssertTrue(unaligned.descriptors.isEmpty)
+        XCTAssertFalse(unaligned.isComplete)
+    }
+
+    func testBoundedFDEnumeratorCapsAlignedNearInt32MaxReportAndPreservesPrefix() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let alignedHugeBytes = Int32.max - Int32(Int32.max % Int32(stride))
+        var descriptor = proc_fdinfo(proc_fd: 12, proc_fdtype: 5)
+        let payload = withUnsafeBytes(of: &descriptor) { Data($0) }
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            limits: ProcessInspectionLimits(maxFileDescriptorsPerProcess: 2),
+            query: { _, buffer, byteCount in
+                guard let buffer else { return alignedHugeBytes }
+                guard byteCount == Int32(stride * 2) else { return -1 }
+                payload.withUnsafeBytes { raw in
+                    guard let source = raw.baseAddress else { return }
+                    buffer.copyMemory(from: source, byteCount: payload.count)
+                }
+                return Int32(stride)
+            }
+        )
+
+        XCTAssertEqual(result.descriptors, [ProcessFileDescriptor(number: 12, type: 5)])
+        XCTAssertFalse(result.isComplete)
+    }
+
+    func testProcessInspectionLimitsCannotExceedFixedMemoryBudget() {
+        XCTAssertEqual(
+            ProcessInspectionLimits(maxFileDescriptorsPerProcess: .max).maxFileDescriptorsPerProcess,
+            16_384
+        )
+    }
+
+    func testBoundedFDEnumeratorMarksGrowthAfterSizingIncompleteWithoutOverreading() {
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        let result = BoundedProcessFDEnumerator.enumerate(
+            pid: 7,
+            limits: ProcessInspectionLimits(maxFileDescriptorsPerProcess: 2),
+            query: { _, buffer, byteCount in
+                guard let buffer else { return Int32(stride * 2) }
+                buffer.initializeMemory(as: UInt8.self, repeating: 0, count: Int(byteCount))
+                return Int32(stride * 3)
+            }
+        )
+
+        XCTAssertEqual(result.descriptors.count, 2)
+        XCTAssertFalse(result.isComplete)
+    }
+
     func testScannerDefensivelyCapsMisbehavingCandidateAdapter() async throws {
         let inspector = MisbehavingCandidateInspector()
         let scanner = HelperOccupancyScanner(inspector: inspector)
