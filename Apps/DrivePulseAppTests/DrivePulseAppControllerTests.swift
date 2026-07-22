@@ -1,6 +1,7 @@
 import XCTest
 @testable import DrivePulseApp
 
+import Combine
 import DiskArbitration
 import Foundation
 import DrivePulseCore
@@ -133,6 +134,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         discovery.emit(updatedDevices)
 
         XCTAssertEqual(discovery.subscriptionCount, 1)
+        XCTAssertEqual(discovery.ejectIntentSubscriptionCount, 1)
         let expectation = expectation(description: "observed devices applied")
         Task { @MainActor in
             await self.waitUntilStateDevices(controller, equals: updatedDevices)
@@ -955,11 +957,13 @@ final class DrivePulseAppControllerTests: XCTestCase {
         var controller: DrivePulseAppController? = DrivePulseAppController(deviceDiscovery: discovery)
 
         XCTAssertEqual(discovery.cancellationCount, 0)
+        XCTAssertEqual(discovery.ejectIntentCancellationCount, 0)
 
         controller = nil
 
         XCTAssertNil(controller)
         XCTAssertEqual(discovery.cancellationCount, 1)
+        XCTAssertEqual(discovery.ejectIntentCancellationCount, 1)
     }
 
     func testEjectRoutesSelectedIdentityAndTopologyGenerationToCoordinator() async throws {
@@ -1114,8 +1118,8 @@ final class DrivePulseAppControllerTests: XCTestCase {
             return false
         }
         XCTAssertTrue(controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true)
-        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
-        XCTAssertEqual(controller.selectedPanelDevice?.id, mountedDevice.id)
+        XCTAssertTrue(controller.panelDevices.isEmpty)
+        XCTAssertNil(controller.selectedPanelDevice)
         XCTAssertEqual(controller.selectedFooterActions.map(\.kind), [.openDiskUtility, .quit])
 
         discovery.emit([remountedDevice])
@@ -1164,7 +1168,7 @@ final class DrivePulseAppControllerTests: XCTestCase {
         XCTAssertEqual(controller.selectedFooterActions.map(\.kind), [.openDiskUtility, .quit])
     }
 
-    func testSuccessfulEjectKeepsPhysicalDeviceSelectedWhileUnmounted() async throws {
+    func testSuccessfulEjectHidesPhysicalDeviceAndFallsBackToRemainingDevice() async throws {
         let firstDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let secondDevice = makeDevice(id: "disk42", volumes: ["disk42s1"])
         let coordinator = makeEjectCoordinator(
@@ -1190,11 +1194,12 @@ final class DrivePulseAppControllerTests: XCTestCase {
             return false
         }
         XCTAssertTrue(controller.state.device(id: firstDevice.id)?.volumes.isEmpty == true)
-        XCTAssertEqual(controller.state.selectedDeviceID, firstDevice.id)
-        XCTAssertEqual(controller.selectedPanelDevice?.id, firstDevice.id)
+        XCTAssertEqual(controller.state.selectedDeviceID, secondDevice.id)
+        XCTAssertEqual(controller.panelDevices.map(\.id), [secondDevice.id])
+        XCTAssertEqual(controller.selectedPanelDevice?.id, secondDevice.id)
         XCTAssertEqual(
             controller.selectedFooterActions.map(\.kind),
-            [.openDiskUtility, .quit]
+            [.openInFinder, .eject, .openDiskUtility, .quit]
         )
     }
 
@@ -1260,11 +1265,282 @@ final class DrivePulseAppControllerTests: XCTestCase {
         }
 
         XCTAssertTrue(controller.state.device(id: ejectingDevice.id)?.volumes.isEmpty == true)
-        XCTAssertEqual(controller.state.selectedDeviceID, ejectingDevice.id)
+        XCTAssertEqual(controller.state.selectedDeviceID, remainingDevice.id)
         XCTAssertEqual(
             controller.state.device(id: remainingDevice.id)?.apfsContainerDetails,
             remainingContainer
         )
+    }
+
+    func testObservedUnmountWithoutEjectIntentKeepsDeviceVisibleAndSelected() async {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let unmountedDevice = makeDevice(id: "disk21", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            discoveryObservationDebounce: .zero
+        )
+
+        discovery.emit([unmountedDevice])
+
+        await waitUntil { controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true }
+        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
+        XCTAssertEqual(controller.selectedPanelDevice?.id, mountedDevice.id)
+        XCTAssertEqual(
+            controller.selectedFooterActions.map(\.kind),
+            [.eject, .openDiskUtility, .quit]
+        )
+    }
+
+    func testExternalEjectIntentHidesDeviceAfterObservedUnmount() async {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let unmountedDevice = makeDevice(id: "disk21", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            discoveryObservationDebounce: .zero
+        )
+
+        discovery.emitDiskEjectIntent(targetBSDName: mountedDevice.physicalStoreBSDName)
+        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
+
+        discovery.emit([unmountedDevice])
+
+        await waitUntil { controller.panelDevices.isEmpty }
+        XCTAssertNotNil(controller.state.device(id: mountedDevice.id))
+        XCTAssertTrue(controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true)
+        XCTAssertNil(controller.selectedPanelDevice)
+        XCTAssertNil(controller.selectedPanelDeviceID)
+        XCTAssertEqual(controller.selectedFooterActions.map(\.kind), [.openDiskUtility, .quit])
+    }
+
+    func testExternalEjectIntentAfterObservedUnmountPublishesEmptyPanelState() async {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let unmountedDevice = makeDevice(id: "disk21", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            discoveryObservationDebounce: .zero
+        )
+        var publishedVisibleDeviceIDs: [[DeviceID]] = []
+        let observation = controller.objectWillChange.sink {
+            Task { @MainActor in
+                publishedVisibleDeviceIDs.append(controller.panelDevices.map(\.id))
+            }
+        }
+
+        discovery.emit([unmountedDevice])
+        await waitUntil { controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true }
+        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
+
+        discovery.emitDiskEjectIntent(targetBSDName: mountedDevice.physicalStoreBSDName)
+
+        await waitUntil { controller.panelDevices.isEmpty }
+        await waitUntil { publishedVisibleDeviceIDs.contains([]) }
+        XCTAssertNil(controller.selectedPanelDevice)
+        observation.cancel()
+    }
+
+    func testFailedExternalEjectIntentWithMountedVolumesDoesNotHideDevice() {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery
+        )
+
+        discovery.emitDiskEjectIntent(targetBSDName: mountedDevice.physicalStoreBSDName)
+
+        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
+        XCTAssertEqual(controller.selectedPanelDevice?.id, mountedDevice.id)
+        XCTAssertEqual(
+            controller.selectedFooterActions.map(\.kind),
+            [.openInFinder, .eject, .openDiskUtility, .quit]
+        )
+    }
+
+    func testAmbiguousContainerEjectIntentDoesNotSuppressEitherPhysicalDevice() {
+        let firstDevice = makeDevice(
+            id: "disk21",
+            volumes: [],
+            apfsContainerBSDName: "disk42"
+        )
+        let secondDevice = makeDevice(
+            id: "disk84",
+            volumes: [],
+            apfsContainerBSDName: "disk42"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[firstDevice, secondDevice]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(
+                devices: [firstDevice, secondDevice],
+                selectedDeviceID: firstDevice.id
+            ),
+            deviceDiscovery: discovery
+        )
+
+        discovery.emitDiskEjectIntent(targetBSDName: "disk42")
+
+        XCTAssertEqual(controller.panelDevices.map(\.id), [firstDevice.id, secondDevice.id])
+    }
+
+    func testExpiredExternalEjectIntentDoesNotHideLaterUnmount() async throws {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let unmountedDevice = makeDevice(id: "disk21", volumes: [])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            discoveryObservationDebounce: .zero,
+            externalEjectIntentLifetime: .milliseconds(10)
+        )
+
+        discovery.emitDiskEjectIntent(targetBSDName: mountedDevice.physicalStoreBSDName)
+        try await Task.sleep(for: .milliseconds(30))
+        discovery.emit([unmountedDevice])
+
+        await waitUntil { controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true }
+        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
+    }
+
+    func testRemountClearsExternalEjectSuppression() async {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let unmountedDevice = makeDevice(id: "disk21", volumes: [])
+        let remountedDevice = makeDevice(id: "disk21", volumes: ["disk21s2"])
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            discoveryObservationDebounce: .zero
+        )
+
+        discovery.emitDiskEjectIntent(targetBSDName: mountedDevice.physicalStoreBSDName)
+        discovery.emit([unmountedDevice])
+        await waitUntil { controller.panelDevices.isEmpty }
+
+        discovery.emit([remountedDevice])
+        await waitUntil { controller.panelDevices.first?.volumes == remountedDevice.volumes }
+        XCTAssertEqual(controller.selectedPanelDevice?.id, mountedDevice.id)
+
+        discovery.emit([unmountedDevice])
+        await waitUntil { controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true }
+        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
+    }
+
+    func testSuppressingSelectedExternallyEjectedDeviceFallsBackToRemainingDevice() async {
+        let firstMounted = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let firstUnmounted = makeDevice(id: "disk21", volumes: [])
+        let secondDevice = makeDevice(id: "disk42", volumes: ["disk42s1"])
+        let discovery = StubExternalDeviceDiscovery(results: [[firstMounted, secondDevice]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(
+                devices: [firstMounted, secondDevice],
+                selectedDeviceID: firstMounted.id
+            ),
+            deviceDiscovery: discovery,
+            discoveryObservationDebounce: .zero
+        )
+
+        discovery.emitDiskEjectIntent(targetBSDName: firstMounted.physicalStoreBSDName)
+        discovery.emit([firstUnmounted, secondDevice])
+
+        await waitUntil { controller.panelDevices.map(\.id) == [secondDevice.id] }
+        XCTAssertEqual(controller.state.selectedDeviceID, secondDevice.id)
+        XCTAssertEqual(controller.selectedPanelDevice?.id, secondDevice.id)
+        XCTAssertEqual(
+            controller.selectedFooterActions.map(\.kind),
+            [.openInFinder, .eject, .openDiskUtility, .quit]
+        )
+
+        discovery.emit([firstMounted, secondDevice])
+        await waitUntil { controller.panelDevices.map(\.id) == [firstMounted.id, secondDevice.id] }
+        XCTAssertEqual(controller.selectedPanelDevice?.id, secondDevice.id)
+    }
+
+    func testReinsertWithReusedBSDNameDoesNotInheritExternalEjectSuppression() async {
+        let firstMounted = makeDevice(
+            id: "first-session",
+            volumes: ["disk21s1"],
+            physicalStoreBSDName: "disk21"
+        )
+        let firstUnmounted = makeDevice(
+            id: "first-session",
+            volumes: [],
+            physicalStoreBSDName: "disk21"
+        )
+        let reinsertedMounted = makeDevice(
+            id: "second-session",
+            volumes: ["disk21s1"],
+            physicalStoreBSDName: "disk21"
+        )
+        let reinsertedUnmounted = makeDevice(
+            id: "second-session",
+            volumes: [],
+            physicalStoreBSDName: "disk21"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[firstMounted]])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [firstMounted], selectedDeviceID: firstMounted.id),
+            deviceDiscovery: discovery,
+            discoveryObservationDebounce: .zero
+        )
+
+        discovery.emitDiskEjectIntent(targetBSDName: "disk21")
+        discovery.emit([firstUnmounted])
+        await waitUntil { controller.panelDevices.isEmpty }
+
+        discovery.emit([])
+        await waitUntil { controller.state.devices.isEmpty }
+        discovery.emit([reinsertedMounted])
+        await waitUntil { controller.panelDevices.map(\.id) == [reinsertedMounted.id] }
+
+        discovery.emit([reinsertedUnmounted])
+        await waitUntil { controller.state.selectedDevice?.volumes.isEmpty == true }
+        XCTAssertEqual(controller.panelDevices.map(\.id), [reinsertedMounted.id])
+    }
+
+    func testOwnEjectApprovalIntentDoesNotBecomeExternalSuppression() async throws {
+        let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let unmountedDevice = makeDevice(id: "disk21", volumes: [])
+        let failure = EjectFailure(
+            stage: .ejecting,
+            category: .io,
+            rawStatus: nil,
+            systemMessage: nil,
+            physicalBSDName: mountedDevice.physicalStoreBSDName,
+            holders: []
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
+        let ejecter = BlockingDiskEjecter(result: .failure(failure))
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: mountedDevice),
+            ejecter: ejecter
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [mountedDevice], selectedDeviceID: mountedDevice.id),
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator,
+            discoveryObservationDebounce: .zero
+        )
+        let action = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+
+        controller.perform(action)
+        await ejecter.waitUntilNormalEjectStarts()
+        discovery.emitDiskEjectIntent(targetBSDName: mountedDevice.physicalStoreBSDName)
+        await ejecter.finishNormalEject()
+        await waitUntil {
+            if case .failed = coordinator.state { return true }
+            return false
+        }
+
+        discovery.emit([unmountedDevice])
+        await waitUntil { controller.state.device(id: mountedDevice.id)?.volumes.isEmpty == true }
+        XCTAssertEqual(controller.panelDevices.map(\.id), [mountedDevice.id])
     }
 
     func testPanelPresentationKeepsUnmountedDeviceVisibleAndSelected() {
@@ -1424,9 +1700,11 @@ final class DrivePulseAppControllerTests: XCTestCase {
             EjectLocalization.disappearanceFeedback(target: target)
         )
         XCTAssertNotEqual(feedback, EjectLocalization.successFeedback(target: target))
+        XCTAssertTrue(controller.panelDevices.isEmpty)
+        XCTAssertNil(controller.selectedPanelDevice)
         XCTAssertEqual(
             controller.selectedFooterActions.map(\.kind),
-            [.openInFinder, .openDiskUtility, .quit]
+            [.openDiskUtility, .quit]
         )
         await waitUntilEventually(timeout: 1) { controller.actionFeedback == nil }
     }
@@ -2772,7 +3050,10 @@ private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering, @unc
     private let state: State
     private(set) var subscriptionCount = 0
     private(set) var cancellationCount = 0
+    private(set) var ejectIntentSubscriptionCount = 0
+    private(set) var ejectIntentCancellationCount = 0
     private var onUpdate: (@MainActor @Sendable ([ExternalDevice]) -> Void)?
+    private var onDiskEjectIntent: (@MainActor @Sendable (DiskEjectIntent) -> Void)?
 
     init(results: [[ExternalDevice]]) {
         self.state = State(results: results)
@@ -2792,9 +3073,24 @@ private final class StubExternalDeviceDiscovery: ExternalDeviceDiscovering, @unc
         }
     }
 
+    func observeDiskEjectIntents(
+        _ onIntent: @escaping @MainActor @Sendable (DiskEjectIntent) -> Void
+    ) -> any ExternalDeviceDiscoveryObservation {
+        ejectIntentSubscriptionCount += 1
+        onDiskEjectIntent = onIntent
+        return StubExternalDeviceDiscoveryObservation { [weak self] in
+            self?.ejectIntentCancellationCount += 1
+        }
+    }
+
     @MainActor
     func emit(_ devices: [ExternalDevice]) {
         onUpdate?(devices)
+    }
+
+    @MainActor
+    func emitDiskEjectIntent(targetBSDName: String) {
+        onDiskEjectIntent?(DiskEjectIntent(targetBSDName: targetBSDName))
     }
 
     func resolveNextDiscovery() async {
@@ -3055,10 +3351,8 @@ private actor BlockingDiskEjecter: DiskEjecting {
         self.result = result
     }
 
-    func performNormalEject(
-        target: PhysicalDiskTargetIdentity,
-        scope: OccupancyTargetScope
-    ) async -> DiskEjectOutcome {
+    func performNormalEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        _ = plan
         didStart = true
         startContinuations.forEach { $0.resume() }
         startContinuations.removeAll()
@@ -3066,8 +3360,9 @@ private actor BlockingDiskEjecter: DiskEjecting {
         return result
     }
 
-    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome {
-        .success
+    func performConfirmedForceEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        _ = plan
+        return .success
     }
 
     func waitUntilNormalEjectStarts() async {
@@ -3125,15 +3420,14 @@ private final class LockedCapacityProbe: @unchecked Sendable {
 private struct ImmediateDiskEjecter: DiskEjecting {
     let normalResult: DiskEjectOutcome
 
-    func performNormalEject(
-        target: PhysicalDiskTargetIdentity,
-        scope: OccupancyTargetScope
-    ) async -> DiskEjectOutcome {
-        normalResult
+    func performNormalEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        _ = plan
+        return normalResult
     }
 
-    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome {
-        .success
+    func performConfirmedForceEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        _ = plan
+        return .success
     }
 }
 
@@ -3764,6 +4058,14 @@ private final class StubDiskArbitrationMonitoringSession: DiskArbitrationMonitor
         _ = appearedCallback
         _ = disappearedCallback
         _ = descriptionChangedCallback
+    }
+
+    func registerEjectApprovalCallback(
+        context: UnsafeMutableRawPointer,
+        callback: @escaping DADiskEjectApprovalCallback
+    ) {
+        _ = context
+        _ = callback
     }
 
     func activate(on queue: DispatchQueue) {

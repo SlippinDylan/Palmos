@@ -6,6 +6,19 @@ import DrivePulseCore
 struct ResolvedEjectTarget: Equatable, Sendable {
     let target: EjectWorkflowTarget
     let scope: OccupancyTargetScope
+    let operationPlan: DiskEjectOperationPlan
+
+    init(
+        target: EjectWorkflowTarget,
+        scope: OccupancyTargetScope,
+        operationPlan: DiskEjectOperationPlan? = nil
+    ) {
+        self.target = target
+        self.scope = scope
+        self.operationPlan = operationPlan ?? DiskEjectOperationPlan(
+            physicalTarget: target.physicalIdentity
+        )
+    }
 }
 
 protocol EjectTargetResolving: Sendable {
@@ -34,6 +47,7 @@ struct EjectMediaSnapshot: Equatable, Sendable {
     let isExternal: Bool
     let isEjectable: Bool
     let childBSDNames: [String]
+    let wholeDiskBSDName: String?
     let apfsContainerBSDName: String?
     let mountURL: URL?
 }
@@ -77,6 +91,7 @@ struct LiveEjectTargetSnapshotProvider: EjectTargetSnapshotProviding {
                 isExternal: DeviceIdentityResolver.isExternalPhysicalDevice(record.descriptor),
                 isEjectable: record.isEjectable,
                 childBSDNames: (childNamesByParent[record.bsdName] ?? []).map(\.bsdName),
+                wholeDiskBSDName: record.wholeDiskBSDName,
                 apfsContainerBSDName: device?.apfsContainerBSDName,
                 mountURL: record.volumePath
             )
@@ -152,7 +167,38 @@ struct LiveEjectTargetResolver: EjectTargetResolving {
             displayName: displayName,
             topologyGeneration: topologyGeneration
         )
-        return ResolvedEjectTarget(target: target, scope: scope(for: wholeMedia, media: media))
+        return ResolvedEjectTarget(
+            target: target,
+            scope: scope(for: wholeMedia, media: media),
+            operationPlan: try operationPlan(for: target.physicalIdentity, wholeMedia: wholeMedia, media: media)
+        )
+    }
+
+    private func operationPlan(
+        for physicalTarget: PhysicalDiskTargetIdentity,
+        wholeMedia: EjectMediaSnapshot,
+        media: [EjectMediaSnapshot]
+    ) throws -> DiskEjectOperationPlan {
+        guard let containerBSDName = wholeMedia.apfsContainerBSDName,
+              containerBSDName != wholeMedia.bsdName else {
+            return DiskEjectOperationPlan(physicalTarget: physicalTarget)
+        }
+
+        guard let container = media.first(where: { $0.bsdName == containerBSDName }),
+              container.isWhole,
+              let registryEntryID = container.registryEntryID else {
+            throw EjectTargetResolutionError.incompleteMediaIdentity
+        }
+
+        return DiskEjectOperationPlan(
+            physicalTarget: physicalTarget,
+            logicalWholeDiskTargets: [
+                DiskArbitrationWholeDiskIdentity(
+                    bsdName: container.bsdName,
+                    mediaRegistryEntryID: registryEntryID
+                )
+            ]
+        )
     }
 
     private func scope(

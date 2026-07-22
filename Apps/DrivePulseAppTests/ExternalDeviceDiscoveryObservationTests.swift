@@ -91,6 +91,92 @@ final class ExternalDeviceDiscoveryObservationTests: XCTestCase {
         XCTAssertEqual(monitoringSession.deactivateCallCount, 3)
     }
 
+    func testEjectIntentObserverRegistersApprovalCallbackAndReceivesTarget() async {
+        let monitoringSession = ObservationMonitoringSessionStub()
+        let discovery = LiveExternalDeviceDiscovery(monitoringSession: monitoringSession)
+        let receivedIntent = expectation(description: "eject intent delivered")
+        var intents: [DiskEjectIntent] = []
+        let observation = discovery.observeDiskEjectIntents { intent in
+            intents.append(intent)
+            receivedIntent.fulfill()
+        }
+
+        XCTAssertTrue(monitoringSession.ejectApprovalCallbackRegistered)
+        XCTAssertTrue(monitoringSession.isActive)
+
+        discovery.handleDiskEjectIntent(targetBSDName: "disk7")
+
+        await fulfillment(of: [receivedIntent], timeout: 1)
+        XCTAssertEqual(intents, [DiskEjectIntent(targetBSDName: "disk7")])
+        observation.cancel()
+        XCTAssertFalse(monitoringSession.isActive)
+    }
+
+    func testCancellingEjectIntentObserverDoesNotDeactivateDeviceObserver() {
+        let monitoringSession = ObservationMonitoringSessionStub()
+        let discovery = LiveExternalDeviceDiscovery(monitoringSession: monitoringSession)
+        let deviceObservation = discovery.observeDevices { _ in }
+        let ejectObservation = discovery.observeDiskEjectIntents { _ in }
+
+        ejectObservation.cancel()
+
+        XCTAssertTrue(monitoringSession.isActive)
+        XCTAssertEqual(monitoringSession.deactivateCallCount, 0)
+        deviceObservation.cancel()
+    }
+
+    func testCancelledEjectIntentObserverDoesNotReceiveQueuedIntent() async {
+        let monitoringSession = ObservationMonitoringSessionStub()
+        let discovery = LiveExternalDeviceDiscovery(monitoringSession: monitoringSession)
+        var intents: [DiskEjectIntent] = []
+        let observation = discovery.observeDiskEjectIntents { intent in
+            intents.append(intent)
+        }
+
+        discovery.handleDiskEjectIntent(targetBSDName: "disk7")
+        observation.cancel()
+
+        let mainActorDrain = expectation(description: "queued eject intent delivery drained")
+        Task { @MainActor in
+            mainActorDrain.fulfill()
+        }
+        await fulfillment(of: [mainActorDrain], timeout: 1)
+
+        XCTAssertTrue(intents.isEmpty)
+    }
+
+    func testReservedDrivePulseEjectIntentIsConsumedWithoutExternalDelivery() async {
+        let monitoringSession = ObservationMonitoringSessionStub()
+        let originTracker = DiskEjectIntentOriginTracker()
+        let discovery = LiveExternalDeviceDiscovery(
+            monitoringSession: monitoringSession,
+            ejectIntentOriginTracker: originTracker
+        )
+        var intents: [DiskEjectIntent] = []
+        let observation = discovery.observeDiskEjectIntents { intent in
+            intents.append(intent)
+        }
+        originTracker.reserveOwnIntent(targetBSDName: "disk7")
+
+        discovery.handleDiskEjectIntent(targetBSDName: "disk7")
+        let firstDeliveryDrain = expectation(description: "own intent delivery drained")
+        Task { @MainActor in firstDeliveryDrain.fulfill() }
+        await fulfillment(of: [firstDeliveryDrain], timeout: 1)
+        XCTAssertTrue(intents.isEmpty)
+
+        let externalIntentDelivered = expectation(description: "later external intent delivered")
+        discovery.handleDiskEjectIntent(targetBSDName: "disk7")
+        Task { @MainActor in
+            while intents.isEmpty {
+                await Task.yield()
+            }
+            externalIntentDelivered.fulfill()
+        }
+        await fulfillment(of: [externalIntentDelivered], timeout: 1)
+        XCTAssertEqual(intents, [DiskEjectIntent(targetBSDName: "disk7")])
+        observation.cancel()
+    }
+
     func testCancelledObserverDoesNotReceiveQueuedDiskEvent() async {
         let monitoringSession = ObservationMonitoringSessionStub()
         let discovery = LiveExternalDeviceDiscovery(monitoringSession: monitoringSession)
@@ -131,6 +217,7 @@ private final class ObservationMonitoringSessionStub: DiskArbitrationMonitoringS
         var activateCallCount = 0
         var deactivateCallCount = 0
         var callbackRegistrationCount = 0
+        var ejectApprovalCallbackRegistered = false
         var isActive = false
         var onNextDeactivate: (@Sendable () -> Void)?
     }
@@ -147,6 +234,10 @@ private final class ObservationMonitoringSessionStub: DiskArbitrationMonitoringS
 
     var callbackRegistrationCount: Int {
         state.withLock(\.callbackRegistrationCount)
+    }
+
+    var ejectApprovalCallbackRegistered: Bool {
+        state.withLock(\.ejectApprovalCallbackRegistered)
     }
 
     var isActive: Bool {
@@ -170,6 +261,15 @@ private final class ObservationMonitoringSessionStub: DiskArbitrationMonitoringS
         state.withLock {
             $0.callbackRegistrationCount += 1
         }
+    }
+
+    func registerEjectApprovalCallback(
+        context: UnsafeMutableRawPointer,
+        callback: @escaping DADiskEjectApprovalCallback
+    ) {
+        _ = context
+        _ = callback
+        state.withLock { $0.ejectApprovalCallbackRegistered = true }
     }
 
     func activate(on queue: DispatchQueue) {

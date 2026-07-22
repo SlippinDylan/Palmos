@@ -148,7 +148,7 @@ final class SafeEjectIntegrationTests: XCTestCase {
         let apfsResolver = LiveEjectTargetResolver(snapshotProvider: IntegrationSnapshotProvider(media: [
             media("disk4", whole: true, children: ["disk4s1"], container: "disk8"),
             media("disk4s1"),
-            media("disk8", children: ["disk8s1", "disk8s2"]),
+            media("disk8", whole: true, children: ["disk8s1", "disk8s2"]),
             media("disk8s1", mount: "/Volumes/Data"),
             media("disk8s2", mount: "/Volumes/Backup"),
             media("disk40", whole: true, children: ["disk40s1"]),
@@ -261,6 +261,7 @@ final class SafeEjectIntegrationTests: XCTestCase {
             isExternal: whole,
             isEjectable: whole,
             childBSDNames: children,
+            wholeDiskBSDName: whole ? bsdName : nil,
             apfsContainerBSDName: container,
             mountURL: mount.map(URL.init(fileURLWithPath:))
         )
@@ -332,9 +333,10 @@ private actor IntegrationDAOperations: DiskArbitrationOperating {
     }
 
     func performWholeDiskEject(
-        target: PhysicalDiskTargetIdentity,
+        plan: DiskEjectOperationPlan,
         force: Bool
     ) async -> DiskArbitrationSequenceResult {
+        _ = plan
         unmountCalls += 1
         let result = force ? forceUnmount : normalUnmount
         switch result {
@@ -365,15 +367,14 @@ private actor IntegrationDiskEjecter: DiskEjecting {
         self.force = force
     }
 
-    func performNormalEject(
-        target: PhysicalDiskTargetIdentity,
-        scope: OccupancyTargetScope
-    ) async -> DiskEjectOutcome {
+    func performNormalEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        _ = plan
         normalCalls += 1
         return normal
     }
 
-    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome {
+    func performConfirmedForceEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        _ = plan
         forceCalls += 1
         return force
     }

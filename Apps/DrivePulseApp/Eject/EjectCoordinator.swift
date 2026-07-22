@@ -139,6 +139,7 @@ final class EjectCoordinator: ObservableObject {
                 id: id,
                 target: resolved.target,
                 scope: resolved.scope,
+                operationPlan: resolved.operationPlan,
                 barrier: barrier
             )
             pendingTarget = nil
@@ -170,10 +171,7 @@ final class EjectCoordinator: ObservableObject {
         do {
             guard try await revalidateForOperation(workflow: workflow) != nil else { return }
             state = .working(target: workflow.target, stage: .unmounting)
-            let result = await ejecter.performNormalEject(
-                target: workflow.target.physicalIdentity,
-                scope: workflow.scope
-            )
+            let result = await ejecter.performNormalEject(plan: workflow.operationPlan)
             guard isCurrent(id) else { return }
             await handleNormalResult(result, workflow: workflow)
         } catch {
@@ -217,7 +215,7 @@ final class EjectCoordinator: ObservableObject {
         do {
             guard try await revalidateForOperation(workflow: workflow) != nil else { return }
             state = .working(target: workflow.target, stage: .forceUnmounting)
-            let result = await ejecter.performConfirmedForceEject(target: workflow.target.physicalIdentity)
+            let result = await ejecter.performConfirmedForceEject(plan: workflow.operationPlan)
             guard isCurrent(id) else { return }
             switch result {
             case .success:
@@ -238,7 +236,7 @@ final class EjectCoordinator: ObservableObject {
             let refreshed = try await resolver.revalidate(workflow.target)
             guard isCurrent(id), latestTopologyGeneration == generation else { return }
             validatedTopologyGeneration = generation
-            workflow.refreshScope(refreshed.scope, generation: generation)
+            workflow.refresh(refreshed, generation: generation)
             if shouldEndRecoveryAfterExternalUnmount(workflow: workflow) {
                 operationTask?.cancel()
                 await finishExternalUnmount(workflowID: id)
@@ -272,7 +270,7 @@ final class EjectCoordinator: ObservableObject {
                 guard isCurrent(workflow.id) else { return nil }
                 guard latestTopologyGeneration == generation else { continue }
                 validatedTopologyGeneration = generation
-                workflow.refreshScope(refreshed.scope, generation: generation)
+                workflow.refresh(refreshed, generation: generation)
                 return refreshed
             }
 
@@ -282,7 +280,7 @@ final class EjectCoordinator: ObservableObject {
                   (validatedTopologyGeneration ?? Int.min) >= generation else {
                 continue
             }
-            workflow.refreshScope(refreshed.scope, generation: generation)
+            workflow.refresh(refreshed, generation: generation)
             return refreshed
         }
         return nil
@@ -511,6 +509,7 @@ private final class ActiveWorkflow {
     let id: UUID
     let target: EjectWorkflowTarget
     var scope: OccupancyTargetScope
+    private(set) var operationPlan: DiskEjectOperationPlan
     private(set) var scopeGeneration: Int
     private(set) var hasObservedExternalUnmount = false
     private var barrier: (any EjectBarrier)?
@@ -519,21 +518,25 @@ private final class ActiveWorkflow {
         id: UUID,
         target: EjectWorkflowTarget,
         scope: OccupancyTargetScope,
+        operationPlan: DiskEjectOperationPlan,
         barrier: any EjectBarrier
     ) {
         self.id = id
         self.target = target
         self.scope = scope
+        self.operationPlan = operationPlan
         self.scopeGeneration = target.topologyGeneration
         self.barrier = barrier
     }
 
-    func refreshScope(_ scope: OccupancyTargetScope, generation: Int) {
+    func refresh(_ resolved: ResolvedEjectTarget, generation: Int) {
         guard generation >= scopeGeneration else { return }
+        let scope = resolved.scope
         if self.scope.mountURLs.isEmpty == false, scope.mountURLs.isEmpty {
             hasObservedExternalUnmount = true
         }
         self.scope = scope
+        operationPlan = resolved.operationPlan
         scopeGeneration = generation
     }
 

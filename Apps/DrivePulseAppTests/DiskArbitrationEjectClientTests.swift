@@ -48,6 +48,38 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         XCTAssertEqual(operations.calls, [.unmount(target, force: false), .eject(target)])
     }
 
+    func testAPFSContainerIsDetachedBeforeBackingPhysicalDisk() async {
+        let logicalTarget = DiskArbitrationWholeDiskIdentity(
+            bsdName: "disk7",
+            mediaRegistryEntryID: 7_001
+        )
+        let operations = StubDiskArbitrationOperating(results: [
+            .success, .success, .success, .success
+        ])
+        let client = DiskArbitrationEjectClient(operations: operations)
+
+        let result = await client.performNormalEject(
+            plan: DiskEjectOperationPlan(
+                physicalTarget: PhysicalDiskTargetIdentity(
+                    bsdName: "disk6",
+                    mediaRegistryEntryID: 6_001
+                ),
+                logicalWholeDiskTargets: [logicalTarget]
+            )
+        )
+
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(operations.calls, [
+            .logicalUnmount(logicalTarget, force: false),
+            .logicalEject(logicalTarget),
+            .unmount(
+                PhysicalDiskTargetIdentity(bsdName: "disk6", mediaRegistryEntryID: 6_001),
+                force: false
+            ),
+            .eject(PhysicalDiskTargetIdentity(bsdName: "disk6", mediaRegistryEntryID: 6_001))
+        ])
+    }
+
     func testConfirmedForceEjectUsesForcedWholeUnmountBeforeEjecting() async {
         let adapter = StubDiskArbitrationOperating(results: [.success, .success])
         let client = DiskArbitrationEjectClient(operations: adapter)
@@ -459,6 +491,8 @@ private final class BoundSequenceProbe {
 
 private final class StubDiskArbitrationOperating: DiskArbitrationOperating, @unchecked Sendable {
     enum Call: Equatable {
+        case logicalUnmount(DiskArbitrationWholeDiskIdentity, force: Bool)
+        case logicalEject(DiskArbitrationWholeDiskIdentity)
         case unmount(PhysicalDiskTargetIdentity, force: Bool)
         case eject(PhysicalDiskTargetIdentity)
     }
@@ -469,10 +503,31 @@ private final class StubDiskArbitrationOperating: DiskArbitrationOperating, @unc
     init(results: [DiskArbitrationOperationResult]) { self.results = results }
 
     func performWholeDiskEject(
-        target: PhysicalDiskTargetIdentity,
+        plan: DiskEjectOperationPlan,
         force: Bool
     ) async -> DiskArbitrationSequenceResult {
         let unmountStage: EjectOperationStage = force ? .forceUnmounting : .unmounting
+        for logicalTarget in plan.logicalWholeDiskTargets {
+            calls.append(.logicalUnmount(logicalTarget, force: force))
+            let logicalUnmountResult = results.removeFirst()
+            switch logicalUnmountResult {
+            case .success:
+                break
+            case .failure(let status, _)
+                where DiskArbitrationErrorClassifier().classify(status) == .notMounted:
+                break
+            default:
+                return .failure(result: logicalUnmountResult, stage: unmountStage)
+            }
+
+            calls.append(.logicalEject(logicalTarget))
+            let logicalEjectResult = results.removeFirst()
+            guard logicalEjectResult == .success else {
+                return .failure(result: logicalEjectResult, stage: .ejecting)
+            }
+        }
+
+        let target = plan.physicalTarget
         calls.append(.unmount(target, force: force))
         let unmountResult = results.removeFirst()
         switch unmountResult {

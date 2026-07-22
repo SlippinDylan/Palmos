@@ -57,16 +57,19 @@ final class EjectCoordinatorTests: XCTestCase {
 
     func testNormalPathUsesFreshResolveBarrierRevalidationAndNormalEject() async throws {
         let fixture = Fixture()
-        let refreshed = fixture.resolved(scopePath: "/Volumes/Fresh")
+        let refreshed = fixture.resolved(
+            scopePath: "/Volumes/Fresh",
+            logicalWholeDiskBSDName: "disk8"
+        )
         await fixture.resolver.setRevalidations([.success(refreshed)])
 
         fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
 
         try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
         let events = await fixture.events.snapshot()
-        let scopes = await fixture.ejecter.normalScopes()
+        let plans = await fixture.ejecter.normalPlans()
         XCTAssertEqual(events, ["resolve", "acquire", "drain", "revalidate", "normal:disk4", "release"])
-        XCTAssertEqual(scopes, [refreshed.scope])
+        XCTAssertEqual(plans, [refreshed.operationPlan])
     }
 
     func testAdapterTargetInvalidationMapsToDeviceDisappeared() async throws {
@@ -980,8 +983,21 @@ private final class Fixture {
         .init(physicalBSDName: "disk4", deviceNodes: ["/dev/disk4"], mountURLs: [URL(fileURLWithPath: path)])
     }
 
-    func resolved(scopePath: String = "/Volumes/T7") -> ResolvedEjectTarget {
-        .init(target: target, scope: scope(path: scopePath))
+    func resolved(
+        scopePath: String = "/Volumes/T7",
+        logicalWholeDiskBSDName: String? = nil
+    ) -> ResolvedEjectTarget {
+        let logicalTargets = logicalWholeDiskBSDName.map {
+            [DiskArbitrationWholeDiskIdentity(bsdName: $0, mediaRegistryEntryID: 8_001)]
+        } ?? []
+        return .init(
+            target: target,
+            scope: scope(path: scopePath),
+            operationPlan: DiskEjectOperationPlan(
+                physicalTarget: target.physicalIdentity,
+                logicalWholeDiskTargets: logicalTargets
+            )
+        )
     }
 
     func resolvedWithNoMounts() -> ResolvedEjectTarget {
@@ -1124,7 +1140,7 @@ private actor EjecterSpy: DiskEjecting {
     private let forceGate: AsyncGate?
     private var normalGates: [AsyncGate?]
     private(set) var normalBSDNames: [String] = []
-    private(set) var scopes: [OccupancyTargetScope] = []
+    private(set) var plans: [DiskEjectOperationPlan] = []
     private(set) var forceBSDNames: [String] = []
 
     init(
@@ -1143,19 +1159,18 @@ private actor EjecterSpy: DiskEjecting {
         self.events = events
     }
 
-    func performNormalEject(
-        target: PhysicalDiskTargetIdentity,
-        scope: OccupancyTargetScope
-    ) async -> DiskEjectOutcome {
+    func performNormalEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        let target = plan.physicalTarget
         normalBSDNames.append(target.bsdName)
-        scopes.append(scope)
+        plans.append(plan)
         await events.append("normal:\(target.bsdName)")
         let gate = normalGates.isEmpty ? normalGate : normalGates.removeFirst()
         await gate?.wait()
         return normalResults.removeFirst()
     }
 
-    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome {
+    func performConfirmedForceEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        let target = plan.physicalTarget
         forceBSDNames.append(target.bsdName)
         await events.append("force:\(target.bsdName)")
         await forceGate?.wait()
@@ -1163,7 +1178,7 @@ private actor EjecterSpy: DiskEjecting {
     }
 
     func normalCalls() -> [String] { normalBSDNames }
-    func normalScopes() -> [OccupancyTargetScope] { scopes }
+    func normalPlans() -> [DiskEjectOperationPlan] { plans }
     func forceCalls() -> [String] { forceBSDNames }
 }
 

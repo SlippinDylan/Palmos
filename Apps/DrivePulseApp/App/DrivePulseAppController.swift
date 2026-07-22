@@ -39,6 +39,7 @@ final class DrivePulseAppController: ObservableObject {
     let smartHelperManager: SMARTHelperManager
 
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
+    private var diskEjectIntentObservation: (any ExternalDeviceDiscoveryObservation)?
     private var discoveryLoadTask: Task<Void, Never>?
     private var discoveryObservationDebounceTask: Task<Void, Never>?
     private var observationEnrichmentTask: Task<Void, Never>?
@@ -55,7 +56,9 @@ final class DrivePulseAppController: ObservableObject {
     private var isSystemActionInFlight = false
     private var isEjectWorkflowActive = false
     private var ejectWorkflowDeviceID: DeviceID?
-    private var suppressedEjectDeviceIDs: Set<DeviceID> = []
+    @Published private var suppressedEjectDeviceIDs: Set<DeviceID> = []
+    private var pendingExternalEjectDeviceIDs: Set<DeviceID> = []
+    private var externalEjectIntentExpiryTasks: [DeviceID: Task<Void, Never>] = [:]
     private var lastDiskCountersByDeviceID: [DeviceID: DiskIOCounters] = [:]
     private var sessionMetricsReducersByDeviceID: [DeviceID: SessionMetricsReducer] = [:]
     private let deviceDiscovery: any ExternalDeviceDiscovering
@@ -73,6 +76,7 @@ final class DrivePulseAppController: ObservableObject {
     private let actionFailureFeedbackDuration: TimeInterval
     private let quitFeedbackDuration: TimeInterval
     private let discoveryObservationDebounce: Duration
+    private let externalEjectIntentLifetime: Duration
     private let quitHandler: @MainActor @Sendable () -> Void
 
     init(
@@ -95,6 +99,7 @@ final class DrivePulseAppController: ObservableObject {
         actionFailureFeedbackDuration: TimeInterval = 2.8,
         quitFeedbackDuration: TimeInterval = 0.75,
         discoveryObservationDebounce: Duration = .milliseconds(75),
+        externalEjectIntentLifetime: Duration = .seconds(5),
         quitHandler: @escaping @MainActor @Sendable () -> Void = {
             NSApplication.shared.terminate(nil)
         }
@@ -137,6 +142,7 @@ final class DrivePulseAppController: ObservableObject {
         self.actionFailureFeedbackDuration = actionFailureFeedbackDuration
         self.quitFeedbackDuration = quitFeedbackDuration
         self.discoveryObservationDebounce = discoveryObservationDebounce
+        self.externalEjectIntentLifetime = externalEjectIntentLifetime
         self.quitHandler = quitHandler
         self.state = state ?? DrivePulseAppState(
             devices: [],
@@ -147,6 +153,9 @@ final class DrivePulseAppController: ObservableObject {
         }
         self.discoveryObservation = deviceDiscovery.observeDevices { [weak self] devices in
             self?.applyObservedDevices(devices)
+        }
+        self.diskEjectIntentObservation = deviceDiscovery.observeDiskEjectIntents { [weak self] intent in
+            self?.handleDiskEjectIntent(intent)
         }
         self.ejectStateObservation = self.ejectCoordinator.$state.sink { [weak self] state in
             self?.handleEjectStateChange(state)
@@ -165,11 +174,13 @@ final class DrivePulseAppController: ObservableObject {
         apfsRetryTask?.cancel()
         systemProfilerEnrichmentTask?.cancel()
         discoveryObservation?.cancel()
+        diskEjectIntentObservation?.cancel()
         let coordinator: ThroughputSamplingCoordinator? = throughputSamplingCoordinator
         Task { await coordinator?.stop() }
         actionFeedbackClearTask?.cancel()
         quitTask?.cancel()
         smartRefreshTasksByDeviceID.values.forEach { $0.cancel() }
+        externalEjectIntentExpiryTasks.values.forEach { $0.cancel() }
         volumeCapacityRefresher.stop()
     }
 
@@ -201,11 +212,16 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     var panelDevices: [ExternalDevice] {
-        state.devices
+        state.devices.filter { suppressedEjectDeviceIDs.contains($0.id) == false }
     }
 
     var selectedPanelDevice: ExternalDevice? {
-        state.selectedDevice
+        let visibleDevices = panelDevices
+        if let selectedDeviceID = state.selectedDeviceID,
+           let selectedDevice = visibleDevices.first(where: { $0.id == selectedDeviceID }) {
+            return selectedDevice
+        }
+        return visibleDevices.first
     }
 
     var selectedPanelDeviceID: DeviceID? {
@@ -343,7 +359,7 @@ final class DrivePulseAppController: ObservableObject {
         setEjectWorkflowActive(state.isActiveWorkflow)
         switch state {
         case .succeeded(let target):
-            suppressedEjectDeviceIDs.insert(target.deviceID)
+            suppressDeviceFromPanel(target.deviceID)
             clearMountedVolumes(for: target.deviceID)
             ejectWorkflowDeviceID = nil
             presentActionFeedback(
@@ -354,7 +370,7 @@ final class DrivePulseAppController: ObservableObject {
             clearMountedVolumes(for: target.deviceID)
             ejectWorkflowDeviceID = nil
         case .disappeared(let target):
-            suppressedEjectDeviceIDs.insert(target.deviceID)
+            suppressDeviceFromPanel(target.deviceID)
             ejectWorkflowDeviceID = nil
             presentActionFeedback(
                 EjectLocalization.disappearanceFeedback(target: target),
@@ -521,9 +537,79 @@ final class DrivePulseAppController: ObservableObject {
         }
     }
 
+    private func handleDiskEjectIntent(_ intent: DiskEjectIntent) {
+        let matchingDevices = state.devices.filter { device in
+            device.physicalStoreBSDName == intent.targetBSDName
+                || device.apfsContainerBSDName == intent.targetBSDName
+                || device.volumes.contains(where: { $0.bsdName == intent.targetBSDName })
+        }
+        guard matchingDevices.count == 1, let device = matchingDevices.first else {
+            return
+        }
+
+        guard isEjectWorkflowActive == false || ejectWorkflowDeviceID != device.id else {
+            return
+        }
+
+        pendingExternalEjectDeviceIDs.insert(device.id)
+        scheduleExternalEjectIntentExpiry(for: device.id)
+        if device.volumes.isEmpty {
+            suppressDeviceAfterExternalEjectIntent(device.id)
+        }
+    }
+
+    private func scheduleExternalEjectIntentExpiry(for deviceID: DeviceID) {
+        externalEjectIntentExpiryTasks[deviceID]?.cancel()
+        let lifetime = externalEjectIntentLifetime
+        externalEjectIntentExpiryTasks[deviceID] = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: lifetime)
+            } catch {
+                return
+            }
+            guard let self, Task.isCancelled == false else { return }
+            pendingExternalEjectDeviceIDs.remove(deviceID)
+            externalEjectIntentExpiryTasks.removeValue(forKey: deviceID)
+        }
+    }
+
+    private func suppressDeviceAfterExternalEjectIntent(_ deviceID: DeviceID) {
+        pendingExternalEjectDeviceIDs.remove(deviceID)
+        externalEjectIntentExpiryTasks.removeValue(forKey: deviceID)?.cancel()
+        guard suppressDeviceFromPanel(deviceID) else { return }
+        invalidatePendingDeviceEnrichment()
+    }
+
+    @discardableResult
+    private func suppressDeviceFromPanel(_ deviceID: DeviceID) -> Bool {
+        guard suppressedEjectDeviceIDs.insert(deviceID).inserted else { return false }
+        if state.selectedDeviceID == deviceID,
+           let fallbackDevice = state.devices.first(where: {
+               suppressedEjectDeviceIDs.contains($0.id) == false
+           }) {
+            state.selectDevice(fallbackDevice.id)
+        }
+        return true
+    }
+
+    private func reconcileExternalEjectIntents(with devices: [ExternalDevice]) {
+        let liveDeviceIDs = Set(devices.map(\.id))
+        let missingPendingDeviceIDs = pendingExternalEjectDeviceIDs.subtracting(liveDeviceIDs)
+        for deviceID in missingPendingDeviceIDs {
+            pendingExternalEjectDeviceIDs.remove(deviceID)
+            externalEjectIntentExpiryTasks.removeValue(forKey: deviceID)?.cancel()
+        }
+
+        for device in devices
+        where pendingExternalEjectDeviceIDs.contains(device.id) && device.volumes.isEmpty {
+            suppressDeviceAfterExternalEjectIntent(device.id)
+        }
+    }
+
     private func applyCoalescedObservedDevices(_ devices: [ExternalDevice]) {
         let existingDeviceIDs = Set(state.devices.map(\.id))
         let containsNewDevice = devices.contains { existingDeviceIDs.contains($0.id) == false }
+        reconcileExternalEjectIntents(with: devices)
         reconcileEjectSuppression(with: devices)
         observationEnrichmentTask?.cancel()
         apfsRetryTask?.cancel()
@@ -581,6 +667,7 @@ final class DrivePulseAppController: ObservableObject {
             return
         }
 
+        reconcileExternalEjectIntents(with: devices)
         reconcileEjectSuppression(with: devices)
         state.replaceDevices(devices)
         pruneSamplingState()
@@ -913,6 +1000,11 @@ final class DrivePulseAppController: ObservableObject {
         let liveDeviceIDs = Set(state.devices.map(\.id))
         let livePhysicalBSDNames = Set(state.devices.map(\.physicalStoreBSDName))
         suppressedEjectDeviceIDs.formIntersection(liveDeviceIDs)
+        let expiredPendingDeviceIDs = pendingExternalEjectDeviceIDs.subtracting(liveDeviceIDs)
+        pendingExternalEjectDeviceIDs.formIntersection(liveDeviceIDs)
+        expiredPendingDeviceIDs.forEach { deviceID in
+            externalEjectIntentExpiryTasks.removeValue(forKey: deviceID)?.cancel()
+        }
         let topologyGeneration = discoveryWriteGeneration
         Task {
             await deviceIOTracker.pruneSMARTSafetyScopes(

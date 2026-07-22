@@ -8,9 +8,9 @@ final class EjectTargetResolverTests: XCTestCase {
         let adapter = SnapshotAdapter(snapshots: [[
             media(id: "serial:t7", bsd: "disk4", registryID: 4_001, children: ["disk4s1"], container: "disk5"),
             node(bsd: "disk4s1"),
-            node(bsd: "disk5", children: ["disk5s1", "disk5s2"]),
-            node(bsd: "disk5s1", mount: "/Volumes/Data"),
-            node(bsd: "disk5s2", mount: "/Volumes/Data - Data")
+            node(bsd: "disk5", registryID: 5_001, whole: true, children: ["disk5s1", "disk5s2"]),
+            node(bsd: "disk5s1", wholeDiskBSDName: "disk5", mount: "/Volumes/Data"),
+            node(bsd: "disk5s2", wholeDiskBSDName: "disk5", mount: "/Volumes/Data - Data")
         ]])
         let resolver = LiveEjectTargetResolver(snapshotProvider: adapter)
 
@@ -22,9 +22,78 @@ final class EjectTargetResolverTests: XCTestCase {
 
         XCTAssertEqual(result.target.physicalBSDName, "disk4")
         XCTAssertEqual(result.target.mediaRegistryEntryID, 4_001)
+        XCTAssertEqual(
+            result.operationPlan,
+            DiskEjectOperationPlan(
+                physicalTarget: PhysicalDiskTargetIdentity(
+                    bsdName: "disk4",
+                    mediaRegistryEntryID: 4_001
+                ),
+                logicalWholeDiskTargets: [
+                    DiskArbitrationWholeDiskIdentity(
+                        bsdName: "disk5",
+                        mediaRegistryEntryID: 5_001
+                    )
+                ]
+            )
+        )
         XCTAssertEqual(result.scope.deviceNodes, Set(["/dev/disk4", "/dev/rdisk4", "/dev/disk4s1", "/dev/disk5", "/dev/disk5s1", "/dev/disk5s2"]))
         XCTAssertTrue(result.scope.contains(path: "/Volumes/Data/report.txt"))
         XCTAssertFalse(result.scope.contains(path: "/Volumes/Database/report.txt"))
+    }
+
+    func testBuildsAPFSOperationPlanForSynthesizedContainerBeforePhysicalDisk() async throws {
+        let adapter = SnapshotAdapter(snapshots: [[
+            media(
+                id: "serial:nvme",
+                bsd: "disk6",
+                registryID: 6_001,
+                children: ["disk6s1", "disk6s2"],
+                container: "disk7"
+            ),
+            node(bsd: "disk6s1", wholeDiskBSDName: "disk6"),
+            node(bsd: "disk6s2", wholeDiskBSDName: "disk6"),
+            node(bsd: "disk7", registryID: 7_001, whole: true, children: ["disk7s1"]),
+            node(
+                bsd: "disk7s1",
+                wholeDiskBSDName: "disk7",
+                mount: "/Volumes/Samsung-PM981a-1TB-NVMe"
+            )
+        ]])
+
+        let resolved = try await LiveEjectTargetResolver(snapshotProvider: adapter).resolve(
+            deviceID: DeviceID(rawValue: "serial:nvme"),
+            displayName: "Samsung NVMe",
+            topologyGeneration: 1
+        )
+
+        XCTAssertEqual(resolved.operationPlan.physicalTarget.bsdName, "disk6")
+        XCTAssertEqual(
+            resolved.operationPlan.logicalWholeDiskTargets,
+            [DiskArbitrationWholeDiskIdentity(bsdName: "disk7", mediaRegistryEntryID: 7_001)]
+        )
+    }
+
+    func testRejectsAPFSOperationPlanWithoutStableContainerIdentity() async {
+        let resolver = LiveEjectTargetResolver(snapshotProvider: SnapshotAdapter(snapshots: [[
+            media(
+                id: "serial:nvme",
+                bsd: "disk6",
+                registryID: 6_001,
+                container: "disk7"
+            ),
+            node(bsd: "disk7", whole: true, children: ["disk7s1"]),
+            node(bsd: "disk7s1", wholeDiskBSDName: "disk7", mount: "/Volumes/Data")
+        ]]))
+
+        await XCTAssertThrowsErrorAsync(
+            try await resolver.resolve(
+                deviceID: DeviceID(rawValue: "serial:nvme"),
+                displayName: "Samsung NVMe",
+                topologyGeneration: 1
+            ),
+            equals: .incompleteMediaIdentity
+        )
     }
 
     func testResolvesOrdinaryPartitionDescendants() async throws {
@@ -282,12 +351,21 @@ private func media(
 ) -> EjectMediaSnapshot {
     EjectMediaSnapshot(deviceID: DeviceID(rawValue: id), bsdName: bsd, registryEntryID: registryID,
                        isWhole: true, isExternal: isExternal, isEjectable: isEjectable,
-                       childBSDNames: children, apfsContainerBSDName: container, mountURL: nil)
+                       childBSDNames: children, wholeDiskBSDName: bsd,
+                       apfsContainerBSDName: container, mountURL: nil)
 }
 
-private func node(bsd: String, children: [String] = [], mount: String? = nil) -> EjectMediaSnapshot {
-    EjectMediaSnapshot(deviceID: nil, bsdName: bsd, registryEntryID: nil, isWhole: false,
+private func node(
+    bsd: String,
+    registryID: UInt64? = nil,
+    whole: Bool = false,
+    children: [String] = [],
+    wholeDiskBSDName: String? = nil,
+    mount: String? = nil
+) -> EjectMediaSnapshot {
+    EjectMediaSnapshot(deviceID: nil, bsdName: bsd, registryEntryID: registryID, isWhole: whole,
                        isExternal: false, isEjectable: false, childBSDNames: children,
+                       wholeDiskBSDName: wholeDiskBSDName ?? (whole ? bsd : nil),
                        apfsContainerBSDName: nil, mountURL: mount.map(URL.init(fileURLWithPath:)))
 }
 

@@ -10,9 +10,40 @@ protocol DiskArbitrationMonitoringSession: Sendable {
         disappearedCallback: @escaping DADiskDisappearedCallback,
         descriptionChangedCallback: @escaping DADiskDescriptionChangedCallback
     )
+    func registerEjectApprovalCallback(
+        context: UnsafeMutableRawPointer,
+        callback: @escaping DADiskEjectApprovalCallback
+    )
 
     func activate(on queue: DispatchQueue)
     func deactivate()
+}
+
+final class DiskEjectIntentOriginTracker: @unchecked Sendable {
+    static let shared = DiskEjectIntentOriginTracker()
+
+    // Eject submission and approval callbacks run on different DA session queues.
+    // The lock protects every access to the shared origin markers.
+    private let lock = NSLock()
+    private var ownIntentBSDNames: Set<String> = []
+
+    func reserveOwnIntent(targetBSDName: String) {
+        _ = lock.withLock {
+            ownIntentBSDNames.insert(targetBSDName)
+        }
+    }
+
+    func consumeOwnIntent(targetBSDName: String) -> Bool {
+        lock.withLock {
+            ownIntentBSDNames.remove(targetBSDName) != nil
+        }
+    }
+
+    func discardOwnIntent(targetBSDName: String) {
+        _ = lock.withLock {
+            ownIntentBSDNames.remove(targetBSDName)
+        }
+    }
 }
 
 /// Owns the Disk Arbitration callback context and the complete observer lifecycle.
@@ -20,8 +51,10 @@ final class DiskArbitrationDeviceMonitor: @unchecked Sendable {
     private let monitoringSession: (any DiskArbitrationMonitoringSession)?
     private let sessionQueue: DispatchQueue
     private let enumerateDevices: @Sendable () -> [ExternalDevice]
+    private let ejectIntentOriginTracker: DiskEjectIntentOriginTracker
     private let sessionQueueKey = DispatchSpecificKey<Void>()
     private var observers: [UUID: @MainActor ([ExternalDevice]) -> Void] = [:]
+    private var ejectIntentObservers: [UUID: @MainActor (DiskEjectIntent) -> Void] = [:]
     private var callbackContext: UnsafeMutableRawPointer?
     private var callbacksRegistered = false
     private var isMonitoring = false
@@ -30,11 +63,13 @@ final class DiskArbitrationDeviceMonitor: @unchecked Sendable {
     init(
         monitoringSession: (any DiskArbitrationMonitoringSession)?,
         sessionQueue: DispatchQueue,
-        enumerateDevices: @escaping @Sendable () -> [ExternalDevice]
+        enumerateDevices: @escaping @Sendable () -> [ExternalDevice],
+        ejectIntentOriginTracker: DiskEjectIntentOriginTracker = .shared
     ) {
         self.monitoringSession = monitoringSession
         self.sessionQueue = sessionQueue
         self.enumerateDevices = enumerateDevices
+        self.ejectIntentOriginTracker = ejectIntentOriginTracker
         self.sessionQueue.setSpecific(key: sessionQueueKey, value: ())
     }
 
@@ -45,13 +80,30 @@ final class DiskArbitrationDeviceMonitor: @unchecked Sendable {
 
         performOnSessionQueue {
             observers[observerID] = onUpdate
-            if observers.count == 1 {
+            if observerCount == 1 {
                 startMonitoringOnSessionQueue()
             }
         }
 
         return DiskArbitrationDeviceObservation { [weak self] in
-            self?.removeObserver(observerID)
+            self?.removeDeviceObserver(observerID)
+        }
+    }
+
+    func observeDiskEjectIntents(
+        _ onIntent: @escaping @MainActor (DiskEjectIntent) -> Void
+    ) -> any ExternalDeviceDiscoveryObservation {
+        let observerID = UUID()
+
+        performOnSessionQueue {
+            ejectIntentObservers[observerID] = onIntent
+            if observerCount == 1 {
+                startMonitoringOnSessionQueue()
+            }
+        }
+
+        return DiskArbitrationDeviceObservation { [weak self] in
+            self?.removeEjectIntentObserver(observerID)
         }
     }
 
@@ -82,6 +134,20 @@ final class DiskArbitrationDeviceMonitor: @unchecked Sendable {
             let observerIDs = Array(observers.keys)
             for observerID in observerIDs {
                 deliver(devices, to: observerID)
+            }
+        }
+    }
+
+    func handleDiskEjectIntent(targetBSDName: String) {
+        guard ejectIntentOriginTracker.consumeOwnIntent(targetBSDName: targetBSDName) == false else {
+            return
+        }
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            let intent = DiskEjectIntent(targetBSDName: targetBSDName)
+            let observerIDs = Array(ejectIntentObservers.keys)
+            for observerID in observerIDs {
+                deliver(intent, to: observerID)
             }
         }
     }
@@ -121,6 +187,10 @@ final class DiskArbitrationDeviceMonitor: @unchecked Sendable {
                 disappearedCallback: diskArbitrationDeviceDisappearedCallback,
                 descriptionChangedCallback: diskArbitrationDeviceDescriptionChangedCallback
             )
+            monitoringSession.registerEjectApprovalCallback(
+                context: callbackContext,
+                callback: diskArbitrationDiskEjectApprovalCallback
+            )
             callbacksRegistered = true
         }
 
@@ -152,7 +222,7 @@ final class DiskArbitrationDeviceMonitor: @unchecked Sendable {
     }
 
     private func stopMonitoringOnSessionQueue() {
-        guard isMonitoring, observers.isEmpty else {
+        guard isMonitoring, observerCount == 0 else {
             return
         }
 
@@ -161,14 +231,25 @@ final class DiskArbitrationDeviceMonitor: @unchecked Sendable {
         monitoringSession?.deactivate()
         isDeactivating = false
 
-        if observers.isEmpty == false {
+        if observerCount > 0 {
             startMonitoringOnSessionQueue()
         }
     }
 
-    private func removeObserver(_ observerID: UUID) {
+    private var observerCount: Int {
+        observers.count + ejectIntentObservers.count
+    }
+
+    private func removeDeviceObserver(_ observerID: UUID) {
         performOnSessionQueue {
             observers.removeValue(forKey: observerID)
+            stopMonitoringOnSessionQueue()
+        }
+    }
+
+    private func removeEjectIntentObserver(_ observerID: UUID) {
+        performOnSessionQueue {
+            ejectIntentObservers.removeValue(forKey: observerID)
             stopMonitoringOnSessionQueue()
         }
     }
@@ -192,6 +273,20 @@ final class DiskArbitrationDeviceMonitor: @unchecked Sendable {
                 handler = self.observers[observerID]
             }
             handler?(devices)
+        }
+    }
+
+    private func deliver(_ intent: DiskEjectIntent, to observerID: UUID) {
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            var handler: (@MainActor (DiskEjectIntent) -> Void)?
+            self.performOnSessionQueue {
+                handler = self.ejectIntentObservers[observerID]
+            }
+            handler?(intent)
         }
     }
 }
@@ -241,6 +336,14 @@ private final class DiskArbitrationDeviceMonitorCallbackState: @unchecked Sendab
 
         monitor?.handleDiskEvent()
     }
+
+    func handleDiskEjectIntent(targetBSDName: String) {
+        lock.lock()
+        let monitor = isActive ? monitor : nil
+        lock.unlock()
+
+        monitor?.handleDiskEjectIntent(targetBSDName: targetBSDName)
+    }
 }
 
 private let diskArbitrationDeviceAppearedCallback: DADiskAppearedCallback = { _, context in
@@ -253,6 +356,16 @@ private let diskArbitrationDeviceDisappearedCallback: DADiskDisappearedCallback 
 
 private let diskArbitrationDeviceDescriptionChangedCallback: DADiskDescriptionChangedCallback = { _, _, context in
     diskArbitrationDeviceMonitorCallbackState(from: context)?.handleDiskEvent()
+}
+
+private let diskArbitrationDiskEjectApprovalCallback: DADiskEjectApprovalCallback = { disk, context in
+    let targetDisk = DADiskCopyWholeDisk(disk) ?? disk
+    if let bsdName = DADiskGetBSDName(targetDisk) {
+        diskArbitrationDeviceMonitorCallbackState(from: context)?.handleDiskEjectIntent(
+            targetBSDName: String(cString: bsdName)
+        )
+    }
+    return nil
 }
 
 private func diskArbitrationDeviceMonitorCallbackState(
@@ -292,6 +405,16 @@ final class LiveDiskArbitrationMonitoringSession: DiskArbitrationMonitoringSessi
         DARegisterDiskDisappearedCallback(session, nil, disappearedCallback, context)
         DARegisterDiskDescriptionChangedCallback(session, nil, nil, descriptionChangedCallback, context)
         callbacksRegistered = true
+    }
+
+    func registerEjectApprovalCallback(
+        context: UnsafeMutableRawPointer,
+        callback: @escaping DADiskEjectApprovalCallback
+    ) {
+        guard let session else {
+            return
+        }
+        DARegisterDiskEjectApprovalCallback(session, nil, callback, context)
     }
 
     func activate(on queue: DispatchQueue) {

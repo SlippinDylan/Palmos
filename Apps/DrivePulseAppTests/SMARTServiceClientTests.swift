@@ -1623,6 +1623,13 @@ private final class StubSMARTPresentationDeviceDiscovery: ExternalDeviceDiscover
         return StubSMARTPresentationDeviceObservation()
     }
 
+    func observeDiskEjectIntents(
+        _ onIntent: @escaping @MainActor @Sendable (DiskEjectIntent) -> Void
+    ) -> any ExternalDeviceDiscoveryObservation {
+        _ = onIntent
+        return StubSMARTPresentationDeviceObservation()
+    }
+
     func resolveNextDiscovery() async {
         await state.resolveNextDiscovery()
     }

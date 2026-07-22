@@ -7,10 +7,17 @@ protocol ExternalDeviceDiscoveryObservation: Sendable {
     func cancel()
 }
 
+struct DiskEjectIntent: Equatable, Sendable {
+    let targetBSDName: String
+}
+
 protocol ExternalDeviceDiscovering: Sendable {
     func discoverDevices() async -> [ExternalDevice]
     func observeDevices(
         _ onUpdate: @escaping @MainActor ([ExternalDevice]) -> Void
+    ) -> any ExternalDeviceDiscoveryObservation
+    func observeDiskEjectIntents(
+        _ onIntent: @escaping @MainActor (DiskEjectIntent) -> Void
     ) -> any ExternalDeviceDiscoveryObservation
 }
 
@@ -26,7 +33,8 @@ final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering, @unchecked S
             identityRegistry: .shared
         ),
         monitoringSession: (any DiskArbitrationMonitoringSession)? = LiveDiskArbitrationMonitoringSession(),
-        sessionQueue: DispatchQueue = DispatchQueue(label: "DrivePulse.ExternalDeviceDiscovery")
+        sessionQueue: DispatchQueue = DispatchQueue(label: "DrivePulse.ExternalDeviceDiscovery"),
+        ejectIntentOriginTracker: DiskEjectIntentOriginTracker = .shared
     ) {
         let enumerateDevices: @Sendable () -> [ExternalDevice] = {
             guard let session = DASessionCreate(kCFAllocatorDefault) else {
@@ -41,7 +49,8 @@ final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering, @unchecked S
         self.monitor = DiskArbitrationDeviceMonitor(
             monitoringSession: monitoringSession,
             sessionQueue: sessionQueue,
-            enumerateDevices: enumerateDevices
+            enumerateDevices: enumerateDevices,
+            ejectIntentOriginTracker: ejectIntentOriginTracker
         )
     }
 
@@ -59,7 +68,17 @@ final class LiveExternalDeviceDiscovery: ExternalDeviceDiscovering, @unchecked S
         monitor.observeDevices(onUpdate)
     }
 
+    func observeDiskEjectIntents(
+        _ onIntent: @escaping @MainActor (DiskEjectIntent) -> Void
+    ) -> any ExternalDeviceDiscoveryObservation {
+        monitor.observeDiskEjectIntents(onIntent)
+    }
+
     func handleDiskEvent() {
         monitor.handleDiskEvent()
+    }
+
+    func handleDiskEjectIntent(targetBSDName: String) {
+        monitor.handleDiskEjectIntent(targetBSDName: targetBSDName)
     }
 }
