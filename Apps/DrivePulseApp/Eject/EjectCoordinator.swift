@@ -171,7 +171,7 @@ final class EjectCoordinator: ObservableObject {
             guard try await revalidateForOperation(workflow: workflow) != nil else { return }
             state = .working(target: workflow.target, stage: .unmounting)
             let result = await ejecter.performNormalEject(
-                bsdName: workflow.target.physicalBSDName,
+                target: workflow.target.physicalIdentity,
                 scope: workflow.scope
             )
             guard isCurrent(id) else { return }
@@ -217,13 +217,15 @@ final class EjectCoordinator: ObservableObject {
         do {
             guard try await revalidateForOperation(workflow: workflow) != nil else { return }
             state = .working(target: workflow.target, stage: .forceUnmounting)
-            let result = await ejecter.performConfirmedForceEject(bsdName: workflow.target.physicalBSDName)
+            let result = await ejecter.performConfirmedForceEject(target: workflow.target.physicalIdentity)
             guard isCurrent(id) else { return }
             switch result {
             case .success:
                 await finishSuccess(workflow: workflow)
             case .failure(let failure):
                 await finishFailure(failure, target: workflow.target, workflowID: id)
+            case .targetInvalidated:
+                await finishDisappearance(target: workflow.target, workflowID: id)
             }
         } catch {
             await handleRevalidationError(error, target: workflow.target, workflowID: id)
@@ -287,12 +289,14 @@ final class EjectCoordinator: ObservableObject {
     }
 
     private func handleNormalResult(
-        _ result: Result<Void, EjectFailure>,
+        _ result: DiskEjectOutcome,
         workflow: ActiveWorkflow
     ) async {
         switch result {
         case .success:
             await finishSuccess(workflow: workflow)
+        case .targetInvalidated:
+            await finishDisappearance(target: workflow.target, workflowID: workflow.id)
         case .failure(let failure) where failure.category == .busy:
             await beginRecovery(failure: failure, workflow: workflow)
         case .failure(let failure):

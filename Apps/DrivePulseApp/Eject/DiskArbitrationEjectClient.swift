@@ -1,27 +1,20 @@
-import AppKit
 @preconcurrency import DiskArbitration
-import Darwin
 import Foundation
+import IOKit
 
 protocol DiskArbitrationOperating: Sendable {
-    func unmountWhole(_ bsdName: String, force: Bool) async -> DiskArbitrationOperationResult
-    func eject(_ bsdName: String) async -> DiskArbitrationOperationResult
-}
-
-protocol VolumeUnmounting: Sendable {
-    func unmountVolume(at url: URL, options: FileManager.UnmountOptions) async -> (any Error)?
-}
-
-protocol DissentingProcessIdentifying: Sendable {
-    func holder(for pid: Int32) -> OccupancyHolder
+    func performWholeDiskEject(
+        target: PhysicalDiskTargetIdentity,
+        force: Bool
+    ) async -> DiskArbitrationSequenceResult
 }
 
 protocol DiskEjecting: Sendable {
     func performNormalEject(
-        bsdName: String,
+        target: PhysicalDiskTargetIdentity,
         scope: OccupancyTargetScope
-    ) async -> Result<Void, EjectFailure>
-    func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure>
+    ) async -> DiskEjectOutcome
+    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome
 }
 
 enum DiskArbitrationOperationResult: Equatable, Sendable {
@@ -31,59 +24,89 @@ enum DiskArbitrationOperationResult: Equatable, Sendable {
     case cancelled
 }
 
+enum DiskArbitrationSequenceResult: Equatable, Sendable {
+    case success
+    case failure(result: DiskArbitrationOperationResult, stage: EjectOperationStage)
+    case targetInvalidated(stage: EjectOperationStage)
+}
+
+struct BoundDiskArbitrationSecondStageGate {
+    enum Transition: Equatable {
+        case ejectSubmitted
+        case finished(DiskArbitrationSequenceResult)
+    }
+
+    let targetIsValid: () -> Bool
+    let submitEject: () -> Void
+
+    func proceedAfterUnmount(
+        _ result: DiskArbitrationOperationResult,
+        stage: EjectOperationStage
+    ) -> Transition {
+        switch result {
+        case .success:
+            break
+        case .failure(let status, _)
+            where DiskArbitrationErrorClassifier().classify(status) == .notMounted:
+            break
+        default:
+            return .finished(.failure(result: result, stage: stage))
+        }
+
+        guard targetIsValid() else {
+            return .finished(.targetInvalidated(stage: .ejecting))
+        }
+        submitEject()
+        return .ejectSubmitted
+    }
+}
+
 struct DiskArbitrationEjectClient: DiskEjecting {
     private let operations: any DiskArbitrationOperating
-    private let volumeUnmounter: any VolumeUnmounting
-    private let dissentingProcessIdentifier: any DissentingProcessIdentifying
     private let classifier: DiskArbitrationErrorClassifier
 
     init(
         operations: any DiskArbitrationOperating = LiveDiskArbitrationOperating(),
-        volumeUnmounter: any VolumeUnmounting = LiveVolumeUnmounter(),
-        dissentingProcessIdentifier: any DissentingProcessIdentifying = LiveDissentingProcessIdentifier(),
         classifier: DiskArbitrationErrorClassifier = DiskArbitrationErrorClassifier()
     ) {
         self.operations = operations
-        self.volumeUnmounter = volumeUnmounter
-        self.dissentingProcessIdentifier = dissentingProcessIdentifier
         self.classifier = classifier
     }
 
     func performNormalEject(
-        bsdName: String,
+        target: PhysicalDiskTargetIdentity,
         scope: OccupancyTargetScope
-    ) async -> Result<Void, EjectFailure> {
-        guard let mountURL = scope.mountURLs.sorted(by: { $0.path < $1.path }).first else {
-            return await performPhysicalEject(bsdName: bsdName)
-        }
-
-        let error = await volumeUnmounter.unmountVolume(
-            at: mountURL,
-            options: [.allPartitionsAndEjectDisk, .withoutUI]
-        )
-        guard let error else { return .success(()) }
-        return .failure(failure(from: error as NSError, bsdName: bsdName))
+    ) async -> DiskEjectOutcome {
+        _ = scope
+        return map(await operations.performWholeDiskEject(target: target, force: false), target: target)
     }
 
-    func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
-        let unmountResult = await operations.unmountWhole(bsdName, force: true)
-
-        if case .failure(let status, _) = unmountResult,
-           classifier.classify(status) == .notMounted {
-            // An already-unmounted whole disk is ready for the eject phase.
-        } else if let failure = failure(from: unmountResult, stage: .forceUnmounting, bsdName: bsdName) {
-            return .failure(failure)
-        }
-
-        return await performPhysicalEject(bsdName: bsdName)
+    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome {
+        map(await operations.performWholeDiskEject(target: target, force: true), target: target)
     }
 
-    private func performPhysicalEject(bsdName: String) async -> Result<Void, EjectFailure> {
-        let ejectResult = await operations.eject(bsdName)
-        if let failure = failure(from: ejectResult, stage: .ejecting, bsdName: bsdName) {
-            return .failure(failure)
+    private func map(
+        _ result: DiskArbitrationSequenceResult,
+        target: PhysicalDiskTargetIdentity
+    ) -> DiskEjectOutcome {
+        switch result {
+        case .success:
+            return .success
+        case .targetInvalidated(let stage):
+            return .targetInvalidated(stage: stage)
+        case .failure(let result, let stage):
+            if let failure = failure(from: result, stage: stage, bsdName: target.bsdName) {
+                return .failure(failure)
+            }
+            return .failure(EjectFailure(
+                stage: stage,
+                category: .unknown,
+                rawStatus: nil,
+                systemMessage: "Disk Arbitration returned an invalid success state",
+                physicalBSDName: target.bsdName,
+                holders: []
+            ))
         }
-        return .success(())
     }
 
     private func failure(
@@ -124,88 +147,6 @@ struct DiskArbitrationEjectClient: DiskEjecting {
         }
     }
 
-    private func failure(from error: NSError, bsdName: String) -> EjectFailure {
-        let pid = dissentingProcessPID(from: error)
-        return EjectFailure(
-            stage: .unmounting,
-            category: pid == nil ? category(from: error) : .busy,
-            rawStatus: Int32(exactly: error.code),
-            systemMessage: error.localizedDescription,
-            physicalBSDName: bsdName,
-            holders: pid.map { [dissentingProcessIdentifier.holder(for: $0)] } ?? []
-        )
-    }
-
-    private func category(from error: NSError) -> EjectFailureCategory {
-        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
-            let underlyingCategory = category(from: underlying)
-            if underlyingCategory != .unknown { return underlyingCategory }
-        }
-
-        if error.domain == NSCocoaErrorDomain {
-            return switch error.code {
-            case CocoaError.fileNoSuchFile.rawValue: .notFound
-            case CocoaError.fileReadNoPermission.rawValue,
-                 CocoaError.fileWriteNoPermission.rawValue: .notPermitted
-            case CocoaError.fileReadUnknown.rawValue,
-                 CocoaError.fileWriteUnknown.rawValue: .io
-            default: .unknown
-            }
-        }
-
-        guard error.domain == NSPOSIXErrorDomain else { return .unknown }
-        return switch Int32(error.code) {
-        case EBUSY: .busy
-        case EACCES, EPERM: .notPermitted
-        case ENOENT, ENODEV: .notFound
-        case ENXIO: .notReady
-        case EIO: .io
-        case ETIMEDOUT: .timedOut
-        default: .unknown
-        }
-    }
-
-    private func dissentingProcessPID(from error: NSError) -> Int32? {
-        guard let number = error.userInfo[NSFileManagerUnmountDissentingProcessIdentifierErrorKey] as? NSNumber else {
-            return nil
-        }
-        return Int32(exactly: number.int64Value)
-    }
-}
-
-final class LiveVolumeUnmounter: VolumeUnmounting, @unchecked Sendable {
-    private let fileManager: FileManager
-
-    init(fileManager: FileManager = .default) {
-        self.fileManager = fileManager
-    }
-
-    func unmountVolume(at url: URL, options: FileManager.UnmountOptions) async -> (any Error)? {
-        await withCheckedContinuation { continuation in
-            fileManager.unmountVolume(at: url, options: options) { error in
-                continuation.resume(returning: error)
-            }
-        }
-    }
-}
-
-struct LiveDissentingProcessIdentifier: DissentingProcessIdentifying {
-    func holder(for pid: Int32) -> OccupancyHolder {
-        let displayName = NSRunningApplication(processIdentifier: pid)?.localizedName
-        return OccupancyHolder(
-            pid: pid,
-            executableName: executableName(for: pid) ?? displayName ?? "Process \(pid)",
-            displayName: displayName,
-            type: .unknown
-        )
-    }
-
-    private func executableName(for pid: Int32) -> String? {
-        var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
-        guard proc_pidpath(pid, &path, UInt32(path.count)) > 0 else { return nil }
-        let bytes = path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-        return URL(fileURLWithPath: String(decoding: bytes, as: UTF8.self)).lastPathComponent
-    }
 }
 
 final class LiveDiskArbitrationOperating: DiskArbitrationOperating, @unchecked Sendable {
@@ -219,74 +160,180 @@ final class LiveDiskArbitrationOperating: DiskArbitrationOperating, @unchecked S
         self.timeoutNanoseconds = timeoutNanoseconds
     }
 
-    func unmountWhole(_ bsdName: String, force: Bool) async -> DiskArbitrationOperationResult {
-        await perform(bsdName: bsdName) { disk, callbackToken in
-            var options = DADiskUnmountOptions(kDADiskUnmountOptionWhole)
-            if force {
-                options |= DADiskUnmountOptions(kDADiskUnmountOptionForce)
-            }
-            DADiskUnmount(
-                disk,
-                options,
-                diskArbitrationUnmountCallback,
-                callbackToken.unsafeContext
-            )
-        }
-    }
-
-    func eject(_ bsdName: String) async -> DiskArbitrationOperationResult {
-        await perform(bsdName: bsdName) { disk, callbackToken in
-            DADiskEject(
-                disk,
-                DADiskEjectOptions(kDADiskEjectOptionDefault),
-                diskArbitrationEjectCallback,
-                callbackToken.unsafeContext
-            )
-        }
-    }
-
-    private func perform(
-        bsdName: String,
-        operation: @escaping @Sendable (DADisk, DiskArbitrationCallbackToken) -> Void
-    ) async -> DiskArbitrationOperationResult {
+    func performWholeDiskEject(
+        target: PhysicalDiskTargetIdentity,
+        force: Bool
+    ) async -> DiskArbitrationSequenceResult {
         let cancellation = DiskArbitrationOperationCancellation()
         return await withTaskCancellationHandler {
-            await withCheckedContinuation { (continuation: CheckedContinuation<DiskArbitrationOperationResult, Never>) in
+            await withCheckedContinuation { (continuation: CheckedContinuation<DiskArbitrationSequenceResult, Never>) in
                 sessionQueue.async { [sessionQueue, timeoutNanoseconds] in
                     guard let session = DASessionCreate(kCFAllocatorDefault),
-                          let disk = bsdName.withCString({
+                          let disk = target.bsdName.withCString({
                               DADiskCreateFromBSDName(kCFAllocatorDefault, session, $0)
                           }) else {
                         continuation.resume(returning: .failure(
-                            status: DAReturn(kDAReturnNotFound), message: nil
+                            result: .failure(status: DAReturn(kDAReturnNotFound), message: nil),
+                            stage: force ? .forceUnmounting : .unmounting
                         ))
                         return
                     }
 
                     DASessionSetDispatchQueue(session, sessionQueue)
-                    let callbackToken = DiskArbitrationCallbackRegistry.shared.register(resume: { result in
-                        continuation.resume(returning: result)
-                    }, cleanup: {
-                        DASessionSetDispatchQueue(session, nil)
-                    })
-                    cancellation.install(callbackToken)
-                    let submitted = cancellation.submit {
-                        operation(disk, callbackToken)
-                    }
-
-                    guard submitted else { return }
-                    Task {
-                        try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-                        DiskArbitrationCallbackRegistry.shared.resolve(
-                            context: callbackToken,
-                            event: .timeout
-                        )
-                    }
+                    let sequence = LiveDiskArbitrationBoundSequence(
+                        session: session,
+                        disk: disk,
+                        target: target,
+                        force: force,
+                        sessionQueue: sessionQueue,
+                        timeoutNanoseconds: timeoutNanoseconds,
+                        cancellation: cancellation,
+                        continuation: continuation
+                    )
+                    sequence.start()
                 }
             }
         } onCancel: {
             cancellation.cancel()
         }
+    }
+}
+
+/// Queue-confined wrapper for one DADisk reference. The sequence never crosses
+/// the session queue, so unmount and eject share the same bound object.
+private final class LiveDiskArbitrationBoundSequence: @unchecked Sendable {
+    private let session: DASession
+    private let disk: DADisk
+    private let target: PhysicalDiskTargetIdentity
+    private let force: Bool
+    private let sessionQueue: DispatchQueue
+    private let timeoutNanoseconds: UInt64
+    private let cancellation: DiskArbitrationOperationCancellation
+    private let continuation: CheckedContinuation<DiskArbitrationSequenceResult, Never>
+    private let lock = NSLock()
+    private var finished = false
+
+    init(
+        session: DASession,
+        disk: DADisk,
+        target: PhysicalDiskTargetIdentity,
+        force: Bool,
+        sessionQueue: DispatchQueue,
+        timeoutNanoseconds: UInt64,
+        cancellation: DiskArbitrationOperationCancellation,
+        continuation: CheckedContinuation<DiskArbitrationSequenceResult, Never>
+    ) {
+        self.session = session
+        self.disk = disk
+        self.target = target
+        self.force = force
+        self.sessionQueue = sessionQueue
+        self.timeoutNanoseconds = timeoutNanoseconds
+        self.cancellation = cancellation
+        self.continuation = continuation
+    }
+
+    func start() {
+        guard targetMatches() else {
+            finish(.targetInvalidated(stage: force ? .forceUnmounting : .unmounting))
+            return
+        }
+        submitUnmount()
+    }
+
+    private func submitUnmount() {
+        let stage: EjectOperationStage = force ? .forceUnmounting : .unmounting
+        submit(stage: stage) { [disk, force] token in
+            var options = DADiskUnmountOptions(kDADiskUnmountOptionWhole)
+            if force { options |= DADiskUnmountOptions(kDADiskUnmountOptionForce) }
+            DADiskUnmount(disk, options, diskArbitrationUnmountCallback, token.unsafeContext)
+        }
+    }
+
+    private func submitEject() {
+        submit(stage: .ejecting) { [disk] token in
+            DADiskEject(
+                disk,
+                DADiskEjectOptions(kDADiskEjectOptionDefault),
+                diskArbitrationEjectCallback,
+                token.unsafeContext
+            )
+        }
+    }
+
+    private func submit(
+        stage: EjectOperationStage,
+        operation: @escaping @Sendable (DiskArbitrationCallbackToken) -> Void
+    ) {
+        let queue = sessionQueue
+        let sequence = self
+        let token = DiskArbitrationCallbackRegistry.shared.register(
+            resume: { result in
+                queue.async {
+                    sequence.handle(result, stage: stage)
+                }
+            }
+        )
+        cancellation.install(token)
+        guard cancellation.submit({ operation(token) }) else { return }
+        sessionQueue.asyncAfter(deadline: .now() + .nanoseconds(Int(timeoutNanoseconds))) {
+            DiskArbitrationCallbackRegistry.shared.resolve(context: token, event: .timeout)
+        }
+    }
+
+    private func handle(_ result: DiskArbitrationOperationResult, stage: EjectOperationStage) {
+        switch stage {
+        case .unmounting, .forceUnmounting:
+            let transition = BoundDiskArbitrationSecondStageGate(
+                targetIsValid: targetMatches,
+                submitEject: continueToEject
+            ).proceedAfterUnmount(result, stage: stage)
+            if case .finished(let result) = transition {
+                finish(result)
+            }
+        case .ejecting:
+            result == .success
+                ? finish(.success)
+                : finish(.failure(result: result, stage: stage))
+        default:
+            finish(.failure(result: result, stage: stage))
+        }
+    }
+
+    private func continueToEject() {
+        cancellation.prepareNextStage()
+        submitEject()
+    }
+
+    private func finish(_ result: DiskArbitrationSequenceResult) {
+        let shouldResume = lock.withLock {
+            guard finished == false else { return false }
+            finished = true
+            return true
+        }
+        guard shouldResume else { return }
+        DASessionSetDispatchQueue(session, nil)
+        continuation.resume(returning: result)
+    }
+
+    private func targetMatches() -> Bool {
+        guard let wholeDisk = DADiskCopyWholeDisk(disk),
+              let wholeName = DADiskGetBSDName(wholeDisk),
+              String(cString: wholeName) == target.bsdName else {
+            return false
+        }
+        let ioMedia = DADiskCopyIOMedia(disk)
+        guard ioMedia != IO_OBJECT_NULL else { return false }
+        var registryEntryID: UInt64 = 0
+        guard IORegistryEntryGetRegistryEntryID(ioMedia, &registryEntryID) == KERN_SUCCESS,
+              registryEntryID == target.mediaRegistryEntryID,
+              let description = DADiskCopyDescription(disk) as NSDictionary? else {
+            return false
+        }
+        let isWhole = description[kDADiskDescriptionMediaWholeKey] as? Bool ?? false
+        let isInternal = description[kDADiskDescriptionDeviceInternalKey] as? Bool ?? true
+        let isNetwork = description[kDADiskDescriptionVolumeNetworkKey] as? Bool ?? true
+        return isWhole && isInternal == false && isNetwork == false
     }
 }
 
@@ -327,6 +374,13 @@ final class DiskArbitrationOperationCancellation: @unchecked Sendable {
             isSubmitted = true
             operation()
             return true
+        }
+    }
+
+    func prepareNextStage() {
+        lock.withLock {
+            callbackToken = nil
+            isSubmitted = false
         }
     }
 }

@@ -2815,19 +2815,19 @@ private struct ImmediateEjectBarrier: EjectBarrier {
 }
 
 private actor BlockingDiskEjecter: DiskEjecting {
-    private let result: Result<Void, EjectFailure>
+    private let result: DiskEjectOutcome
     private var didStart = false
     private var startContinuations: [CheckedContinuation<Void, Never>] = []
     private var finishContinuation: CheckedContinuation<Void, Never>?
 
-    init(result: Result<Void, EjectFailure> = .success(())) {
+    init(result: DiskEjectOutcome = .success(())) {
         self.result = result
     }
 
     func performNormalEject(
-        bsdName: String,
+        target: PhysicalDiskTargetIdentity,
         scope: OccupancyTargetScope
-    ) async -> Result<Void, EjectFailure> {
+    ) async -> DiskEjectOutcome {
         didStart = true
         startContinuations.forEach { $0.resume() }
         startContinuations.removeAll()
@@ -2835,8 +2835,8 @@ private actor BlockingDiskEjecter: DiskEjecting {
         return result
     }
 
-    func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
-        .success(())
+    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome {
+        .success
     }
 
     func waitUntilNormalEjectStarts() async {
@@ -2892,17 +2892,17 @@ private final class LockedCapacityProbe: @unchecked Sendable {
 }
 
 private struct ImmediateDiskEjecter: DiskEjecting {
-    let normalResult: Result<Void, EjectFailure>
+    let normalResult: DiskEjectOutcome
 
     func performNormalEject(
-        bsdName: String,
+        target: PhysicalDiskTargetIdentity,
         scope: OccupancyTargetScope
-    ) async -> Result<Void, EjectFailure> {
+    ) async -> DiskEjectOutcome {
         normalResult
     }
 
-    func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
-        .success(())
+    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome {
+        .success
     }
 }
 

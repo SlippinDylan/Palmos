@@ -20,14 +20,12 @@ final class SafeEjectIntegrationTests: XCTestCase {
             appScanner: IntegrationAppScanner(result: .init(holders: [holder], isComplete: true)),
             helperScanner: helper
         )
-        let operations = IntegrationDAOperations()
-        let volumeUnmounter = IntegrationVolumeUnmounter(
-            error: NSError(domain: NSPOSIXErrorDomain, code: Int(EBUSY))
+        let operations = IntegrationDAOperations(
+            normalUnmount: .failure(status: DAReturn(kDAReturnBusy), message: "Volume is in use")
         )
         let fixture = makeCoordinator(
             ejecter: DiskArbitrationEjectClient(
-                operations: operations,
-                volumeUnmounter: volumeUnmounter
+                operations: operations
             ),
             scanner: scanner
         )
@@ -76,9 +74,8 @@ final class SafeEjectIntegrationTests: XCTestCase {
             displayName: nil,
             type: .openFileOrDirectory
         )
-        let operations = IntegrationDAOperations()
-        let volumeUnmounter = IntegrationVolumeUnmounter(
-            error: NSError(domain: NSPOSIXErrorDomain, code: Int(EBUSY))
+        let operations = IntegrationDAOperations(
+            normalUnmount: .failure(status: DAReturn(kDAReturnBusy), message: "Volume is in use")
         )
         let scanner = OccupancyScanner(
             appScanner: IntegrationAppScanner(result: .init(holders: [holder], isComplete: true)),
@@ -88,8 +85,7 @@ final class SafeEjectIntegrationTests: XCTestCase {
             resolver: IntegrationResolver(initial: .success(.init(target: target, scope: scope))),
             quiescer: DeviceIOQuiescer(tracker: tracker),
             ejecter: DiskArbitrationEjectClient(
-                operations: operations,
-                volumeUnmounter: volumeUnmounter
+                operations: operations
             ),
             occupancyScanner: scanner,
             preparationTimeout: .seconds(1)
@@ -97,16 +93,11 @@ final class SafeEjectIntegrationTests: XCTestCase {
 
         coordinator.begin(deviceID: target.deviceID, displayName: target.displayName, topologyGeneration: 9)
         try await waitUntil { if case .working(_, .preparing) = coordinator.state { true } else { false } }
-        let callsBeforeDrain = await volumeUnmounter.callCount()
-        XCTAssertEqual(callsBeforeDrain, 0)
-
         await tracker.finish(smartToken)
         try await waitUntil { coordinator.state.recovery != nil }
 
-        let callsAfterDrain = await volumeUnmounter.callCount()
         let daUnmountCalls = await operations.unmountCallCount()
-        XCTAssertEqual(callsAfterDrain, 1)
-        XCTAssertEqual(daUnmountCalls, 0)
+        XCTAssertEqual(daUnmountCalls, 1)
         XCTAssertEqual(coordinator.state.recovery?.holders.map(\.preferredName), ["Finder"])
         XCTAssertFalse(coordinator.state.recovery?.holders.contains { $0.preferredName == "DrivePulse" } == true)
     }
@@ -135,16 +126,13 @@ final class SafeEjectIntegrationTests: XCTestCase {
         XCTAssertFalse(first.coordinator.state.isSuccessful)
 
         let operations = IntegrationDAOperations(
+            normalUnmount: .failure(status: DAReturn(kDAReturnBusy), message: "Volume is in use"),
             forceUnmount: .success,
             ejectResult: .failure(status: DAReturn(kDAReturnError), message: "transport")
         )
-        let volumeUnmounter = IntegrationVolumeUnmounter(
-            error: NSError(domain: NSPOSIXErrorDomain, code: Int(EBUSY))
-        )
         let second = makeCoordinator(
             ejecter: DiskArbitrationEjectClient(
-                operations: operations,
-                volumeUnmounter: volumeUnmounter
+                operations: operations
             ),
             scanner: IntegrationOccupancyScanner()
         )
@@ -328,63 +316,64 @@ private struct IntegrationBarrier: EjectBarrier {
 }
 
 private actor IntegrationDAOperations: DiskArbitrationOperating {
+    private let normalUnmount: DiskArbitrationOperationResult
     private let forceUnmount: DiskArbitrationOperationResult
     private let ejectResult: DiskArbitrationOperationResult
     private var unmountCalls = 0
 
     init(
+        normalUnmount: DiskArbitrationOperationResult = .success,
         forceUnmount: DiskArbitrationOperationResult = .success,
         ejectResult: DiskArbitrationOperationResult = .success
     ) {
+        self.normalUnmount = normalUnmount
         self.forceUnmount = forceUnmount
         self.ejectResult = ejectResult
     }
 
-    func unmountWhole(_ bsdName: String, force: Bool) async -> DiskArbitrationOperationResult {
+    func performWholeDiskEject(
+        target: PhysicalDiskTargetIdentity,
+        force: Bool
+    ) async -> DiskArbitrationSequenceResult {
         unmountCalls += 1
-        return forceUnmount
+        let result = force ? forceUnmount : normalUnmount
+        switch result {
+        case .success:
+            return ejectResult == .success
+                ? .success
+                : .failure(result: ejectResult, stage: .ejecting)
+        case .failure(let status, _) where DiskArbitrationErrorClassifier().classify(status) == .notMounted:
+            return ejectResult == .success
+                ? .success
+                : .failure(result: ejectResult, stage: .ejecting)
+        default:
+            return .failure(result: result, stage: force ? .forceUnmounting : .unmounting)
+        }
     }
 
-    func eject(_ bsdName: String) async -> DiskArbitrationOperationResult { ejectResult }
     func unmountCallCount() -> Int { unmountCalls }
 }
 
-private actor IntegrationVolumeUnmounter: VolumeUnmounting {
-    private let error: NSError?
-    private var calls = 0
-
-    init(error: NSError?) {
-        self.error = error
-    }
-
-    func unmountVolume(at url: URL, options: FileManager.UnmountOptions) async -> (any Error)? {
-        calls += 1
-        return error
-    }
-
-    func callCount() -> Int { calls }
-}
-
 private actor IntegrationDiskEjecter: DiskEjecting {
-    private let normal: Result<Void, EjectFailure>
-    private let force: Result<Void, EjectFailure>
+    private let normal: DiskEjectOutcome
+    private let force: DiskEjectOutcome
     private var normalCalls = 0
     private var forceCalls = 0
 
-    init(normal: Result<Void, EjectFailure>, force: Result<Void, EjectFailure>) {
+    init(normal: DiskEjectOutcome, force: DiskEjectOutcome) {
         self.normal = normal
         self.force = force
     }
 
     func performNormalEject(
-        bsdName: String,
+        target: PhysicalDiskTargetIdentity,
         scope: OccupancyTargetScope
-    ) async -> Result<Void, EjectFailure> {
+    ) async -> DiskEjectOutcome {
         normalCalls += 1
         return normal
     }
 
-    func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
+    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome {
         forceCalls += 1
         return force
     }

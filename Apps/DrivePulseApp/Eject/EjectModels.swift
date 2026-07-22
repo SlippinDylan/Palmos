@@ -35,12 +35,44 @@ struct EjectFailure: Error, Equatable, Sendable {
     var holders: [OccupancyHolder]
 }
 
+/// The minimum identity needed to keep destructive disk operations attached to
+/// the same physical medium after a BSD name is reused.
+struct PhysicalDiskTargetIdentity: Equatable, Sendable {
+    let bsdName: String
+    let mediaRegistryEntryID: UInt64
+}
+
+enum DiskEjectOutcome: Equatable, Sendable {
+    case success
+    case failure(EjectFailure)
+    case targetInvalidated(stage: EjectOperationStage)
+
+    static func success(_: Void) -> Self { .success }
+
+    var isSuccess: Bool {
+        if case .success = self { return true }
+        return false
+    }
+
+    var failure: EjectFailure? {
+        guard case .failure(let failure) = self else { return nil }
+        return failure
+    }
+}
+
 struct EjectWorkflowTarget: Equatable, Sendable {
     let deviceID: DeviceID
     let physicalBSDName: String
     let mediaRegistryEntryID: UInt64
     let displayName: String
     let topologyGeneration: Int
+
+    var physicalIdentity: PhysicalDiskTargetIdentity {
+        PhysicalDiskTargetIdentity(
+            bsdName: physicalBSDName,
+            mediaRegistryEntryID: mediaRegistryEntryID
+        )
+    }
 }
 
 struct EjectWorkflowRequest: Equatable, Sendable {

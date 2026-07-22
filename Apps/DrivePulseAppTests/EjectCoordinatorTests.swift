@@ -69,6 +69,20 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(scopes, [refreshed.scope])
     }
 
+    func testAdapterTargetInvalidationMapsToDeviceDisappeared() async throws {
+        let fixture = Fixture(normalResults: [.targetInvalidated(stage: .ejecting)])
+
+        fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: fixture.target.displayName,
+            topologyGeneration: 9
+        )
+
+        try await waitUntil { fixture.coordinator.state == .disappeared(fixture.target) }
+        let releases = await fixture.barrier.releases()
+        XCTAssertEqual(releases, 1)
+    }
+
     func testPreparationTimeoutNeverCallsEjectAndReleasesBarrier() async throws {
         let fixture = Fixture(barrierError: .timedOut)
 
@@ -903,8 +917,8 @@ private final class Fixture {
     init(
         barrierError: DeviceIOQuiescenceError? = nil,
         quiescerError: DeviceIOQuiescenceError? = nil,
-        normalResults: [Result<Void, EjectFailure>] = [.success(())],
-        forceResults: [Result<Void, EjectFailure>] = [.success(())],
+        normalResults: [DiskEjectOutcome] = [.success(())],
+        forceResults: [DiskEjectOutcome] = [.success(())],
         holders: [OccupancyHolder] = [],
         barrierWaitGate: AsyncGate? = nil,
         normalGate: AsyncGate? = nil,
@@ -1103,8 +1117,8 @@ private actor QuiescerSpy: DeviceIOQuiescing {
 }
 
 private actor EjecterSpy: DiskEjecting {
-    private var normalResults: [Result<Void, EjectFailure>]
-    private var forceResults: [Result<Void, EjectFailure>]
+    private var normalResults: [DiskEjectOutcome]
+    private var forceResults: [DiskEjectOutcome]
     private let events: EventLog
     private let normalGate: AsyncGate?
     private let forceGate: AsyncGate?
@@ -1114,8 +1128,8 @@ private actor EjecterSpy: DiskEjecting {
     private(set) var forceBSDNames: [String] = []
 
     init(
-        normalResults: [Result<Void, EjectFailure>],
-        forceResults: [Result<Void, EjectFailure>],
+        normalResults: [DiskEjectOutcome],
+        forceResults: [DiskEjectOutcome],
         normalGate: AsyncGate?,
         forceGate: AsyncGate?,
         normalGates: [AsyncGate?],
@@ -1130,20 +1144,20 @@ private actor EjecterSpy: DiskEjecting {
     }
 
     func performNormalEject(
-        bsdName: String,
+        target: PhysicalDiskTargetIdentity,
         scope: OccupancyTargetScope
-    ) async -> Result<Void, EjectFailure> {
-        normalBSDNames.append(bsdName)
+    ) async -> DiskEjectOutcome {
+        normalBSDNames.append(target.bsdName)
         scopes.append(scope)
-        await events.append("normal:\(bsdName)")
+        await events.append("normal:\(target.bsdName)")
         let gate = normalGates.isEmpty ? normalGate : normalGates.removeFirst()
         await gate?.wait()
         return normalResults.removeFirst()
     }
 
-    func performConfirmedForceEject(bsdName: String) async -> Result<Void, EjectFailure> {
-        forceBSDNames.append(bsdName)
-        await events.append("force:\(bsdName)")
+    func performConfirmedForceEject(target: PhysicalDiskTargetIdentity) async -> DiskEjectOutcome {
+        forceBSDNames.append(target.bsdName)
+        await events.append("force:\(target.bsdName)")
         await forceGate?.wait()
         return forceResults.removeFirst()
     }

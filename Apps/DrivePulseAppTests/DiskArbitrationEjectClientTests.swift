@@ -4,53 +4,58 @@ import XCTest
 @testable import DrivePulseApp
 
 final class DiskArbitrationEjectClientTests: XCTestCase {
+    private var target: PhysicalDiskTargetIdentity {
+        PhysicalDiskTargetIdentity(bsdName: "disk4", mediaRegistryEntryID: 4_001)
+    }
+
+    func testForceEjectCarriesStablePhysicalIdentityToEveryDestructiveStage() async {
+        let target = PhysicalDiskTargetIdentity(bsdName: "disk4", mediaRegistryEntryID: 4_001)
+        let adapter = StubDiskArbitrationOperating(results: [.success, .success])
+        let client = DiskArbitrationEjectClient(operations: adapter)
+
+        let result = await client.performConfirmedForceEject(target: target)
+
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(adapter.calls, [
+            .unmount(target, force: true),
+            .eject(target)
+        ])
+    }
+
     func testNormalEjectUsesMountedVolumeWithAllPartitionsAndNoUI() async {
-        let operations = StubDiskArbitrationOperating(results: [])
-        let volumeUnmounter = StubVolumeUnmounting(error: nil)
-        let client = DiskArbitrationEjectClient(
-            operations: operations,
-            volumeUnmounter: volumeUnmounter
-        )
-        let mountURL = URL(fileURLWithPath: "/Volumes/T7")
+        let operations = StubDiskArbitrationOperating(results: [.success, .success])
+        let client = DiskArbitrationEjectClient(operations: operations)
 
         let result = await client.performNormalEject(
-            bsdName: "disk4",
-            scope: scope(mountURLs: [mountURL])
+            target: target,
+            scope: scope(mountURLs: [URL(fileURLWithPath: "/Volumes/T7")])
         )
 
         XCTAssertTrue(result.isSuccess)
-        XCTAssertEqual(volumeUnmounter.calls, [
-            .init(url: mountURL, options: [.allPartitionsAndEjectDisk, .withoutUI])
-        ])
-        XCTAssertEqual(operations.calls, [])
+        XCTAssertEqual(operations.calls, [.unmount(target, force: false), .eject(target)])
     }
 
     func testNormalEjectWithoutMountedVolumeEjectsPhysicalDiskDirectly() async {
-        let operations = StubDiskArbitrationOperating(results: [.success])
-        let volumeUnmounter = StubVolumeUnmounting(error: nil)
-        let client = DiskArbitrationEjectClient(
-            operations: operations,
-            volumeUnmounter: volumeUnmounter
-        )
+        let operations = StubDiskArbitrationOperating(results: [.success, .success])
+        let client = DiskArbitrationEjectClient(operations: operations)
 
         let result = await client.performNormalEject(
-            bsdName: "disk4",
+            target: target,
             scope: scope(mountURLs: [])
         )
 
         XCTAssertTrue(result.isSuccess)
-        XCTAssertEqual(volumeUnmounter.calls, [])
-        XCTAssertEqual(operations.calls, [.eject("disk4")])
+        XCTAssertEqual(operations.calls, [.unmount(target, force: false), .eject(target)])
     }
 
     func testConfirmedForceEjectUsesForcedWholeUnmountBeforeEjecting() async {
         let adapter = StubDiskArbitrationOperating(results: [.success, .success])
         let client = DiskArbitrationEjectClient(operations: adapter)
 
-        let result = await client.performConfirmedForceEject(bsdName: "disk4")
+        let result = await client.performConfirmedForceEject(target: target)
 
         XCTAssertTrue(result.isSuccess)
-        XCTAssertEqual(adapter.calls, [.unmount("disk4", force: true), .eject("disk4")])
+        XCTAssertEqual(adapter.calls, [.unmount(target, force: true), .eject(target)])
     }
 
     func testForceNotMountedUnmountContinuesToEject() async {
@@ -59,55 +64,41 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         ])
         let client = DiskArbitrationEjectClient(operations: adapter)
 
-        let result = await client.performConfirmedForceEject(bsdName: "disk4")
+        let result = await client.performConfirmedForceEject(target: target)
 
         XCTAssertTrue(result.isSuccess)
-        XCTAssertEqual(adapter.calls, [.unmount("disk4", force: true), .eject("disk4")])
+        XCTAssertEqual(adapter.calls, [.unmount(target, force: true), .eject(target)])
     }
 
     func testNormalEjectFailureIncludesDissentingProcessHolder() async {
-        let error = NSError(
-            domain: NSPOSIXErrorDomain,
-            code: Int(EBUSY),
-            userInfo: [
-                NSFileManagerUnmountDissentingProcessIdentifierErrorKey: NSNumber(value: 501),
-                NSLocalizedDescriptionKey: "Volume is in use"
-            ]
-        )
-        let holder = OccupancyHolder(
-            pid: 501,
-            executableName: "Finder",
-            displayName: "Finder",
-            type: .unknown
-        )
         let client = DiskArbitrationEjectClient(
-            operations: StubDiskArbitrationOperating(results: []),
-            volumeUnmounter: StubVolumeUnmounting(error: error),
-            dissentingProcessIdentifier: StubDissentingProcessIdentifying(holder: holder)
+            operations: StubDiskArbitrationOperating(results: [
+                .failure(status: DAReturn(kDAReturnBusy), message: "Volume is in use")
+            ])
         )
 
         let result = await client.performNormalEject(
-            bsdName: "disk4",
+            target: target,
             scope: scope(mountURLs: [URL(fileURLWithPath: "/Volumes/T7")])
         )
 
         XCTAssertEqual(result.failure?.stage, .unmounting)
         XCTAssertEqual(result.failure?.category, .busy)
-        XCTAssertEqual(result.failure?.rawStatus, EBUSY)
+        XCTAssertEqual(result.failure?.rawStatus, DAReturn(kDAReturnBusy))
         XCTAssertEqual(result.failure?.systemMessage, "Volume is in use")
         XCTAssertEqual(result.failure?.physicalBSDName, "disk4")
-        XCTAssertEqual(result.failure?.holders, [holder])
+        XCTAssertEqual(result.failure?.holders, [])
     }
 
     func testNormalEjectClassifiesPOSIXPermissionFailure() async {
-        let error = NSError(domain: NSPOSIXErrorDomain, code: Int(EPERM))
         let client = DiskArbitrationEjectClient(
-            operations: StubDiskArbitrationOperating(results: []),
-            volumeUnmounter: StubVolumeUnmounting(error: error)
+            operations: StubDiskArbitrationOperating(results: [
+                .failure(status: DAReturn(kDAReturnNotPermitted), message: nil)
+            ])
         )
 
         let result = await client.performNormalEject(
-            bsdName: "disk4",
+            target: target,
             scope: scope(mountURLs: [URL(fileURLWithPath: "/Volumes/T7")])
         )
 
@@ -115,14 +106,14 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
     }
 
     func testNormalEjectClassifiesCocoaPermissionFailure() async {
-        let error = NSError(domain: NSCocoaErrorDomain, code: CocoaError.fileWriteNoPermission.rawValue)
         let client = DiskArbitrationEjectClient(
-            operations: StubDiskArbitrationOperating(results: []),
-            volumeUnmounter: StubVolumeUnmounting(error: error)
+            operations: StubDiskArbitrationOperating(results: [
+                .failure(status: DAReturn(kDAReturnNotPermitted), message: nil)
+            ])
         )
 
         let result = await client.performNormalEject(
-            bsdName: "disk4",
+            target: target,
             scope: scope(mountURLs: [URL(fileURLWithPath: "/Volumes/T7")])
         )
 
@@ -134,7 +125,7 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
             operations: StubDiskArbitrationOperating(results: [.timedOut])
         )
 
-        let result = await client.performConfirmedForceEject(bsdName: "disk4")
+        let result = await client.performConfirmedForceEject(target: target)
 
         XCTAssertEqual(result.failure?.stage, .forceUnmounting)
         XCTAssertEqual(result.failure?.category, .timedOut)
@@ -142,11 +133,11 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
 
     func testDirectEjectTimeoutReportsEjectingStage() async {
         let client = DiskArbitrationEjectClient(
-            operations: StubDiskArbitrationOperating(results: [.timedOut])
+            operations: StubDiskArbitrationOperating(results: [.success, .timedOut])
         )
 
         let result = await client.performNormalEject(
-            bsdName: "disk4",
+            target: target,
             scope: scope(mountURLs: [])
         )
 
@@ -160,9 +151,9 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         ])
         let client = DiskArbitrationEjectClient(operations: adapter)
 
-        let result = await client.performConfirmedForceEject(bsdName: "disk4")
+        let result = await client.performConfirmedForceEject(target: target)
 
-        XCTAssertEqual(adapter.calls, [.unmount("disk4", force: true)])
+        XCTAssertEqual(adapter.calls, [.unmount(target, force: true)])
         XCTAssertEqual(result.failure?.stage, .forceUnmounting)
     }
 
@@ -172,7 +163,9 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
             .failure(status: status, message: "system detail")
         ]))
 
-        let result = await client.performConfirmedForceEject(bsdName: "disk99")
+        let result = await client.performConfirmedForceEject(
+            target: PhysicalDiskTargetIdentity(bsdName: "disk99", mediaRegistryEntryID: 9_999)
+        )
 
         XCTAssertEqual(result.failure?.rawStatus, status)
         XCTAssertEqual(result.failure?.systemMessage, "system detail")
@@ -185,10 +178,55 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         ])
         let client = DiskArbitrationEjectClient(operations: adapter)
 
-        let result = await client.performConfirmedForceEject(bsdName: "disk4")
+        let result = await client.performConfirmedForceEject(target: target)
 
         XCTAssertEqual(result.failure?.stage, .ejecting)
         XCTAssertEqual(result.failure?.category, .notReady)
+    }
+
+    func testForceEjectRejectsRegistryReassignmentBetweenUnmountAndEject() {
+        let probe = BoundSequenceProbe(targetValidationResults: [false])
+        let gate = BoundDiskArbitrationSecondStageGate(
+            targetIsValid: probe.targetIsValid,
+            submitEject: probe.submitEject
+        )
+
+        let transition = gate.proceedAfterUnmount(.success, stage: .forceUnmounting)
+
+        XCTAssertEqual(transition, .finished(.targetInvalidated(stage: .ejecting)))
+        XCTAssertEqual(probe.validationCount, 1)
+        XCTAssertEqual(probe.ejectCount, 0)
+    }
+
+    func testNotMountedForcePathRevalidatesBeforeEject() {
+        let probe = BoundSequenceProbe(targetValidationResults: [false])
+        let gate = BoundDiskArbitrationSecondStageGate(
+            targetIsValid: probe.targetIsValid,
+            submitEject: probe.submitEject
+        )
+
+        let transition = gate.proceedAfterUnmount(
+            .failure(status: DAReturn(kDAReturnNotMounted), message: nil),
+            stage: .forceUnmounting
+        )
+
+        XCTAssertEqual(transition, .finished(.targetInvalidated(stage: .ejecting)))
+        XCTAssertEqual(probe.validationCount, 1)
+        XCTAssertEqual(probe.ejectCount, 0)
+    }
+
+    func testSameBoundIdentityContinuesToEjectAfterUnmount() {
+        let probe = BoundSequenceProbe(targetValidationResults: [true])
+        let gate = BoundDiskArbitrationSecondStageGate(
+            targetIsValid: probe.targetIsValid,
+            submitEject: probe.submitEject
+        )
+
+        let transition = gate.proceedAfterUnmount(.success, stage: .unmounting)
+
+        XCTAssertEqual(transition, .ejectSubmitted)
+        XCTAssertEqual(probe.validationCount, 1)
+        XCTAssertEqual(probe.ejectCount, 1)
     }
 
     func testCallbackWinningTimeoutResumesAndCleansUpExactlyOnce() {
@@ -400,10 +438,29 @@ private enum RegistryEvent {
     case cancelled
 }
 
+private final class BoundSequenceProbe {
+    private var targetValidationResults: [Bool]
+    private(set) var validationCount = 0
+    private(set) var ejectCount = 0
+
+    init(targetValidationResults: [Bool]) {
+        self.targetValidationResults = targetValidationResults
+    }
+
+    func targetIsValid() -> Bool {
+        validationCount += 1
+        return targetValidationResults.removeFirst()
+    }
+
+    func submitEject() {
+        ejectCount += 1
+    }
+}
+
 private final class StubDiskArbitrationOperating: DiskArbitrationOperating, @unchecked Sendable {
     enum Call: Equatable {
-        case unmount(String, force: Bool)
-        case eject(String)
+        case unmount(PhysicalDiskTargetIdentity, force: Bool)
+        case eject(PhysicalDiskTargetIdentity)
     }
 
     private var results: [DiskArbitrationOperationResult]
@@ -411,40 +468,27 @@ private final class StubDiskArbitrationOperating: DiskArbitrationOperating, @unc
 
     init(results: [DiskArbitrationOperationResult]) { self.results = results }
 
-    func unmountWhole(_ bsdName: String, force: Bool) async -> DiskArbitrationOperationResult {
-        calls.append(.unmount(bsdName, force: force))
-        return results.removeFirst()
-    }
+    func performWholeDiskEject(
+        target: PhysicalDiskTargetIdentity,
+        force: Bool
+    ) async -> DiskArbitrationSequenceResult {
+        let unmountStage: EjectOperationStage = force ? .forceUnmounting : .unmounting
+        calls.append(.unmount(target, force: force))
+        let unmountResult = results.removeFirst()
+        switch unmountResult {
+        case .success:
+            break
+        case .failure(let status, _) where DiskArbitrationErrorClassifier().classify(status) == .notMounted:
+            break
+        default:
+            return .failure(result: unmountResult, stage: unmountStage)
+        }
 
-    func eject(_ bsdName: String) async -> DiskArbitrationOperationResult {
-        calls.append(.eject(bsdName))
-        return results.removeFirst()
-    }
-}
-
-private final class StubVolumeUnmounting: VolumeUnmounting, @unchecked Sendable {
-    struct Call: Equatable {
-        let url: URL
-        let options: FileManager.UnmountOptions
-    }
-
-    private let error: NSError?
-    private(set) var calls: [Call] = []
-
-    init(error: NSError?) { self.error = error }
-
-    func unmountVolume(at url: URL, options: FileManager.UnmountOptions) async -> (any Error)? {
-        calls.append(Call(url: url, options: options))
-        return error
-    }
-}
-
-private struct StubDissentingProcessIdentifying: DissentingProcessIdentifying {
-    let holder: OccupancyHolder
-
-    func holder(for pid: Int32) -> OccupancyHolder {
-        XCTAssertEqual(pid, holder.pid)
-        return holder
+        calls.append(.eject(target))
+        let ejectResult = results.removeFirst()
+        return ejectResult == .success
+            ? .success
+            : .failure(result: ejectResult, stage: .ejecting)
     }
 }
 
@@ -476,17 +520,5 @@ private final class CompletionProbe: @unchecked Sendable {
             submitCount += 1
             timeline.append("submit")
         }
-    }
-}
-
-private extension Result where Success == Void, Failure == EjectFailure {
-    var isSuccess: Bool {
-        guard case .success = self else { return false }
-        return true
-    }
-
-    var failure: EjectFailure? {
-        guard case .failure(let failure) = self else { return nil }
-        return failure
     }
 }
