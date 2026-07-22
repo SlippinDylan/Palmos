@@ -6,7 +6,6 @@ import DrivePulseCore
 
 @MainActor
 final class DrivePulseAppController: ObservableObject {
-    private static let throughputHistoryLimit = 300
     private static let apfsEnrichmentRetryDelays: [TimeInterval] = [0.25, 0.75, 1.5]
     private static let actionSuccessFeedbackDuration: TimeInterval = 1.2
     private static let actionFailureFeedbackDuration: TimeInterval = 2.8
@@ -31,12 +30,17 @@ final class DrivePulseAppController: ObservableObject {
     /// dismissed programmatically (e.g. after opening Finder or Disk
     /// Utility) without desyncing the status item's highlight state — the
     /// way a raw `NSApp.keyWindow?.close()` call does.
-    @Published var isMenuBarPanelPresented = true
+    @Published var isMenuBarPanelPresented = true {
+        didSet {
+            throughputMetricsStore.setPanelPresented(isMenuBarPanelPresented)
+        }
+    }
 
     let settings: AppSettings
     let launchAtLoginController: LaunchAtLoginController
     let ejectCoordinator: EjectCoordinator
     let smartHelperManager: SMARTHelperManager
+    let throughputMetricsStore: ThroughputMetricsStore
 
     private var discoveryObservation: (any ExternalDeviceDiscoveryObservation)?
     private var diskEjectIntentObservation: (any ExternalDeviceDiscoveryObservation)?
@@ -60,8 +64,7 @@ final class DrivePulseAppController: ObservableObject {
     @Published private var suppressedEjectDeviceIDs: Set<DeviceID> = []
     private var pendingExternalEjectDeviceIDs: Set<DeviceID> = []
     private var externalEjectIntentExpiryTasks: [DeviceID: Task<Void, Never>] = [:]
-    private var lastDiskCountersByDeviceID: [DeviceID: DiskIOCounters] = [:]
-    private var sessionMetricsReducersByDeviceID: [DeviceID: SessionMetricsReducer] = [:]
+    private var throughputSamplingTopology: [DeviceID: String] = [:]
     private let deviceDiscovery: any ExternalDeviceDiscovering
     private let diskSampler: any DiskSampling
     private let smartService: any SMARTServiceProviding
@@ -107,6 +110,7 @@ final class DrivePulseAppController: ObservableObject {
     ) {
         self.settings = settings
         self.launchAtLoginController = launchAtLoginController
+        self.throughputMetricsStore = ThroughputMetricsStore()
         self.deviceDiscovery = deviceDiscovery
         self.diskSampler = diskSampler
         self.deviceIOTracker = deviceIOTracker
@@ -149,6 +153,7 @@ final class DrivePulseAppController: ObservableObject {
             devices: [],
             selectedDeviceID: nil
         )
+        self.throughputSamplingTopology = Self.samplingTopology(for: self.state.devices)
         self.volumeCapacityRefresher.onUpdate = { [weak self] updates in
             Task { @MainActor [weak self] in self?.applyCapacityUpdates(updates) }
         }
@@ -161,7 +166,7 @@ final class DrivePulseAppController: ObservableObject {
         self.ejectStateObservation = self.ejectCoordinator.$state.sink { [weak self] state in
             self?.handleEjectStateChange(state)
         }
-        startThroughputSampling()
+        reconcileThroughputSamplingLifecycle()
 
         if state == nil {
             loadDiscoveredDevices()
@@ -440,47 +445,20 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     func applyThroughputSamplingResult(_ result: ThroughputSamplingResult) {
-        pruneSamplingState()
-        let snapshot = throughputSamplingSnapshot()
-        let acceptedSamples = ThroughputSamplingResultGate.acceptedSamples(result, for: snapshot)
-
-        for sample in acceptedSamples {
-            guard let previousCounters = lastDiskCountersByDeviceID[sample.deviceID] else {
-                var reducer = sessionMetricsReducersByDeviceID[sample.deviceID]
-                    ?? SessionMetricsReducer(historyLimit: Self.throughputHistoryLimit)
-                reducer.ingest(readBytes: 0, writeBytes: 0, tick: result.tick)
-                sessionMetricsReducersByDeviceID[sample.deviceID] = reducer
-                state.applySessionMetrics(reducer.metrics, for: sample.deviceID)
-                lastDiskCountersByDeviceID[sample.deviceID] = sample.counters
-                continue
-            }
-
-            let readDelta = Self.counterDelta(
-                current: sample.counters.readBytes,
-                previous: previousCounters.readBytes
-            )
-            let writeDelta = Self.counterDelta(
-                current: sample.counters.writeBytes,
-                previous: previousCounters.writeBytes
-            )
-            var reducer = sessionMetricsReducersByDeviceID[sample.deviceID]
-                ?? SessionMetricsReducer(historyLimit: Self.throughputHistoryLimit)
-            reducer.ingest(
-                readBytes: readDelta,
-                writeBytes: writeDelta,
-                tick: result.tick
-            )
-            sessionMetricsReducersByDeviceID[sample.deviceID] = reducer
-            state.applySessionMetrics(reducer.metrics, for: sample.deviceID)
-            lastDiskCountersByDeviceID[sample.deviceID] = sample.counters
+        if isEjectWorkflowActive, let ejectWorkflowDeviceID {
+            throughputMetricsStore.resetCounterBaseline(for: ejectWorkflowDeviceID)
         }
+        let snapshot = throughputSamplingSnapshot()
+        throughputMetricsStore.ingest(result, for: snapshot)
     }
 
     private func throughputSamplingSnapshot() -> ThroughputSamplingSnapshot {
-        ThroughputSamplingSnapshot(
+        let pausedDeviceID = isEjectWorkflowActive ? ejectWorkflowDeviceID : nil
+        return ThroughputSamplingSnapshot(
             generation: discoveryWriteGeneration,
-            devices: state.devices.map {
-                ThroughputSamplingDeviceSnapshot(
+            devices: state.devices.compactMap {
+                guard $0.id != pausedDeviceID else { return nil }
+                return ThroughputSamplingDeviceSnapshot(
                     deviceID: $0.id,
                     physicalBSDName: $0.physicalStoreBSDName
                 )
@@ -971,19 +949,39 @@ final class DrivePulseAppController: ObservableObject {
         }
     }
 
-    private func startThroughputSampling() {
+    var isThroughputSamplingActive: Bool {
+        throughputSamplingCoordinator != nil
+    }
+
+    var throughputSamplingInterval: Duration {
+        isMenuBarPanelPresented ? .milliseconds(250) : .seconds(1)
+    }
+
+    private func reconcileThroughputSamplingLifecycle() {
+        guard state.devices.isEmpty == false else {
+            guard let coordinator = throughputSamplingCoordinator else { return }
+            throughputSamplingCoordinator = nil
+            Task { await coordinator.stop() }
+            return
+        }
+
+        guard throughputSamplingCoordinator == nil else { return }
         let coordinator = ThroughputSamplingCoordinator(sampler: diskSampler)
         throughputSamplingCoordinator = coordinator
         Task { @MainActor [weak self, coordinator] in
+            guard let self, self.throughputSamplingCoordinator === coordinator else { return }
             await coordinator.start(
                 snapshotProvider: { @MainActor [weak self] in
                     self?.throughputSamplingSnapshot()
+                },
+                intervalProvider: { @MainActor [weak self] in
+                    self?.throughputSamplingInterval ?? .seconds(1)
                 },
                 resultHandler: { @MainActor [weak self] result in
                     self?.applyThroughputSamplingResult(result)
                 }
             )
-            guard let self, self.throughputSamplingCoordinator === coordinator else {
+            guard self.throughputSamplingCoordinator === coordinator else {
                 await coordinator.stop()
                 return
             }
@@ -1007,6 +1005,11 @@ final class DrivePulseAppController: ObservableObject {
     private func pruneSamplingState() {
         let liveDeviceIDs = Set(state.devices.map(\.id))
         let livePhysicalBSDNames = Set(state.devices.map(\.physicalStoreBSDName))
+        let currentSamplingTopology = Self.samplingTopology(for: state.devices)
+        if currentSamplingTopology != throughputSamplingTopology {
+            diskSampler.invalidateCachedServices()
+            throughputSamplingTopology = currentSamplingTopology
+        }
         suppressedEjectDeviceIDs.formIntersection(liveDeviceIDs)
         let expiredPendingDeviceIDs = pendingExternalEjectDeviceIDs.subtracting(liveDeviceIDs)
         pendingExternalEjectDeviceIDs.formIntersection(liveDeviceIDs)
@@ -1026,22 +1029,12 @@ final class DrivePulseAppController: ObservableObject {
             smartRefreshTasksByDeviceID.removeValue(forKey: deviceID)?.cancel()
             smartRefreshGenerationsByDeviceID.removeValue(forKey: deviceID)
         }
-        lastDiskCountersByDeviceID = lastDiskCountersByDeviceID.filter { liveDeviceIDs.contains($0.key) }
-        sessionMetricsReducersByDeviceID = sessionMetricsReducersByDeviceID.filter {
-            liveDeviceIDs.contains($0.key)
-        }
+        throughputMetricsStore.prune(liveDeviceIDs: liveDeviceIDs)
+        reconcileThroughputSamplingLifecycle()
     }
 
-    private static func counterDelta(current: Int64, previous: Int64) -> Int64 {
-        guard current >= 0, previous >= 0 else { return 0 }
-        guard current >= previous else {
-            // A lower counter starts a new epoch. Establish a new baseline
-            // without presenting the absolute counter as one sampling delta.
-            return 0
-        }
-
-        let (delta, overflow) = current.subtractingReportingOverflow(previous)
-        return overflow ? Int64.max : delta
+    private static func samplingTopology(for devices: [ExternalDevice]) -> [DeviceID: String] {
+        Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0.physicalStoreBSDName) })
     }
 }
 

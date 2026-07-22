@@ -190,7 +190,10 @@ struct MenuBarRootView: View {
                     smartDetails: controller.selectedPanelSMARTDetails,
                     settings: settings
                 )
-                ThroughputCardView(device: device)
+                ThroughputCardView(
+                    deviceID: device.id,
+                    metricsStore: controller.throughputMetricsStore
+                )
                 CapacityUsageCardView(device: device)
             }
             .background {

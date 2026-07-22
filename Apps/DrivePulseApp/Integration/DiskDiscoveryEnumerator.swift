@@ -30,9 +30,11 @@ struct DiskDiscoveryEnumerator {
                 continue
             }
 
+            #if DEBUG
             discoveryLog.debug(
                 "IOMedia: \(record.bsdName) protocol=\(record.deviceProtocol ?? "-") bus=\(record.busName ?? "-") internal=\(record.deviceInternal.map(String.init) ?? "nil") whole=\(record.isWholeMedia) pciTunnel=\(record.isPCITunnelled) ioPath=[\(record.ioClassPath.prefix(5).joined(separator: "→"))]"
             )
+            #endif
             discoveredRecords.append(record)
         }
 

@@ -893,14 +893,16 @@ final class DrivePulseAppControllerTests: XCTestCase {
             samples: [(initialDevice, DiskIOCounters(readBytes: 2_500, writeBytes: 2_750))]
         )
 
-        let sampledDevice = try XCTUnwrap(controller.state.selectedDevice)
+        let metrics = try XCTUnwrap(
+            controller.throughputMetricsStore.metrics(for: initialDevice.id)
+        )
         XCTAssertGreaterThan(
-            sampledDevice.sessionMetrics.currentReadBytesPerSecond,
+            metrics.currentReadBytesPerSecond,
             0,
             "Expected periodic sampling to publish a non-zero read throughput for the selected device."
         )
         XCTAssertGreaterThan(
-            sampledDevice.sessionMetrics.currentWriteBytesPerSecond,
+            metrics.currentWriteBytesPerSecond,
             0,
             "Expected periodic sampling to publish a non-zero write throughput for the selected device."
         )
@@ -1698,7 +1700,9 @@ final class DrivePulseAppControllerTests: XCTestCase {
             elapsed: .seconds(1),
             samples: [(secondDevice, DiskIOCounters(readBytes: 400, writeBytes: 700))]
         )
-        let metrics = try XCTUnwrap(controller.state.device(id: secondDevice.id)?.sessionMetrics)
+        let metrics = try XCTUnwrap(
+            controller.throughputMetricsStore.metrics(for: secondDevice.id)
+        )
         XCTAssertEqual(metrics.currentReadBytesPerSecond, 300)
         XCTAssertEqual(metrics.currentWriteBytesPerSecond, 500)
 
@@ -2076,7 +2080,9 @@ final class DrivePulseAppControllerTests: XCTestCase {
             elapsed: .seconds(1),
             samples: [(disk5, DiskIOCounters(readBytes: 110, writeBytes: 220))]
         )
-        let disk5Metrics = try XCTUnwrap(controller.state.device(id: disk5.id)?.sessionMetrics)
+        let disk5Metrics = try XCTUnwrap(
+            controller.throughputMetricsStore.metrics(for: disk5.id)
+        )
         XCTAssertEqual(disk5Metrics.currentReadBytesPerSecond, 100)
         XCTAssertEqual(disk5Metrics.currentWriteBytesPerSecond, 200)
 
@@ -3136,6 +3142,244 @@ extension DrivePulseAppControllerTests {
 
         XCTAssertEqual(results.values.count, countAfterStop)
     }
+
+    func testThroughputMetricsStorePublishesAtMostTwicePerSecond() throws {
+        let deviceID = DeviceID(rawValue: "device")
+        let snapshot = ThroughputSamplingSnapshot(
+            generation: 1,
+            devices: [.init(deviceID: deviceID, physicalBSDName: "disk4")]
+        )
+        let store = ThroughputMetricsStore()
+        var publications: [[DeviceID: DeviceSessionMetrics]] = []
+        let observation = store.$metricsByDeviceID
+            .dropFirst()
+            .sink { publications.append($0) }
+
+        store.ingest(
+            throughputResult(generation: 1, timestamp: 10, elapsed: nil, readBytes: 100),
+            for: snapshot
+        )
+        store.ingest(
+            throughputResult(generation: 1, timestamp: 10.1, elapsed: .milliseconds(100), readBytes: 150),
+            for: snapshot
+        )
+        store.ingest(
+            throughputResult(generation: 1, timestamp: 10.49, elapsed: .milliseconds(390), readBytes: 200),
+            for: snapshot
+        )
+        XCTAssertEqual(publications.count, 1)
+
+        store.ingest(
+            throughputResult(generation: 1, timestamp: 10.5, elapsed: .milliseconds(10), readBytes: 225),
+            for: snapshot
+        )
+
+        XCTAssertEqual(publications.count, 2)
+        XCTAssertEqual(try XCTUnwrap(store.metrics(for: deviceID)).cumulativeReadBytes, 125)
+        _ = observation
+    }
+
+    func testThroughputMetricsStoreDoesNotPublishWhilePanelIsClosedAndPublishesNextTickOnReopen() throws {
+        let deviceID = DeviceID(rawValue: "device")
+        let snapshot = ThroughputSamplingSnapshot(
+            generation: 2,
+            devices: [.init(deviceID: deviceID, physicalBSDName: "disk4")]
+        )
+        let store = ThroughputMetricsStore()
+        var publicationCount = 0
+        let observation = store.$metricsByDeviceID
+            .dropFirst()
+            .sink { _ in publicationCount += 1 }
+
+        store.ingest(
+            throughputResult(generation: 2, timestamp: 20, elapsed: nil, readBytes: 100),
+            for: snapshot
+        )
+        store.setPanelPresented(false)
+        store.ingest(
+            throughputResult(generation: 2, timestamp: 20.1, elapsed: .milliseconds(100), readBytes: 150),
+            for: snapshot
+        )
+        store.ingest(
+            throughputResult(generation: 2, timestamp: 20.2, elapsed: .milliseconds(100), readBytes: 200),
+            for: snapshot
+        )
+        XCTAssertEqual(publicationCount, 1)
+        XCTAssertEqual(try XCTUnwrap(store.metrics(for: deviceID)).cumulativeReadBytes, 0)
+
+        store.setPanelPresented(true)
+        XCTAssertEqual(publicationCount, 1)
+        store.ingest(
+            throughputResult(generation: 2, timestamp: 20.25, elapsed: .milliseconds(50), readBytes: 225),
+            for: snapshot
+        )
+
+        XCTAssertEqual(publicationCount, 2)
+        XCTAssertEqual(try XCTUnwrap(store.metrics(for: deviceID)).cumulativeReadBytes, 125)
+        _ = observation
+    }
+
+    func testThroughputMetricsStoreStartsNewCounterEpochAfterEjectPause() throws {
+        let deviceID = DeviceID(rawValue: "device")
+        let snapshot = ThroughputSamplingSnapshot(
+            generation: 3,
+            devices: [.init(deviceID: deviceID, physicalBSDName: "disk4")]
+        )
+        let store = ThroughputMetricsStore()
+
+        store.ingest(
+            throughputResult(generation: 3, timestamp: 30, elapsed: nil, readBytes: 100),
+            for: snapshot
+        )
+        store.resetCounterBaseline(for: deviceID)
+        store.ingest(
+            throughputResult(generation: 3, timestamp: 31, elapsed: .seconds(1), readBytes: 1_000),
+            for: snapshot
+        )
+        store.ingest(
+            throughputResult(generation: 3, timestamp: 32, elapsed: .seconds(1), readBytes: 1_100),
+            for: snapshot
+        )
+
+        let metrics = try XCTUnwrap(store.metrics(for: deviceID))
+        XCTAssertEqual(metrics.currentReadBytesPerSecond, 100)
+        XCTAssertEqual(metrics.cumulativeReadBytes, 100)
+    }
+
+    func testThroughputSamplingDoesNotPublishDrivePulseAppState() throws {
+        let device = makeDevice(id: "disk4", volumes: ["disk4s1"])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            diskSampler: StubDiskSampler(samplesByBSDName: [:]),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]])
+        )
+        let initialState = controller.state
+        var statePublicationCount = 0
+        let observation = controller.$state.dropFirst().sink { _ in
+            statePublicationCount += 1
+        }
+
+        publishThroughputSample(
+            controller,
+            timestamp: Date(timeIntervalSince1970: 1),
+            elapsed: nil,
+            samples: [(device, DiskIOCounters(readBytes: 100, writeBytes: 200))]
+        )
+        publishThroughputSample(
+            controller,
+            timestamp: Date(timeIntervalSince1970: 2),
+            elapsed: .seconds(1),
+            samples: [(device, DiskIOCounters(readBytes: 200, writeBytes: 400))]
+        )
+
+        XCTAssertEqual(controller.state, initialState)
+        XCTAssertEqual(statePublicationCount, 0)
+        XCTAssertNotNil(controller.throughputMetricsStore.metrics(for: device.id))
+        _ = observation
+    }
+
+    func testThroughputSamplingLifecycleStopsWithoutDevicesAndRestartsWhenDeviceAppears() async throws {
+        let device = makeDevice(id: "disk4", volumes: ["disk4s1"])
+        let discovery = StubExternalDeviceDiscovery(results: [])
+        let sampler = CoordinatorProbeSampler(
+            counters: ["disk4": DiskIOCounters(readBytes: 1, writeBytes: 1)]
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [], selectedDeviceID: nil),
+            diskSampler: sampler,
+            deviceDiscovery: discovery,
+            systemProfilerProvider: StubSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider(),
+            discoveryObservationDebounce: .zero
+        )
+
+        XCTAssertFalse(controller.isThroughputSamplingActive)
+        XCTAssertEqual(sampler.callCount, 0)
+
+        discovery.emit([device])
+        await waitUntil { controller.state.devices == [device] }
+        await waitUntil { sampler.callCount > 0 }
+        XCTAssertTrue(controller.isThroughputSamplingActive)
+
+        discovery.emit([])
+        await waitUntil { controller.state.devices.isEmpty }
+        await waitUntil { controller.isThroughputSamplingActive == false }
+        let callCountAfterStop = sampler.callCount
+        try await Task.sleep(for: .milliseconds(350))
+
+        XCTAssertEqual(sampler.callCount, callCountAfterStop)
+    }
+
+    func testThroughputSamplingIntervalTracksPanelPresentation() {
+        let device = makeDevice(id: "disk4", volumes: ["disk4s1"])
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            diskSampler: StubDiskSampler(samplesByBSDName: [:]),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]])
+        )
+
+        XCTAssertEqual(controller.throughputSamplingInterval, .milliseconds(250))
+        controller.isMenuBarPanelPresented = false
+        XCTAssertEqual(controller.throughputSamplingInterval, .seconds(1))
+        controller.isMenuBarPanelPresented = true
+        XCTAssertEqual(controller.throughputSamplingInterval, .milliseconds(250))
+    }
+
+    func testDiskSamplerCacheInvalidationOnlyTracksSamplingTopologyChanges() async throws {
+        let initialDevice = makeDevice(id: "device", volumes: ["disk4s1"], physicalStoreBSDName: "disk4")
+        let changedBSDDevice = makeDevice(
+            id: "device",
+            volumes: ["disk9s1"],
+            physicalStoreBSDName: "disk9"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [])
+        let sampler = CacheInvalidationProbeSampler()
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [initialDevice], selectedDeviceID: initialDevice.id),
+            diskSampler: sampler,
+            deviceDiscovery: discovery,
+            systemProfilerProvider: StubSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider(),
+            discoveryObservationDebounce: .zero
+        )
+
+        discovery.emit([initialDevice])
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(sampler.invalidationCount, 0)
+
+        discovery.emit([changedBSDDevice])
+        await waitUntil { sampler.invalidationCount == 1 }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(sampler.invalidationCount, 1)
+
+        discovery.emit([])
+        await waitUntil { controller.state.devices.isEmpty }
+        await waitUntil { sampler.invalidationCount == 2 }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(sampler.invalidationCount, 2)
+    }
+}
+
+private func throughputResult(
+    generation: Int,
+    timestamp: TimeInterval,
+    elapsed: Duration?,
+    readBytes: Int64
+) -> ThroughputSamplingResult {
+    ThroughputSamplingResult(
+        generation: generation,
+        tick: ThroughputSamplingTick(
+            displayTimestamp: Date(timeIntervalSince1970: timestamp),
+            elapsedSincePrevious: elapsed
+        ),
+        samples: [
+            ThroughputSamplingDeviceResult(
+                deviceID: DeviceID(rawValue: "device"),
+                physicalBSDName: "disk4",
+                counters: DiskIOCounters(readBytes: readBytes, writeBytes: 0)
+            )
+        ]
+    )
 }
 
 private func publishThroughputSample(
@@ -3216,13 +3460,38 @@ private final class StubDiskSampler: DiskSampling, @unchecked Sendable {
     }
 }
 
+private final class CacheInvalidationProbeSampler: DiskSampling, @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedInvalidationCount = 0
+
+    var invalidationCount: Int {
+        lock.withLock { recordedInvalidationCount }
+    }
+
+    func counters(forBSDName bsdName: String) -> DiskIOCounters? {
+        nil
+    }
+
+    func invalidateCachedServices() {
+        lock.withLock { recordedInvalidationCount += 1 }
+    }
+}
+
 private final class CoordinatorProbeSampler: DiskSampling, @unchecked Sendable {
     private let lock = NSLock()
     private let countersByBSDName: [String: DiskIOCounters]
     private let delay: Duration?
     private var inFlight = 0
     private(set) var maximumInFlight = 0
-    private(set) var mainThreadCalls: [Bool] = []
+    private var recordedMainThreadCalls: [Bool] = []
+
+    var mainThreadCalls: [Bool] {
+        lock.withLock { recordedMainThreadCalls }
+    }
+
+    var callCount: Int {
+        lock.withLock { recordedMainThreadCalls.count }
+    }
 
     init(counters: [String: DiskIOCounters], delay: Duration? = nil) {
         countersByBSDName = counters
@@ -3233,7 +3502,7 @@ private final class CoordinatorProbeSampler: DiskSampling, @unchecked Sendable {
         lock.withLock {
             inFlight += 1
             maximumInFlight = max(maximumInFlight, inFlight)
-            mainThreadCalls.append(Thread.isMainThread)
+            recordedMainThreadCalls.append(Thread.isMainThread)
         }
         defer {
             lock.withLock { inFlight -= 1 }

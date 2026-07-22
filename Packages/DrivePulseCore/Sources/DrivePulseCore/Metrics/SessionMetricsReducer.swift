@@ -1,14 +1,29 @@
 import Foundation
 
 public struct SessionMetricsReducer {
-    public private(set) var metrics: DeviceSessionMetrics
+    public var metrics: DeviceSessionMetrics {
+        DeviceSessionMetrics(
+            currentReadBytesPerSecond: currentReadBytesPerSecond,
+            currentWriteBytesPerSecond: currentWriteBytesPerSecond,
+            cumulativeReadBytes: cumulativeReadBytes,
+            cumulativeWriteBytes: cumulativeWriteBytes,
+            readHistory: readHistory.orderedElements(),
+            writeHistory: writeHistory.orderedElements()
+        )
+    }
 
-    private let historyLimit: Int
+    private var currentReadBytesPerSecond: Double = 0
+    private var currentWriteBytesPerSecond: Double = 0
+    private var cumulativeReadBytes: Int64 = 0
+    private var cumulativeWriteBytes: Int64 = 0
+    private var readHistory: BoundedRingBuffer<SpeedPoint>
+    private var writeHistory: BoundedRingBuffer<SpeedPoint>
     private var lastDisplayTimestamp: Date?
 
     public init(historyLimit: Int) {
-        self.historyLimit = max(historyLimit, 0)
-        self.metrics = .empty()
+        let normalizedLimit = max(historyLimit, 0)
+        self.readHistory = BoundedRingBuffer(capacity: normalizedLimit)
+        self.writeHistory = BoundedRingBuffer(capacity: normalizedLimit)
     }
 
     public mutating func ingest(
@@ -18,12 +33,12 @@ public struct SessionMetricsReducer {
     ) {
         let normalizedReadBytes = max(readBytes, 0)
         let normalizedWriteBytes = max(writeBytes, 0)
-        metrics.cumulativeReadBytes = saturatingAdd(
-            metrics.cumulativeReadBytes,
+        cumulativeReadBytes = saturatingAdd(
+            cumulativeReadBytes,
             normalizedReadBytes
         )
-        metrics.cumulativeWriteBytes = saturatingAdd(
-            metrics.cumulativeWriteBytes,
+        cumulativeWriteBytes = saturatingAdd(
+            cumulativeWriteBytes,
             normalizedWriteBytes
         )
 
@@ -39,8 +54,8 @@ public struct SessionMetricsReducer {
         }
 
         guard let interval = Self.positiveSeconds(from: tick.elapsedSincePrevious) else {
-            metrics.currentReadBytesPerSecond = 0
-            metrics.currentWriteBytesPerSecond = 0
+            currentReadBytesPerSecond = 0
+            currentWriteBytesPerSecond = 0
             return
         }
 
@@ -67,12 +82,10 @@ public struct SessionMetricsReducer {
             interval: interval
         )
 
-        metrics.currentReadBytesPerSecond = sample.readBytesPerSecond
-        metrics.currentWriteBytesPerSecond = sample.writeBytesPerSecond
-        metrics.readHistory.append(sample.readPoint)
-        metrics.writeHistory.append(sample.writePoint)
-        metrics.readHistory = Array(metrics.readHistory.suffix(historyLimit))
-        metrics.writeHistory = Array(metrics.writeHistory.suffix(historyLimit))
+        currentReadBytesPerSecond = sample.readBytesPerSecond
+        currentWriteBytesPerSecond = sample.writeBytesPerSecond
+        readHistory.append(sample.readPoint)
+        writeHistory.append(sample.writePoint)
     }
 
     private static func positiveSeconds(from duration: Duration?) -> TimeInterval? {
@@ -89,5 +102,41 @@ public struct SessionMetricsReducer {
     private func saturatingAdd(_ lhs: Int64, _ rhs: Int64) -> Int64 {
         let result = lhs.addingReportingOverflow(rhs)
         return result.overflow ? .max : result.partialValue
+    }
+}
+
+private struct BoundedRingBuffer<Element> {
+    private let capacity: Int
+    private var storage: [Element] = []
+    private var oldestIndex = 0
+
+    init(capacity: Int) {
+        self.capacity = capacity
+    }
+
+    mutating func append(_ element: Element) {
+        guard capacity > 0 else { return }
+
+        if storage.count < capacity {
+            storage.append(element)
+            return
+        }
+
+        storage[oldestIndex] = element
+        oldestIndex = (oldestIndex + 1) % capacity
+    }
+
+    func orderedElements() -> [Element] {
+        guard storage.isEmpty == false else { return [] }
+
+        var elements: [Element] = []
+        elements.reserveCapacity(storage.count)
+        if storage.count == capacity {
+            elements.append(contentsOf: storage[oldestIndex...])
+            elements.append(contentsOf: storage[..<oldestIndex])
+        } else {
+            elements.append(contentsOf: storage)
+        }
+        return elements
     }
 }

@@ -42,11 +42,12 @@ enum ThroughputSamplingResultGate {
 
 actor ThroughputSamplingCoordinator {
     typealias SnapshotProvider = @MainActor @Sendable () -> ThroughputSamplingSnapshot?
+    typealias IntervalProvider = @MainActor @Sendable () -> Duration
     typealias ResultHandler = @MainActor @Sendable (ThroughputSamplingResult) -> Void
 
     private let sampler: any DiskSampling
     private let clock: ContinuousClock
-    private let interval: Duration
+    private let defaultInterval: Duration
     private var loopTask: Task<Void, Never>?
 
     init(
@@ -55,7 +56,7 @@ actor ThroughputSamplingCoordinator {
         clock: ContinuousClock = ContinuousClock()
     ) {
         self.sampler = sampler
-        self.interval = interval
+        self.defaultInterval = interval
         self.clock = clock
     }
 
@@ -93,12 +94,17 @@ actor ThroughputSamplingCoordinator {
 
     func start(
         snapshotProvider: @escaping SnapshotProvider,
+        intervalProvider: IntervalProvider? = nil,
         resultHandler: @escaping ResultHandler
     ) {
         loopTask?.cancel()
         loopTask = Task { [weak self] in
             guard let self else { return }
-            await self.run(snapshotProvider: snapshotProvider, resultHandler: resultHandler)
+            await self.run(
+                snapshotProvider: snapshotProvider,
+                intervalProvider: intervalProvider,
+                resultHandler: resultHandler
+            )
         }
     }
 
@@ -109,6 +115,7 @@ actor ThroughputSamplingCoordinator {
 
     private func run(
         snapshotProvider: @escaping SnapshotProvider,
+        intervalProvider: IntervalProvider?,
         resultHandler: @escaping ResultHandler
     ) async {
         var previousInstant: ContinuousClock.Instant?
@@ -118,7 +125,7 @@ actor ThroughputSamplingCoordinator {
             let elapsed = previousInstant.map { instant - $0 }
             previousInstant = instant
             guard let snapshot = await snapshotProvider() else {
-                await sleepBetweenSamples()
+                await sleepBetweenSamples(for: await intervalProvider?() ?? defaultInterval)
                 continue
             }
 
@@ -131,11 +138,11 @@ actor ThroughputSamplingCoordinator {
             )
             guard !Task.isCancelled else { return }
             await resultHandler(result)
-            await sleepBetweenSamples()
+            await sleepBetweenSamples(for: await intervalProvider?() ?? defaultInterval)
         }
     }
 
-    private func sleepBetweenSamples() async {
+    private func sleepBetweenSamples(for interval: Duration) async {
         do {
             try await clock.sleep(for: interval)
         } catch {

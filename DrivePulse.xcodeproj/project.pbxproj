@@ -64,6 +64,7 @@
 		100000000000000000000029 /* PanelSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000029 /* PanelSection.swift */; };
 		10000000000000000000002A /* IOKitDiskSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002A /* IOKitDiskSampler.swift */; };
 		10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002B /* ThroughputChartModelTests.swift */; };
+		4D1800000000000000000001 /* IOKitDiskSamplerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1820000000000000000001 /* IOKitDiskSamplerTests.swift */; };
 		10000000000000000000002C /* SystemProfilerProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002C /* SystemProfilerProvider.swift */; };
 		10000000000000000000002D /* DiskUtilAPFSProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002D /* DiskUtilAPFSProvider.swift */; };
 		10000000000000000000002E /* VolumeCapacityRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000002E /* VolumeCapacityRefresher.swift */; };
@@ -136,6 +137,7 @@
 		100000000000000000000087 /* SubprocessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000087 /* SubprocessRunner.swift */; };
 		100000000000000000000088 /* LatestRequestCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000088 /* LatestRequestCoordinator.swift */; };
 		100000000000000000000089 /* SystemProfilerParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000089 /* SystemProfilerParser.swift */; };
+		10000000000000000000008A /* ThroughputMetricsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000008A /* ThroughputMetricsStore.swift */; };
 		100000000000000000000065 /* EjectLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005C /* EjectLocalization.swift */; };
 		100000000000000000000066 /* EjectRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005D /* EjectRecoveryView.swift */; };
 		100000000000000000000067 /* EjectForceConfirmationModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000005E /* EjectForceConfirmationModifier.swift */; };
@@ -247,6 +249,7 @@
 		200000000000000000000029 /* PanelSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelSection.swift; sourceTree = "<group>"; };
 		20000000000000000000002A /* IOKitDiskSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOKitDiskSampler.swift; sourceTree = "<group>"; };
 		20000000000000000000002B /* ThroughputChartModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputChartModelTests.swift; sourceTree = "<group>"; };
+		4D1820000000000000000001 /* IOKitDiskSamplerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOKitDiskSamplerTests.swift; sourceTree = "<group>"; };
 		20000000000000000000002C /* SystemProfilerProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProfilerProvider.swift; sourceTree = "<group>"; };
 		20000000000000000000002D /* DiskUtilAPFSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskUtilAPFSProvider.swift; sourceTree = "<group>"; };
 		20000000000000000000002E /* VolumeCapacityRefresher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeCapacityRefresher.swift; sourceTree = "<group>"; };
@@ -306,6 +309,7 @@
 		200000000000000000000087 /* SubprocessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubprocessRunner.swift; sourceTree = "<group>"; };
 		200000000000000000000088 /* LatestRequestCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatestRequestCoordinator.swift; sourceTree = "<group>"; };
 		200000000000000000000089 /* SystemProfilerParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProfilerParser.swift; sourceTree = "<group>"; };
+		20000000000000000000008A /* ThroughputMetricsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputMetricsStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -504,6 +508,7 @@
 				200000000000000000000022 /* Task7HelperPackagingTests.swift */,
 				200000000000000000000011 /* Task6SettingsAndActionsTests.swift */,
 				20000000000000000000002B /* ThroughputChartModelTests.swift */,
+				4D1820000000000000000001 /* IOKitDiskSamplerTests.swift */,
 				200000000000000000000084 /* SettingsWindowActivatorTests.swift */,
 			);
 			path = Apps/DrivePulseAppTests;
@@ -624,6 +629,7 @@
 			isa = PBXGroup;
 			children = (
 				20000000000000000000002A /* IOKitDiskSampler.swift */,
+				20000000000000000000008A /* ThroughputMetricsStore.swift */,
 				200000000000000000000085 /* ThroughputSamplingCoordinator.swift */,
 			);
 			path = Metrics;
@@ -919,6 +925,7 @@
 				100000000000000000000062 /* OccupancyScanner.swift in Sources */,
 				100000000000000000000064 /* EjectCoordinator.swift in Sources */,
 				100000000000000000000080 /* BoundedProcessFDEnumerator.swift in Sources */,
+				10000000000000000000008A /* ThroughputMetricsStore.swift in Sources */,
 				100000000000000000000085 /* ThroughputSamplingCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -953,6 +960,7 @@
 				100000000000000000000022 /* Task7HelperPackagingTests.swift in Sources */,
 				10000000000000000000000E /* Task6SettingsAndActionsTests.swift in Sources */,
 				10000000000000000000002B /* ThroughputChartModelTests.swift in Sources */,
+				4D1800000000000000000001 /* IOKitDiskSamplerTests.swift in Sources */,
 				100000000000000000000081 /* BoundedProcessFDEnumerator.swift in Sources */,
 				100000000000000000000084 /* SettingsWindowActivatorTests.swift in Sources */,
 				100000000000000000000086 /* SystemProfilerParserBoundaryTests.swift in Sources */,

@@ -160,14 +160,6 @@ struct DrivePulseAppState: Equatable {
         )
     }
 
-    mutating func applySessionMetrics(_ sessionMetrics: DeviceSessionMetrics, for deviceID: DeviceID) {
-        guard let deviceIndex = devices.firstIndex(where: { $0.id == deviceID }) else {
-            return
-        }
-
-        devices[deviceIndex].sessionMetrics = sessionMetrics
-    }
-
     private static func resolveSelection(
         devices: [ExternalDevice],
         preferredID: DeviceID?

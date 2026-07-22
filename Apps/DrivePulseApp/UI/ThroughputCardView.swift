@@ -92,11 +92,12 @@ enum ThroughputChartLayout {
 }
 
 struct ThroughputCardView: View {
-    let device: ExternalDevice?
+    let deviceID: DeviceID?
+    @ObservedObject var metricsStore: ThroughputMetricsStore
 
     var body: some View {
         Group {
-            if let metrics = device?.sessionMetrics {
+            if let deviceID, let metrics = metricsStore.metrics(for: deviceID) {
                 VStack(alignment: .leading, spacing: 8) {
                     ThroughputChartCanvas(metrics: metrics)
                     ThroughputTotalsView(metrics: metrics)

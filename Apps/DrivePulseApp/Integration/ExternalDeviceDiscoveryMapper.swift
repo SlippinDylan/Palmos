@@ -20,6 +20,7 @@ final class ExternalDeviceDiscoveryMapper: @unchecked Sendable {
             records.map { ($0.bsdName, $0) },
             uniquingKeysWith: { existing, _ in existing }
         )
+        #if DEBUG
         discoveryLog.debug("Discovery: enumerating \(records.count) IOMedia records")
         for r in records {
             let pass = DeviceIdentityResolver.isExternalPhysicalDevice(r.descriptor)
@@ -27,12 +28,15 @@ final class ExternalDeviceDiscoveryMapper: @unchecked Sendable {
                 "  \(r.bsdName) whole=\(r.isWholeMedia) internal=\(r.deviceInternal.map(String.init) ?? "nil") net=\(r.isNetworkVolume) transport=[\(r.transportPath.joined(separator: ","))] → externalPhysical=\(pass)"
             )
         }
+        #endif
 
         let rootRecords = records
             .filter {
                 let pass = DeviceIdentityResolver.isExternalPhysicalDevice($0.descriptor)
                 if !pass {
+                    #if DEBUG
                     discoveryLog.debug("  FILTERED OUT \($0.bsdName): not external physical device")
+                    #endif
                 }
                 return pass
             }
@@ -40,13 +44,17 @@ final class ExternalDeviceDiscoveryMapper: @unchecked Sendable {
                 let root = topLevelExternalRoot(for: $0, recordsByBSD: recordsByBSD)
                 let isRoot = root == $0.bsdName
                 if !isRoot {
+                    #if DEBUG
                     discoveryLog.debug("  FILTERED OUT \($0.bsdName): topLevelRoot=\(root ?? "nil") ≠ self")
+                    #endif
                 }
                 return isRoot
             }
             .sorted { $0.bsdName.localizedStandardCompare($1.bsdName) == .orderedAscending }
 
+        #if DEBUG
         discoveryLog.debug("Discovery: \(rootRecords.count) root external device(s) after filtering: \(rootRecords.map(\.bsdName).joined(separator: ", "))")
+        #endif
 
         let identityEvidenceByBSDName = identityRegistry.identityEvidence(for: rootRecords)
 
@@ -84,9 +92,11 @@ final class ExternalDeviceDiscoveryMapper: @unchecked Sendable {
                     )
                     let match = resolvedRoot == rootRecord.bsdName ||
                         (apfsContainerBSDName != nil && volumeRecord.wholeDiskBSDName == apfsContainerBSDName)
+                    #if DEBUG
                     discoveryLog.debug(
                         "  volumeMap: \(volumeRecord.bsdName) whole=\(volumeRecord.wholeDiskBSDName ?? "nil") → root=\(resolvedRoot ?? "nil") match=\(match) (expect \(rootRecord.bsdName))"
                     )
+                    #endif
                     return match
                 }
                 .map {
