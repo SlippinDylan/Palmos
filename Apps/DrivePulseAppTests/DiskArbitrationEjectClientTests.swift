@@ -48,14 +48,12 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         XCTAssertEqual(operations.calls, [.unmount(target, force: false), .eject(target)])
     }
 
-    func testAPFSContainerIsDetachedBeforeBackingPhysicalDisk() async {
+    func testAPFSContainerIsUnmountedBeforePhysicalDiskAndOnlyPhysicalDiskIsEjected() async {
         let logicalTarget = DiskArbitrationWholeDiskIdentity(
             bsdName: "disk7",
             mediaRegistryEntryID: 7_001
         )
-        let operations = StubDiskArbitrationOperating(results: [
-            .success, .success, .success, .success
-        ])
+        let operations = StubDiskArbitrationOperating(results: [.success, .success, .success])
         let client = DiskArbitrationEjectClient(operations: operations)
 
         let result = await client.performNormalEject(
@@ -71,12 +69,188 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         XCTAssertTrue(result.isSuccess)
         XCTAssertEqual(operations.calls, [
             .logicalUnmount(logicalTarget, force: false),
-            .logicalEject(logicalTarget),
             .unmount(
                 PhysicalDiskTargetIdentity(bsdName: "disk6", mediaRegistryEntryID: 6_001),
                 force: false
             ),
             .eject(PhysicalDiskTargetIdentity(bsdName: "disk6", mediaRegistryEntryID: 6_001))
+        ])
+    }
+
+    func testAPFSContainerAlreadyUnmountedStillContinuesToPhysicalDiskEject() async {
+        let logicalTarget = DiskArbitrationWholeDiskIdentity(
+            bsdName: "disk7",
+            mediaRegistryEntryID: 7_001
+        )
+        let physicalTarget = PhysicalDiskTargetIdentity(
+            bsdName: "disk6",
+            mediaRegistryEntryID: 6_001
+        )
+        let operations = StubDiskArbitrationOperating(results: [
+            .failure(status: DAReturn(kDAReturnNotMounted), message: nil),
+            .success,
+            .success
+        ])
+        let client = DiskArbitrationEjectClient(operations: operations)
+
+        let result = await client.performNormalEject(
+            plan: DiskEjectOperationPlan(
+                physicalTarget: physicalTarget,
+                logicalWholeDiskTargets: [logicalTarget]
+            )
+        )
+
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(operations.calls, [
+            .logicalUnmount(logicalTarget, force: false),
+            .unmount(physicalTarget, force: false),
+            .eject(physicalTarget)
+        ])
+    }
+
+    func testAPFSLogicalUnmountFailureStopsBeforePhysicalDiskOperations() async {
+        let logicalTarget = DiskArbitrationWholeDiskIdentity(
+            bsdName: "disk7",
+            mediaRegistryEntryID: 7_001
+        )
+        let physicalTarget = PhysicalDiskTargetIdentity(
+            bsdName: "disk6",
+            mediaRegistryEntryID: 6_001
+        )
+        let operations = StubDiskArbitrationOperating(results: [
+            .failure(status: DAReturn(kDAReturnBusy), message: "Volume is in use"),
+            .failure(status: DAReturn(kDAReturnBusy), message: "Volume is in use")
+        ])
+        let client = DiskArbitrationEjectClient(operations: operations)
+
+        let result = await client.performNormalEject(
+            plan: DiskEjectOperationPlan(
+                physicalTarget: physicalTarget,
+                logicalWholeDiskTargets: [logicalTarget]
+            )
+        )
+
+        XCTAssertEqual(operations.calls, [
+            .logicalUnmount(logicalTarget, force: false),
+            .logicalUnmount(logicalTarget, force: false)
+        ])
+        XCTAssertEqual(result.failure?.stage, .unmounting)
+        XCTAssertEqual(result.failure?.category, .busy)
+    }
+
+    func testNormalAPFSLogicalBusyRetriesOnceThenContinuesToPhysicalEject() async {
+        let logicalTarget = DiskArbitrationWholeDiskIdentity(
+            bsdName: "disk7",
+            mediaRegistryEntryID: 7_001
+        )
+        let physicalTarget = PhysicalDiskTargetIdentity(
+            bsdName: "disk6",
+            mediaRegistryEntryID: 6_001
+        )
+        let operations = StubDiskArbitrationOperating(results: [
+            .failure(status: DAReturn(bitPattern: 0x0000_C010), message: "Resource busy"),
+            .success,
+            .success,
+            .success
+        ])
+        let client = DiskArbitrationEjectClient(operations: operations)
+
+        let result = await client.performNormalEject(
+            plan: DiskEjectOperationPlan(
+                physicalTarget: physicalTarget,
+                logicalWholeDiskTargets: [logicalTarget]
+            )
+        )
+
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(operations.calls, [
+            .logicalUnmount(logicalTarget, force: false),
+            .logicalUnmount(logicalTarget, force: false),
+            .unmount(physicalTarget, force: false),
+            .eject(physicalTarget)
+        ])
+    }
+
+    func testForceLogicalBusyDoesNotRetryOrReachPhysicalDisk() async {
+        let logicalTarget = DiskArbitrationWholeDiskIdentity(
+            bsdName: "disk7",
+            mediaRegistryEntryID: 7_001
+        )
+        let physicalTarget = PhysicalDiskTargetIdentity(
+            bsdName: "disk6",
+            mediaRegistryEntryID: 6_001
+        )
+        let operations = StubDiskArbitrationOperating(results: [
+            .failure(status: DAReturn(kDAReturnBusy), message: "Volume is in use")
+        ])
+        let client = DiskArbitrationEjectClient(operations: operations)
+
+        let result = await client.performConfirmedForceEject(
+            plan: DiskEjectOperationPlan(
+                physicalTarget: physicalTarget,
+                logicalWholeDiskTargets: [logicalTarget]
+            )
+        )
+
+        XCTAssertEqual(operations.calls, [.logicalUnmount(logicalTarget, force: true)])
+        XCTAssertEqual(result.failure?.stage, .forceUnmounting)
+        XCTAssertEqual(result.failure?.category, .busy)
+    }
+
+    func testPhysicalBusyDoesNotRetryAfterLogicalUnmount() async {
+        let logicalTarget = DiskArbitrationWholeDiskIdentity(
+            bsdName: "disk7",
+            mediaRegistryEntryID: 7_001
+        )
+        let physicalTarget = PhysicalDiskTargetIdentity(
+            bsdName: "disk6",
+            mediaRegistryEntryID: 6_001
+        )
+        let operations = StubDiskArbitrationOperating(results: [
+            .success,
+            .failure(status: DAReturn(kDAReturnBusy), message: "Physical disk busy")
+        ])
+        let client = DiskArbitrationEjectClient(operations: operations)
+
+        let result = await client.performNormalEject(
+            plan: DiskEjectOperationPlan(
+                physicalTarget: physicalTarget,
+                logicalWholeDiskTargets: [logicalTarget]
+            )
+        )
+
+        XCTAssertEqual(operations.calls, [
+            .logicalUnmount(logicalTarget, force: false),
+            .unmount(physicalTarget, force: false)
+        ])
+        XCTAssertEqual(result.failure?.stage, .unmounting)
+        XCTAssertEqual(result.failure?.category, .busy)
+    }
+
+    func testConfirmedForceAPFSEjectForcesBothUnmountsButEjectsOnlyPhysicalDisk() async {
+        let logicalTarget = DiskArbitrationWholeDiskIdentity(
+            bsdName: "disk7",
+            mediaRegistryEntryID: 7_001
+        )
+        let physicalTarget = PhysicalDiskTargetIdentity(
+            bsdName: "disk6",
+            mediaRegistryEntryID: 6_001
+        )
+        let operations = StubDiskArbitrationOperating(results: [.success, .success, .success])
+        let client = DiskArbitrationEjectClient(operations: operations)
+
+        let result = await client.performConfirmedForceEject(
+            plan: DiskEjectOperationPlan(
+                physicalTarget: physicalTarget,
+                logicalWholeDiskTargets: [logicalTarget]
+            )
+        )
+
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(operations.calls, [
+            .logicalUnmount(logicalTarget, force: true),
+            .unmount(physicalTarget, force: true),
+            .eject(physicalTarget)
         ])
     }
 
@@ -259,6 +433,134 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         XCTAssertEqual(transition, .ejectSubmitted)
         XCTAssertEqual(probe.validationCount, 1)
         XCTAssertEqual(probe.ejectCount, 1)
+    }
+
+    func testNormalLogicalBusySchedulesRetryAndRevalidatesBeforeSubmission() {
+        let probe = LogicalUnmountRetryProbe(targetValidationResults: [true])
+        let gate = logicalUnmountRetryGate(probe)
+        let busy = DiskArbitrationOperationResult.failure(
+            status: DAReturn(bitPattern: 0x0000_C010),
+            message: "Resource busy"
+        )
+
+        let transition = gate.proceedAfterFailedUnmount(
+            busy,
+            stage: .unmounting,
+            force: false,
+            hasRetried: false
+        )
+
+        XCTAssertEqual(transition, .retryScheduled)
+        XCTAssertEqual(probe.prepareCount, 1)
+        XCTAssertEqual(probe.scheduleCount, 1)
+        XCTAssertEqual(probe.validationCount, 0)
+        XCTAssertEqual(probe.submitCount, 0)
+
+        probe.runScheduledRetry()
+
+        XCTAssertEqual(probe.validationCount, 1)
+        XCTAssertEqual(probe.submitCount, 1)
+        XCTAssertEqual(probe.finishedResults, [])
+    }
+
+    func testSecondLogicalBusyFinishesWithoutSchedulingThirdAttempt() {
+        let probe = LogicalUnmountRetryProbe(targetValidationResults: [])
+        let gate = logicalUnmountRetryGate(probe)
+        let secondBusy = DiskArbitrationOperationResult.failure(
+            status: DAReturn(kDAReturnBusy),
+            message: "Still busy"
+        )
+
+        let transition = gate.proceedAfterFailedUnmount(
+            secondBusy,
+            stage: .unmounting,
+            force: false,
+            hasRetried: true
+        )
+
+        XCTAssertEqual(
+            transition,
+            .finished(.failure(result: secondBusy, stage: .unmounting))
+        )
+        XCTAssertEqual(probe.prepareCount, 0)
+        XCTAssertEqual(probe.scheduleCount, 0)
+        XCTAssertEqual(probe.submitCount, 0)
+    }
+
+    func testLogicalRetryIdentityChangeFinishesWithoutSecondSubmission() {
+        let probe = LogicalUnmountRetryProbe(targetValidationResults: [false])
+        let gate = logicalUnmountRetryGate(probe)
+
+        let transition = gate.proceedAfterFailedUnmount(
+            .failure(status: DAReturn(kDAReturnBusy), message: nil),
+            stage: .unmounting,
+            force: false,
+            hasRetried: false
+        )
+        probe.runScheduledRetry()
+
+        XCTAssertEqual(transition, .retryScheduled)
+        XCTAssertEqual(probe.validationCount, 1)
+        XCTAssertEqual(probe.submitCount, 0)
+        XCTAssertEqual(probe.finishedResults, [.targetInvalidated(stage: .unmounting)])
+    }
+
+    func testCancellationDuringLogicalRetryBackoffPreventsSecondUnmountSubmission() {
+        let completionProbe = CompletionProbe()
+        let retryProbe = LogicalUnmountRetryProbe(targetValidationResults: [true])
+        let registry = DiskArbitrationCallbackRegistry()
+        let cancellation = DiskArbitrationOperationCancellation(registry: registry)
+        let gate = BoundDiskArbitrationLogicalUnmountRetryGate(
+            prepareRetry: cancellation.prepareNextStage,
+            scheduleRetry: retryProbe.scheduleRetry,
+            targetIsValid: retryProbe.targetIsValid,
+            submitRetry: {
+                let context = registry.register { completionProbe.record($0) }
+                cancellation.install(context)
+                let submitted = cancellation.submit { completionProbe.recordSubmit() }
+                retryProbe.recordSubmissionResult(submitted)
+            },
+            finish: retryProbe.finish
+        )
+
+        let transition = gate.proceedAfterFailedUnmount(
+            .failure(status: DAReturn(kDAReturnBusy), message: nil),
+            stage: .unmounting,
+            force: false,
+            hasRetried: false
+        )
+        cancellation.cancel()
+        retryProbe.runScheduledRetry()
+
+        XCTAssertEqual(transition, .retryScheduled)
+        XCTAssertEqual(retryProbe.submissionResults, [false])
+        XCTAssertEqual(completionProbe.submitCount, 0)
+        XCTAssertEqual(completionProbe.results, [.cancelled])
+        XCTAssertEqual(registry.registeredContextCount, 0)
+    }
+
+    func testLogicalRetryRejectsForceTimeoutCancellationNonBusyAndSpentBudget() {
+        let cases: [(DiskArbitrationOperationResult, Bool, Bool, EjectOperationStage)] = [
+            (.failure(status: DAReturn(kDAReturnBusy), message: nil), true, false, .forceUnmounting),
+            (.failure(status: DAReturn(kDAReturnNotPermitted), message: nil), false, false, .unmounting),
+            (.timedOut, false, false, .unmounting),
+            (.cancelled, false, false, .unmounting),
+            (.failure(status: DAReturn(kDAReturnBusy), message: nil), false, true, .unmounting)
+        ]
+
+        for (result, force, hasRetried, stage) in cases {
+            let probe = LogicalUnmountRetryProbe(targetValidationResults: [])
+            let transition = logicalUnmountRetryGate(probe).proceedAfterFailedUnmount(
+                result,
+                stage: stage,
+                force: force,
+                hasRetried: hasRetried
+            )
+
+            XCTAssertEqual(transition, .finished(.failure(result: result, stage: stage)))
+            XCTAssertEqual(probe.prepareCount, 0)
+            XCTAssertEqual(probe.scheduleCount, 0)
+        }
     }
 
     func testCallbackWinningTimeoutResumesAndCleansUpExactlyOnce() {
@@ -462,6 +764,18 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
             mountURLs: mountURLs
         )
     }
+
+    private func logicalUnmountRetryGate(
+        _ probe: LogicalUnmountRetryProbe
+    ) -> BoundDiskArbitrationLogicalUnmountRetryGate {
+        BoundDiskArbitrationLogicalUnmountRetryGate(
+            prepareRetry: probe.prepareRetry,
+            scheduleRetry: probe.scheduleRetry,
+            targetIsValid: probe.targetIsValid,
+            submitRetry: probe.submitRetry,
+            finish: probe.finish
+        )
+    }
 }
 
 private enum RegistryEvent {
@@ -489,10 +803,56 @@ private final class BoundSequenceProbe {
     }
 }
 
+private final class LogicalUnmountRetryProbe: @unchecked Sendable {
+    private var targetValidationResults: [Bool]
+    private var scheduledRetry: (@Sendable () -> Void)?
+    private(set) var prepareCount = 0
+    private(set) var scheduleCount = 0
+    private(set) var validationCount = 0
+    private(set) var submitCount = 0
+    private(set) var finishedResults: [DiskArbitrationSequenceResult] = []
+    private(set) var submissionResults: [Bool] = []
+
+    init(targetValidationResults: [Bool]) {
+        self.targetValidationResults = targetValidationResults
+    }
+
+    func prepareRetry() {
+        prepareCount += 1
+    }
+
+    func scheduleRetry(_ retry: @escaping @Sendable () -> Void) {
+        scheduleCount += 1
+        scheduledRetry = retry
+    }
+
+    func targetIsValid() -> Bool {
+        validationCount += 1
+        return targetValidationResults.removeFirst()
+    }
+
+    func submitRetry() {
+        submitCount += 1
+    }
+
+    func finish(_ result: DiskArbitrationSequenceResult) {
+        finishedResults.append(result)
+    }
+
+    func recordSubmissionResult(_ submitted: Bool) {
+        submissionResults.append(submitted)
+    }
+
+    func runScheduledRetry() {
+        let retry = scheduledRetry
+        scheduledRetry = nil
+        retry?()
+    }
+}
+
 private final class StubDiskArbitrationOperating: DiskArbitrationOperating, @unchecked Sendable {
     enum Call: Equatable {
         case logicalUnmount(DiskArbitrationWholeDiskIdentity, force: Bool)
-        case logicalEject(DiskArbitrationWholeDiskIdentity)
         case unmount(PhysicalDiskTargetIdentity, force: Bool)
         case eject(PhysicalDiskTargetIdentity)
     }
@@ -507,23 +867,27 @@ private final class StubDiskArbitrationOperating: DiskArbitrationOperating, @unc
         force: Bool
     ) async -> DiskArbitrationSequenceResult {
         let unmountStage: EjectOperationStage = force ? .forceUnmounting : .unmounting
+        var hasRetriedLogicalUnmount = false
         for logicalTarget in plan.logicalWholeDiskTargets {
-            calls.append(.logicalUnmount(logicalTarget, force: force))
-            let logicalUnmountResult = results.removeFirst()
-            switch logicalUnmountResult {
-            case .success:
+            while true {
+                calls.append(.logicalUnmount(logicalTarget, force: force))
+                let logicalUnmountResult = results.removeFirst()
+                switch logicalUnmountResult {
+                case .success:
+                    break
+                case .failure(let status, _)
+                    where DiskArbitrationErrorClassifier().classify(status) == .notMounted:
+                    break
+                case .failure(let status, _)
+                    where force == false
+                        && hasRetriedLogicalUnmount == false
+                        && DiskArbitrationErrorClassifier().classify(status) == .busy:
+                    hasRetriedLogicalUnmount = true
+                    continue
+                default:
+                    return .failure(result: logicalUnmountResult, stage: unmountStage)
+                }
                 break
-            case .failure(let status, _)
-                where DiskArbitrationErrorClassifier().classify(status) == .notMounted:
-                break
-            default:
-                return .failure(result: logicalUnmountResult, stage: unmountStage)
-            }
-
-            calls.append(.logicalEject(logicalTarget))
-            let logicalEjectResult = results.removeFirst()
-            guard logicalEjectResult == .success else {
-                return .failure(result: logicalEjectResult, stage: .ejecting)
             }
         }
 

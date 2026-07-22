@@ -100,11 +100,28 @@ final class EjectRecoveryViewTests: XCTestCase {
         XCTAssertEqual(presentation?.operationStatus, EjectLocalization.operationInProgress)
     }
 
-    func testWorkingWithoutRetainedRecoveryDoesNotRenderRecoveryUI() {
-        XCTAssertNil(EjectRecoveryPresentation(
+    func testInitialWorkingStageRendersVisibleProgressWithoutRecoveryActions() {
+        let presentation = EjectRecoveryPresentation(
             state: .working(target: target, stage: .unmounting),
             retainedRecovery: nil,
             selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertEqual(presentation?.deviceID, target.deviceID)
+        XCTAssertEqual(presentation?.displayName, target.displayName)
+        XCTAssertEqual(presentation?.title, EjectLocalization.progressTitle(displayName: target.displayName))
+        XCTAssertTrue(presentation?.title.contains(target.displayName) == true)
+        XCTAssertEqual(presentation?.primaryText, EjectLocalization.stageName(.unmounting))
+        XCTAssertEqual(presentation?.operationStatus, EjectLocalization.operationInProgress)
+        XCTAssertTrue(presentation?.isOperationActive == true)
+        XCTAssertEqual(presentation?.actions, [])
+    }
+
+    func testInitialWorkingStageOnlyRendersForSelectedDevice() {
+        XCTAssertNil(EjectRecoveryPresentation(
+            state: .working(target: target, stage: .unmounting),
+            retainedRecovery: nil,
+            selectedDeviceID: DeviceID(rawValue: "other")
         ))
     }
 

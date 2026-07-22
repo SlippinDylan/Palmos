@@ -42,7 +42,7 @@ final class EjectTargetResolverTests: XCTestCase {
         XCTAssertFalse(result.scope.contains(path: "/Volumes/Database/report.txt"))
     }
 
-    func testBuildsAPFSOperationPlanForSynthesizedContainerBeforePhysicalDisk() async throws {
+    func testBuildsAPFSOperationPlanForSynthesizedContainerUnmountBeforePhysicalDisk() async throws {
         let adapter = SnapshotAdapter(snapshots: [[
             media(
                 id: "serial:nvme",

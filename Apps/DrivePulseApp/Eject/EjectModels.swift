@@ -42,15 +42,16 @@ struct PhysicalDiskTargetIdentity: Equatable, Sendable {
     let mediaRegistryEntryID: UInt64
 }
 
-/// Identifies a whole-disk object that must be detached before the backing
-/// physical medium can be ejected. APFS synthesized containers have their own
-/// whole-disk identity and are not children of the physical DA whole disk.
+/// Identifies a logical whole-disk object that must be unmounted before the
+/// backing physical medium can be unmounted and ejected. APFS synthesized
+/// containers have their own identity and are not children of the physical DA
+/// whole disk, but they are never themselves sent to `DADiskEject`.
 struct DiskArbitrationWholeDiskIdentity: Equatable, Sendable {
     let bsdName: String
     let mediaRegistryEntryID: UInt64
 }
 
-/// A freshly resolved, leaf-to-root Disk Arbitration operation plan.
+/// A freshly resolved plan for logical unmounts followed by physical eject.
 struct DiskEjectOperationPlan: Equatable, Sendable {
     let physicalTarget: PhysicalDiskTargetIdentity
     let logicalWholeDiskTargets: [DiskArbitrationWholeDiskIdentity]

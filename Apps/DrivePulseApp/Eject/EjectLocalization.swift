@@ -82,7 +82,7 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
             self.init(
                 deviceID: request.deviceID,
                 displayName: request.displayName,
-                title: EjectLocalization.operationInProgress,
+                title: EjectLocalization.progressTitle(displayName: request.displayName),
                 primaryText: EjectLocalization.preparingStage,
                 reason: EjectLocalization.preparingStage,
                 guidance: nil,
@@ -97,15 +97,29 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         case .awaitingForceConfirmation(let recovery):
             guard recovery.target.deviceID == selectedDeviceID else { return nil }
             self = Self.recovery(recovery, isOperationActive: true)
-        case .working(let target, _):
-            guard let retainedRecovery,
-                  retainedRecovery.target == target,
-                  target.deviceID == selectedDeviceID else { return nil }
-            self = Self.recovery(
-                retainedRecovery,
-                isOperationActive: true,
-                operationStatus: EjectLocalization.operationInProgress
-            )
+        case .working(let target, let stage):
+            guard target.deviceID == selectedDeviceID else { return nil }
+            if let retainedRecovery, retainedRecovery.target == target {
+                self = Self.recovery(
+                    retainedRecovery,
+                    isOperationActive: true,
+                    operationStatus: EjectLocalization.operationInProgress
+                )
+            } else {
+                let stageName = EjectLocalization.stageName(stage)
+                self.init(
+                    deviceID: target.deviceID,
+                    displayName: target.displayName,
+                    title: EjectLocalization.progressTitle(displayName: target.displayName),
+                    primaryText: stageName,
+                    reason: stageName,
+                    guidance: nil,
+                    technicalDetail: nil,
+                    actions: [],
+                    isOperationActive: true,
+                    operationStatus: EjectLocalization.operationInProgress
+                )
+            }
         case .failed(let target, let failure):
             guard target.deviceID == selectedDeviceID else { return nil }
             let reason = EjectLocalization.failureBody(failure)
@@ -190,6 +204,10 @@ enum EjectLocalization {
 
     static var operationInProgress: String {
         String(localized: "eject.recovery.operationInProgress")
+    }
+
+    static func progressTitle(displayName: String) -> String {
+        format(String(localized: "eject.progress.title"), displayName)
     }
 
     static var preparingStage: String {
@@ -289,7 +307,7 @@ enum EjectLocalization {
         }
     }
 
-    private static func stageName(_ stage: EjectOperationStage) -> String {
+    static func stageName(_ stage: EjectOperationStage) -> String {
         switch stage {
         case .preparing: String(localized: "eject.stage.preparing")
         case .unmounting: String(localized: "eject.stage.unmounting")

@@ -846,24 +846,28 @@ final class EjectCoordinatorTests: XCTestCase {
 
     func testSecondBeginIsIgnoredUntilFirstWorkflowReleases() async throws {
         let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy)), .success(()), .success(())])
-        fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)
+        XCTAssertTrue(fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: "T7",
+            topologyGeneration: 9
+        ))
         try await waitUntil { fixture.coordinator.state.recovery != nil }
 
-        fixture.coordinator.begin(
+        XCTAssertFalse(fixture.coordinator.begin(
             deviceID: DeviceID(rawValue: "serial:other"),
             displayName: "Other",
             topologyGeneration: 10
-        )
+        ))
         let initialResolveCalls = await fixture.resolver.resolveCalls()
         XCTAssertEqual(initialResolveCalls, [fixture.target.deviceID])
 
         fixture.coordinator.retry()
         try await waitUntil { fixture.coordinator.state == .succeeded(fixture.target) }
-        fixture.coordinator.begin(
+        XCTAssertTrue(fixture.coordinator.begin(
             deviceID: DeviceID(rawValue: "serial:other"),
             displayName: "Other",
             topologyGeneration: 10
-        )
+        ))
         try await waitUntil { (await fixture.resolver.resolveCalls()).count == 2 }
         fixture.coordinator.cancel()
     }

@@ -1693,6 +1693,28 @@
         }
       }
     },
+    "eject.progress.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ejecting “%@”…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在弹出“%@”…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在退出「%@」…"
+          }
+        }
+      }
+    },
     "eject.recovery.guidance" : {
       "localizations" : {
         "en" : {

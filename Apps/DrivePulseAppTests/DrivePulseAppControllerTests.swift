@@ -1138,6 +1138,101 @@ final class DrivePulseAppControllerTests: XCTestCase {
         )
     }
 
+    func testSuccessfulEjectCanRunAgainAfterSamePhysicalDeviceRemounts() async throws {
+        let firstMount = makeDevice(
+            id: "stable:portable-ssd",
+            volumes: ["disk21s1"],
+            physicalStoreBSDName: "disk21",
+            apfsContainerBSDName: "disk22"
+        )
+        let secondMount = makeDevice(
+            id: "stable:portable-ssd",
+            volumes: ["disk23s1"],
+            physicalStoreBSDName: "disk21",
+            apfsContainerBSDName: "disk23"
+        )
+        let discovery = StubExternalDeviceDiscovery(results: [[firstMount]])
+        let resolver = RecordingEjectTargetResolver(device: firstMount)
+        let ejecter = RecordingSuccessfulDiskEjecter()
+        let coordinator = makeEjectCoordinator(resolver: resolver, ejecter: ejecter)
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [firstMount], selectedDeviceID: firstMount.id),
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator
+        )
+
+        let firstAction = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+        controller.perform(firstAction)
+        await waitUntil { await ejecter.normalCallCount() == 1 }
+        await waitUntil { controller.isPerformingSystemAction == false }
+        guard case .succeeded(let firstTarget) = coordinator.state else {
+            return XCTFail("Expected the first eject workflow to succeed")
+        }
+
+        discovery.emit([secondMount])
+        await waitUntil { controller.state.selectedDevice?.volumes == secondMount.volumes }
+        let secondAction = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+        controller.perform(secondAction)
+
+        await waitUntil { await resolver.resolveRequestsSnapshot().count == 2 }
+        await waitUntil { await ejecter.normalCallCount() == 2 }
+        await waitUntil { controller.isPerformingSystemAction == false }
+        guard case .succeeded(let secondTarget) = coordinator.state else {
+            return XCTFail("Expected the remounted device's eject workflow to succeed")
+        }
+        let resolveRequests = await resolver.resolveRequestsSnapshot()
+        let revalidationCount = await resolver.revalidationCountSnapshot()
+        let ejectedPhysicalBSDNames = await ejecter.physicalBSDNames()
+        XCTAssertEqual(resolveRequests.map(\.deviceID), [firstMount.id, firstMount.id])
+        XCTAssertGreaterThan(
+            resolveRequests[1].topologyGeneration,
+            resolveRequests[0].topologyGeneration
+        )
+        XCTAssertEqual(revalidationCount, 2)
+        XCTAssertEqual(ejectedPhysicalBSDNames, ["disk21", "disk21"])
+        XCTAssertEqual(secondTarget.deviceID, firstTarget.deviceID)
+        XCTAssertGreaterThan(secondTarget.topologyGeneration, firstTarget.topologyGeneration)
+        XCTAssertFalse(controller.isPerformingSystemAction)
+    }
+
+    func testRejectedReentrantEjectDoesNotLatchSystemActionsBusy() async throws {
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let resolver = RecordingEjectTargetResolver(device: device)
+        let coordinator = makeEjectCoordinator(
+            resolver: resolver,
+            ejecter: ImmediateDiskEjecter(normalResult: .success)
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+        var didAttemptRejectedEject = false
+        let observation = controller.$isPerformingSystemAction.dropFirst().sink { isBusy in
+            MainActor.assumeIsolated {
+                guard isBusy == false, didAttemptRejectedEject == false else { return }
+                didAttemptRejectedEject = true
+                controller.perform(action)
+            }
+        }
+
+        controller.perform(action)
+
+        await waitUntil { didAttemptRejectedEject }
+        await waitUntil { controller.isPerformingSystemAction == false }
+        let resolveRequests = await resolver.resolveRequestsSnapshot()
+        XCTAssertEqual(resolveRequests.count, 1)
+        XCTAssertFalse(controller.isPerformingSystemAction)
+        withExtendedLifetime(observation) {}
+    }
+
     func testSuccessfulEjectCancelsPendingPreEjectObservation() async throws {
         let mountedDevice = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let discovery = StubExternalDeviceDiscovery(results: [[mountedDevice]])
@@ -1647,6 +1742,144 @@ final class DrivePulseAppControllerTests: XCTestCase {
             XCTFail("Expected busy recovery to remain until an explicit intent.")
         }
         XCTAssertNil(controller.actionFeedback)
+    }
+
+    func testBusyRecoveryUnlocksFooterActionsAndCancelLeavesThemUnlocked() async throws {
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let failure = EjectFailure(
+            stage: .unmounting,
+            category: .busy,
+            rawStatus: nil,
+            systemMessage: "busy",
+            physicalBSDName: device.physicalStoreBSDName,
+            holders: []
+        )
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: device),
+            ejecter: ImmediateDiskEjecter(normalResult: .failure(failure))
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+
+        controller.perform(action)
+        await waitUntil {
+            if case .awaitingRecovery = coordinator.state { return true }
+            return false
+        }
+
+        XCTAssertFalse(controller.isPerformingSystemAction)
+        controller.requestForceEject()
+        XCTAssertTrue(controller.isPerformingSystemAction)
+        controller.cancelForceConfirmation()
+        XCTAssertFalse(controller.isPerformingSystemAction)
+        controller.cancelEject()
+        await waitUntil { coordinator.state == .idle }
+        XCTAssertFalse(controller.isPerformingSystemAction)
+    }
+
+    func testBusyRecoveryAllowsOtherFooterActionsToRunNormally() async throws {
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let failure = EjectFailure(
+            stage: .unmounting,
+            category: .busy,
+            rawStatus: nil,
+            systemMessage: "busy",
+            physicalBSDName: device.physicalStoreBSDName,
+            holders: []
+        )
+        let systemActions = StubSystemActionPerformer()
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: device),
+            ejecter: ImmediateDiskEjecter(normalResult: .failure(failure))
+        )
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            systemActions: systemActions,
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            ejectCoordinator: coordinator
+        )
+        let ejectAction = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+        let diskUtilityAction = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .openDiskUtility })
+        )
+
+        controller.perform(ejectAction)
+        await waitUntil {
+            if case .awaitingRecovery = coordinator.state { return true }
+            return false
+        }
+
+        controller.perform(diskUtilityAction)
+        await systemActions.waitUntilStarted()
+        XCTAssertTrue(controller.isPerformingSystemAction)
+        let performedActions = await systemActions.performedActionsSnapshot()
+        XCTAssertEqual(performedActions, [diskUtilityAction])
+
+        await systemActions.finish()
+        await waitUntil { controller.isPerformingSystemAction == false }
+        guard case .awaitingRecovery = coordinator.state else {
+            return XCTFail("Expected the eject recovery workflow to remain available")
+        }
+        controller.cancelEject()
+        await waitUntil { coordinator.state == .idle }
+    }
+
+    func testMainEjectRetriesSelectedBusyRecoveryAndRelocksUntilTerminalState() async throws {
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let failure = EjectFailure(
+            stage: .unmounting,
+            category: .busy,
+            rawStatus: nil,
+            systemMessage: "busy",
+            physicalBSDName: device.physicalStoreBSDName,
+            holders: []
+        )
+        let resolver = RecordingEjectTargetResolver(device: device)
+        let ejecter = BusyThenBlockingDiskEjecter(busyFailure: failure)
+        let coordinator = makeEjectCoordinator(resolver: resolver, ejecter: ejecter)
+        let controller = DrivePulseAppController(
+            state: DrivePulseAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            ejectCoordinator: coordinator
+        )
+        let action = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+
+        controller.perform(action)
+        await waitUntil {
+            if case .awaitingRecovery = coordinator.state { return true }
+            return false
+        }
+        XCTAssertFalse(controller.isPerformingSystemAction)
+
+        controller.perform(action)
+        await ejecter.waitUntilRetryStarts()
+
+        guard case .working(let target, _) = coordinator.state else {
+            return XCTFail("Expected the main eject action to start the existing workflow retry")
+        }
+        XCTAssertEqual(target.deviceID, device.id)
+        XCTAssertTrue(controller.isPerformingSystemAction)
+        let resolveRequestCount = await resolver.resolveRequestsSnapshot().count
+        let normalCallCount = await ejecter.normalCallCount()
+        XCTAssertEqual(resolveRequestCount, 1)
+        XCTAssertEqual(normalCallCount, 2)
+
+        await ejecter.finishRetry()
+        await waitUntil {
+            if case .succeeded = coordinator.state { return true }
+            return false
+        }
+        XCTAssertFalse(controller.isPerformingSystemAction)
     }
 
     func testSuccessfulEjectPublishesSafeRemovalFeedbackAndAutoDismisses() async throws {
@@ -3429,6 +3662,68 @@ private struct ImmediateDiskEjecter: DiskEjecting {
         _ = plan
         return .success
     }
+}
+
+private actor RecordingSuccessfulDiskEjecter: DiskEjecting {
+    private var normalPhysicalBSDNames: [String] = []
+
+    func performNormalEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        normalPhysicalBSDNames.append(plan.physicalTarget.bsdName)
+        return .success
+    }
+
+    func performConfirmedForceEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        _ = plan
+        return .success
+    }
+
+    func normalCallCount() -> Int {
+        normalPhysicalBSDNames.count
+    }
+
+    func physicalBSDNames() -> [String] {
+        normalPhysicalBSDNames
+    }
+}
+
+private actor BusyThenBlockingDiskEjecter: DiskEjecting {
+    private let busyFailure: EjectFailure
+    private var callCount = 0
+    private var retryStarted = false
+    private var retryStartContinuations: [CheckedContinuation<Void, Never>] = []
+    private var retryFinishContinuation: CheckedContinuation<Void, Never>?
+
+    init(busyFailure: EjectFailure) {
+        self.busyFailure = busyFailure
+    }
+
+    func performNormalEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        _ = plan
+        callCount += 1
+        guard callCount > 1 else { return .failure(busyFailure) }
+        retryStarted = true
+        retryStartContinuations.forEach { $0.resume() }
+        retryStartContinuations.removeAll()
+        await withCheckedContinuation { retryFinishContinuation = $0 }
+        return .success
+    }
+
+    func performConfirmedForceEject(plan: DiskEjectOperationPlan) async -> DiskEjectOutcome {
+        _ = plan
+        return .success
+    }
+
+    func waitUntilRetryStarts() async {
+        if retryStarted { return }
+        await withCheckedContinuation { retryStartContinuations.append($0) }
+    }
+
+    func finishRetry() {
+        retryFinishContinuation?.resume()
+        retryFinishContinuation = nil
+    }
+
+    func normalCallCount() -> Int { callCount }
 }
 
 private struct FixedOccupancyScanner: OccupancyScanning {

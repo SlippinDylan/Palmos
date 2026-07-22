@@ -58,6 +58,45 @@ struct BoundDiskArbitrationSecondStageGate {
     }
 }
 
+/// Absorbs one transient logical-unmount busy result without releasing the
+/// workflow barrier or weakening the bound physical/logical identity checks.
+struct BoundDiskArbitrationLogicalUnmountRetryGate {
+    enum Transition: Equatable {
+        case retryScheduled
+        case finished(DiskArbitrationSequenceResult)
+    }
+
+    let prepareRetry: @Sendable () -> Void
+    let scheduleRetry: @Sendable (@escaping @Sendable () -> Void) -> Void
+    let targetIsValid: @Sendable () -> Bool
+    let submitRetry: @Sendable () -> Void
+    let finish: @Sendable (DiskArbitrationSequenceResult) -> Void
+
+    func proceedAfterFailedUnmount(
+        _ result: DiskArbitrationOperationResult,
+        stage: EjectOperationStage,
+        force: Bool,
+        hasRetried: Bool
+    ) -> Transition {
+        guard force == false,
+              hasRetried == false,
+              case .failure(let status, _) = result,
+              DiskArbitrationErrorClassifier().classify(status) == .busy else {
+            return .finished(.failure(result: result, stage: stage))
+        }
+
+        prepareRetry()
+        scheduleRetry {
+            guard targetIsValid() else {
+                finish(.targetInvalidated(stage: stage))
+                return
+            }
+            submitRetry()
+        }
+        return .retryScheduled
+    }
+}
+
 struct DiskArbitrationEjectClient: DiskEjecting {
     private let operations: any DiskArbitrationOperating
     private let classifier: DiskArbitrationErrorClassifier
@@ -166,13 +205,16 @@ final class LiveDiskArbitrationOperating: DiskArbitrationOperating, @unchecked S
         qos: .userInitiated
     )
     private let timeoutNanoseconds: UInt64
+    private let logicalUnmountRetryDelayNanoseconds: UInt64
     private let ejectIntentOriginTracker: DiskEjectIntentOriginTracker
 
     init(
         timeoutNanoseconds: UInt64 = 10_000_000_000,
+        logicalUnmountRetryDelayNanoseconds: UInt64 = 300_000_000,
         ejectIntentOriginTracker: DiskEjectIntentOriginTracker = .shared
     ) {
         self.timeoutNanoseconds = timeoutNanoseconds
+        self.logicalUnmountRetryDelayNanoseconds = logicalUnmountRetryDelayNanoseconds
         self.ejectIntentOriginTracker = ejectIntentOriginTracker
     }
 
@@ -183,7 +225,12 @@ final class LiveDiskArbitrationOperating: DiskArbitrationOperating, @unchecked S
         let cancellation = DiskArbitrationOperationCancellation()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<DiskArbitrationSequenceResult, Never>) in
-                sessionQueue.async { [sessionQueue, timeoutNanoseconds, ejectIntentOriginTracker] in
+                sessionQueue.async { [
+                    sessionQueue,
+                    timeoutNanoseconds,
+                    logicalUnmountRetryDelayNanoseconds,
+                    ejectIntentOriginTracker
+                ] in
                     guard let session = DASessionCreate(kCFAllocatorDefault),
                           let physicalDisk = plan.physicalTarget.bsdName.withCString({
                               DADiskCreateFromBSDName(kCFAllocatorDefault, session, $0)
@@ -217,6 +264,7 @@ final class LiveDiskArbitrationOperating: DiskArbitrationOperating, @unchecked S
                         force: force,
                         sessionQueue: sessionQueue,
                         timeoutNanoseconds: timeoutNanoseconds,
+                        logicalUnmountRetryDelayNanoseconds: logicalUnmountRetryDelayNanoseconds,
                         ejectIntentOriginTracker: ejectIntentOriginTracker,
                         cancellation: cancellation,
                         continuation: continuation
@@ -232,7 +280,6 @@ final class LiveDiskArbitrationOperating: DiskArbitrationOperating, @unchecked S
 
 private enum BoundDiskArbitrationPhase: Sendable {
     case logicalUnmount(Int)
-    case logicalEject(Int)
     case physicalUnmount
     case physicalEject
 
@@ -240,7 +287,7 @@ private enum BoundDiskArbitrationPhase: Sendable {
         switch self {
         case .logicalUnmount, .physicalUnmount:
             force ? .forceUnmounting : .unmounting
-        case .logicalEject, .physicalEject:
+        case .physicalEject:
             .ejecting
         }
     }
@@ -255,11 +302,13 @@ private final class LiveDiskArbitrationBoundSequence: @unchecked Sendable {
     private let force: Bool
     private let sessionQueue: DispatchQueue
     private let timeoutNanoseconds: UInt64
+    private let logicalUnmountRetryDelayNanoseconds: UInt64
     private let ejectIntentOriginTracker: DiskEjectIntentOriginTracker
     private let cancellation: DiskArbitrationOperationCancellation
     private let continuation: CheckedContinuation<DiskArbitrationSequenceResult, Never>
     private let lock = NSLock()
     private var finished = false
+    private var hasRetriedLogicalUnmount = false
     private var reservedEjectBSDNames: Set<String> = []
 
     init(
@@ -270,6 +319,7 @@ private final class LiveDiskArbitrationBoundSequence: @unchecked Sendable {
         force: Bool,
         sessionQueue: DispatchQueue,
         timeoutNanoseconds: UInt64,
+        logicalUnmountRetryDelayNanoseconds: UInt64,
         ejectIntentOriginTracker: DiskEjectIntentOriginTracker,
         cancellation: DiskArbitrationOperationCancellation,
         continuation: CheckedContinuation<DiskArbitrationSequenceResult, Never>
@@ -281,6 +331,7 @@ private final class LiveDiskArbitrationBoundSequence: @unchecked Sendable {
         self.force = force
         self.sessionQueue = sessionQueue
         self.timeoutNanoseconds = timeoutNanoseconds
+        self.logicalUnmountRetryDelayNanoseconds = logicalUnmountRetryDelayNanoseconds
         self.ejectIntentOriginTracker = ejectIntentOriginTracker
         self.cancellation = cancellation
         self.continuation = continuation
@@ -299,7 +350,7 @@ private final class LiveDiskArbitrationBoundSequence: @unchecked Sendable {
     }
 
     private func submitLogicalUnmount(at index: Int) {
-        guard targetMatches(logicalDisks[index]) else {
+        guard physicalTargetMatches(), targetMatches(logicalDisks[index]) else {
             finish(.targetInvalidated(stage: force ? .forceUnmounting : .unmounting))
             return
         }
@@ -308,23 +359,6 @@ private final class LiveDiskArbitrationBoundSequence: @unchecked Sendable {
             var options = DADiskUnmountOptions(kDADiskUnmountOptionWhole)
             if force { options |= DADiskUnmountOptions(kDADiskUnmountOptionForce) }
             DADiskUnmount(disk, options, diskArbitrationUnmountCallback, token.unsafeContext)
-        }
-    }
-
-    private func submitLogicalEject(at index: Int) {
-        guard physicalTargetMatches(), targetMatches(logicalDisks[index]) else {
-            finish(.targetInvalidated(stage: .ejecting))
-            return
-        }
-        let target = logicalDisks[index]
-        reserveOwnEjectIntent(target.identity.bsdName)
-        submit(phase: .logicalEject(index)) { [disk = target.disk] token in
-            DADiskEject(
-                disk,
-                DADiskEjectOptions(kDADiskEjectOptionDefault),
-                diskArbitrationEjectCallback,
-                token.unsafeContext
-            )
         }
     }
 
@@ -381,13 +415,7 @@ private final class LiveDiskArbitrationBoundSequence: @unchecked Sendable {
         switch phase {
         case .logicalUnmount(let index):
             guard unmountSucceeded(result) else {
-                finish(.failure(result: result, stage: stage))
-                return
-            }
-            continueToNextStage { submitLogicalEject(at: index) }
-        case .logicalEject(let index):
-            guard result == .success else {
-                finish(.failure(result: result, stage: stage))
+                handleFailedLogicalUnmount(result, index: index, stage: stage)
                 return
             }
             continueToNextStage {
@@ -408,6 +436,40 @@ private final class LiveDiskArbitrationBoundSequence: @unchecked Sendable {
             result == .success
                 ? finish(.success)
                 : finish(.failure(result: result, stage: stage))
+        }
+    }
+
+    private func handleFailedLogicalUnmount(
+        _ result: DiskArbitrationOperationResult,
+        index: Int,
+        stage: EjectOperationStage
+    ) {
+        let sequence = self
+        let gate = BoundDiskArbitrationLogicalUnmountRetryGate(
+            prepareRetry: cancellation.prepareNextStage,
+            scheduleRetry: { [sessionQueue, logicalUnmountRetryDelayNanoseconds] retry in
+                sessionQueue.asyncAfter(
+                    deadline: .now() + .nanoseconds(Int(logicalUnmountRetryDelayNanoseconds)),
+                    execute: retry
+                )
+            },
+            targetIsValid: {
+                sequence.physicalTargetMatches() && sequence.targetMatches(sequence.logicalDisks[index])
+            },
+            submitRetry: { sequence.submitLogicalUnmount(at: index) },
+            finish: sequence.finish
+        )
+
+        switch gate.proceedAfterFailedUnmount(
+            result,
+            stage: stage,
+            force: force,
+            hasRetried: hasRetriedLogicalUnmount
+        ) {
+        case .retryScheduled:
+            hasRetriedLogicalUnmount = true
+        case .finished(let result):
+            finish(result)
         }
     }
 

@@ -190,6 +190,8 @@ struct LiveEjectTargetResolver: EjectTargetResolving {
             throw EjectTargetResolutionError.incompleteMediaIdentity
         }
 
+        // The synthesized APFS whole disk participates only in the unmount
+        // phase. Disk Arbitration eject is reserved for the physical target.
         return DiskEjectOperationPlan(
             physicalTarget: physicalTarget,
             logicalWholeDiskTargets: [

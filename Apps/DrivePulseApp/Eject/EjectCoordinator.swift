@@ -38,8 +38,9 @@ final class EjectCoordinator: ObservableObject {
         self.preparationTimeout = preparationTimeout
     }
 
-    func begin(deviceID: DeviceID, displayName: String, topologyGeneration: Int) {
-        guard workflowID == nil else { return }
+    @discardableResult
+    func begin(deviceID: DeviceID, displayName: String, topologyGeneration: Int) -> Bool {
+        guard workflowID == nil else { return false }
         let id = UUID()
         let request = EjectWorkflowRequest(deviceID: deviceID, displayName: displayName)
         workflowID = id
@@ -54,6 +55,7 @@ final class EjectCoordinator: ObservableObject {
                 topologyGeneration: topologyGeneration
             )
         }
+        return true
     }
 
     func cancel() {

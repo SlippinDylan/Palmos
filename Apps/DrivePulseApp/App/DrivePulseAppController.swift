@@ -55,6 +55,7 @@ final class DrivePulseAppController: ObservableObject {
     private var ejectStateObservation: AnyCancellable?
     private var isSystemActionInFlight = false
     private var isEjectWorkflowActive = false
+    private var isEjectActionLocked = false
     private var ejectWorkflowDeviceID: DeviceID?
     @Published private var suppressedEjectDeviceIDs: Set<DeviceID> = []
     private var pendingExternalEjectDeviceIDs: Set<DeviceID> = []
@@ -251,13 +252,19 @@ final class DrivePulseAppController: ObservableObject {
             guard let device = selectedPanelDevice else { return }
             guard suppressedEjectDeviceIDs.contains(device.id) == false else { return }
             clearActionFeedback()
-            ejectWorkflowDeviceID = device.id
-            setEjectWorkflowActive(true)
-            ejectCoordinator.begin(
+            if case .awaitingRecovery(let recovery) = ejectCoordinator.state,
+               recovery.target.deviceID == device.id {
+                ejectCoordinator.retry()
+                return
+            }
+            guard ejectCoordinator.begin(
                 deviceID: device.id,
                 displayName: device.displayName,
                 topologyGeneration: discoveryWriteGeneration
-            )
+            ) else {
+                return
+            }
+            ejectWorkflowDeviceID = device.id
             return
         }
 
@@ -350,13 +357,14 @@ final class DrivePulseAppController: ObservableObject {
         updateActionControlState()
     }
 
-    private func setEjectWorkflowActive(_ isActive: Bool) {
-        isEjectWorkflowActive = isActive
+    private func setEjectActionLocked(_ isLocked: Bool) {
+        isEjectActionLocked = isLocked
         updateActionControlState()
     }
 
     private func handleEjectStateChange(_ state: EjectWorkflowState) {
-        setEjectWorkflowActive(state.isActiveWorkflow)
+        isEjectWorkflowActive = state.isActiveWorkflow
+        setEjectActionLocked(state.locksSystemActions)
         switch state {
         case .succeeded(let target):
             suppressDeviceFromPanel(target.deviceID)
@@ -384,7 +392,7 @@ final class DrivePulseAppController: ObservableObject {
     }
 
     private func updateActionControlState() {
-        isPerformingSystemAction = isSystemActionInFlight || isEjectWorkflowActive
+        isPerformingSystemAction = isSystemActionInFlight || isEjectActionLocked
     }
 
     private func clearMountedVolumes(for deviceID: DeviceID) {
@@ -1043,6 +1051,16 @@ private extension EjectWorkflowState {
         case .preparing, .working, .awaitingRecovery, .awaitingForceConfirmation:
             return true
         case .idle, .succeeded, .externallyUnmounted, .disappeared, .resolutionFailed, .failed:
+            return false
+        }
+    }
+
+    var locksSystemActions: Bool {
+        switch self {
+        case .preparing, .working, .awaitingForceConfirmation:
+            return true
+        case .idle, .awaitingRecovery, .succeeded, .externallyUnmounted, .disappeared,
+             .resolutionFailed, .failed:
             return false
         }
     }
