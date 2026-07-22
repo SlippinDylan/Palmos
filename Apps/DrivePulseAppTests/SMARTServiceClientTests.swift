@@ -20,6 +20,20 @@ private final class LockedDataBox: @unchecked Sendable {
 }
 
 final class SMARTServiceClientTests: XCTestCase {
+    func testErrorMapperKeepsHelperInstallationEvidenceAtBoundary() {
+        let connectionError = SMARTServiceClientError.connectionInterrupted
+        let installedMapper = SMARTServiceErrorMapper(isHelperInstalled: { true })
+        let absentMapper = SMARTServiceErrorMapper(isHelperInstalled: { false })
+
+        guard case .failed = installedMapper.mapRefreshError(connectionError) else {
+            return XCTFail("An installed helper connection failure must remain visible")
+        }
+        XCTAssertEqual(
+            absentMapper.mapRefreshError(connectionError),
+            .helperNotInstalled
+        )
+    }
+
     func testCompanionInstallSendsBoundedRequestAndConfirmsHandshake() async throws {
         let binary = Data([0xcf, 0xfa, 0xed, 0xfe, 1, 2, 3])
         let requestBox = LockedDataBox()
