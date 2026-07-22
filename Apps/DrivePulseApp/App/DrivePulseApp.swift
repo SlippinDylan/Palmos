@@ -72,7 +72,12 @@ struct DrivePulseApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 1, height: 1)
 
-        MenuBarExtra("DrivePulse", systemImage: "externaldrive") {
+        MenuBarExtra(
+            "DrivePulse",
+            systemImage: MenuBarIcon.systemImageName(
+                hasConnectedDevices: controller.panelDevices.isEmpty == false
+            )
+        ) {
             MenuBarRootView(controller: controller, settingsWindowActivator: settingsWindowActivator)
         }
         .menuBarExtraAccess(isPresented: $controller.isMenuBarPanelPresented)
@@ -100,5 +105,11 @@ struct DrivePulseApp: App {
             )
         }
         .windowResizability(.contentSize)
+    }
+}
+
+enum MenuBarIcon {
+    static func systemImageName(hasConnectedDevices: Bool) -> String {
+        hasConnectedDevices ? "externaldrive.fill" : "externaldrive"
     }
 }

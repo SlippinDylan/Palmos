@@ -6,6 +6,39 @@ import ServiceManagement
 import DrivePulseCore
 
 final class Task6SettingsAndActionsTests: XCTestCase {
+    func testMenuBarIconReflectsConnectedExternalDevicePresence() {
+        XCTAssertEqual(
+            MenuBarIcon.systemImageName(hasConnectedDevices: false),
+            "externaldrive"
+        )
+        XCTAssertEqual(
+            MenuBarIcon.systemImageName(hasConnectedDevices: true),
+            "externaldrive.fill"
+        )
+    }
+
+    func testAboutMetadataFormatsBundleVersionAndBuild() {
+        let metadata = AboutAppMetadata(infoDictionary: [
+            "CFBundleShortVersionString": "1.2.3",
+            "CFBundleVersion": "42"
+        ])
+
+        XCTAssertEqual(metadata.versionDescription, "1.2.3 (42)")
+    }
+
+    func testAboutMetadataDoesNotInventMissingVersionInformation() {
+        XCTAssertEqual(
+            AboutAppMetadata(infoDictionary: [:]).versionDescription,
+            "—"
+        )
+        XCTAssertEqual(
+            AboutAppMetadata(infoDictionary: [
+                "CFBundleShortVersionString": "1.2.3"
+            ]).versionDescription,
+            "1.2.3"
+        )
+    }
+
     @MainActor
     func testLaunchAtLoginRefreshStatusPicksUpExternalSystemChanges() {
         let service = StubLaunchAtLoginService(status: .notRegistered)

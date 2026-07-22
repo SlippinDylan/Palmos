@@ -39,6 +39,28 @@
         }
       }
     },
+    "About" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关于"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關於"
+          }
+        }
+      }
+    },
     "Always Shown" : {
       "localizations" : {
         "zh-Hans" : {
@@ -627,6 +649,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "嚴重警告"
+          }
+        }
+      }
+    },
+    "Copyright © 2025-2026 SlippinDylan Studio" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2025-2026 SlippinDylan Studio"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2025-2026 SlippinDylan Studio"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2025-2026 SlippinDylan Studio"
           }
         }
       }
@@ -2663,6 +2707,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "型號"
+          }
+        }
+      }
+    },
+    "Monitor external storage health and performance at a glance." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitor external storage health and performance at a glance."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一目了然地监控外接存储的健康状态与性能。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一目瞭然地監控外接儲存裝置的健康狀態與效能。"
           }
         }
       }
@@ -4991,6 +5057,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "卷宗"
+          }
+        }
+      }
+    },
+    "Version %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本 %@"
           }
         }
       }

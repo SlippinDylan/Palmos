@@ -3,7 +3,9 @@ import XCTest
 
 final class LocalizationCatalogTests: XCTestCase {
     private let requiredKeys = [
-        "Bus", "DrivePulse", "IEEE OUI", "Name", "Partition Type",
+        "About", "Bus", "Copyright © 2025-2026 SlippinDylan Studio", "DrivePulse",
+        "IEEE OUI", "Monitor external storage health and performance at a glance.",
+        "Name", "Partition Type", "Version %@",
         "PCI Device ID", "PCI Vendor ID", "Receptacle", "Settings Bridge",
         "Size", "SMART", "UID", "Yes", "No", "SMART Passed", "SMART Failed",
         "No warnings", "SMART data partially available", "Threshold %@%%",
@@ -54,6 +56,15 @@ final class LocalizationCatalogTests: XCTestCase {
         XCTAssertTrue(try value(for: "Duration minutes", locale: "zh-Hans", strings: strings).contains("分钟"))
         XCTAssertTrue(try value(for: "Duration hours", locale: "zh-Hant", strings: strings).contains("小時"))
         XCTAssertTrue(try value(for: "Rate per second", locale: "zh-Hans", strings: strings).contains("每秒"))
+    }
+
+    func testAboutPageUsesExpectedChineseTranslations() throws {
+        let strings = try XCTUnwrap(try loadCatalog()["strings"] as? [String: Any])
+
+        XCTAssertEqual(try value(for: "About", locale: "zh-Hans", strings: strings), "关于")
+        XCTAssertEqual(try value(for: "About", locale: "zh-Hant", strings: strings), "關於")
+        XCTAssertEqual(try value(for: "Version %@", locale: "zh-Hans", strings: strings), "版本 %@")
+        XCTAssertEqual(try value(for: "Version %@", locale: "zh-Hant", strings: strings), "版本 %@")
     }
 
     private func loadCatalog() throws -> [String: Any] {

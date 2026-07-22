@@ -23,6 +23,9 @@ struct SettingsView: View {
 
             DisplaySettingsPane(settings: settings)
                 .tabItem { Label("Display", systemImage: "rectangle.3.group") }
+
+            AboutSettingsPane()
+                .tabItem { Label("About", systemImage: "info.circle") }
         }
         .padding(20)
         .frame(width: 520, height: 390)

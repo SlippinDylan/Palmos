@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4D1700000000000000000001 /* AboutSettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1700000000000000000002 /* AboutSettingsPane.swift */; };
 		100000000000000000000001 /* DrivePulseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* DrivePulseApp.swift */; };
 		100000000000000000000002 /* DrivePulseAppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* DrivePulseAppController.swift */; };
 		100000000000000000000003 /* DrivePulseAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* DrivePulseAppState.swift */; };
@@ -181,6 +182,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		4D1700000000000000000002 /* AboutSettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsPane.swift; sourceTree = "<group>"; };
 		200000000000000000000001 /* DrivePulseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseApp.swift; sourceTree = "<group>"; };
 		200000000000000000000002 /* DrivePulseAppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseAppController.swift; sourceTree = "<group>"; };
 		200000000000000000000003 /* DrivePulseAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePulseAppState.swift; sourceTree = "<group>"; };
@@ -404,6 +406,7 @@
 		300000000000000000000005 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				4D1700000000000000000002 /* AboutSettingsPane.swift */,
 				200000000000000000000068 /* PanelValueFormatter.swift */,
 				20000000000000000000005D /* EjectRecoveryView.swift */,
 				20000000000000000000005E /* EjectForceConfirmationModifier.swift */,
@@ -852,6 +855,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4D1700000000000000000001 /* AboutSettingsPane.swift in Sources */,
 				100000000000000000000065 /* EjectLocalization.swift in Sources */,
 				100000000000000000000066 /* EjectRecoveryView.swift in Sources */,
 				100000000000000000000067 /* EjectForceConfirmationModifier.swift in Sources */,
