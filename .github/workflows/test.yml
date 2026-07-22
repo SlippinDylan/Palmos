@@ -23,6 +23,17 @@ jobs:
       - name: Select Xcode 26.4
         run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
 
+      - name: Validate Local SMART Build Entry Point
+        run: |
+          bash -n Scripts/build-local-smart-app.sh
+          bash -n Scripts/build-smartctl-companion.sh
+          bash -n Scripts/verify/code-signing.sh
+          bash -n Scripts/verify/code-signing-tests.sh
+          bash -n Scripts/verify/local-smart-build-tests.sh
+          Scripts/build-local-smart-app.sh --help >/dev/null
+          Scripts/verify/code-signing-tests.sh
+          Scripts/verify/local-smart-build-tests.sh
+
       - name: Run DrivePulseCore Tests
         run: |
           set -o pipefail

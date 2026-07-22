@@ -66,32 +66,51 @@ sudo rm /Library/PrivilegedHelperTools/com.drivepulse.smartservice.smartctl
 ## Building
 
 Open `DrivePulse.xcworkspace` in Xcode, select the `DrivePulseApp` scheme, and build.
+An unsigned build can run without SMART, but the privileged SMART path requires a stable
+code-signing identity so the App, Helper, and `smartctl` companion can authenticate each
+other.
 
-The `DrivePulseSMARTService` scheme builds the privileged helper binary. The repository defaults to the maintainer's public Team ID. For a fork or local development with another free Apple ID, replace `DEVELOPMENT_TEAM` in `Config/xcconfigs/Base.xcconfig` with your Personal Team ID. Both targets inherit that value so their signing requirements remain compatible. No paid Developer ID certificate or notarization is required for local use.
+The `DrivePulseSMARTService` scheme builds the privileged helper binary. The repository
+defaults to the maintainer's public Team ID. Xcode can create an Apple Development identity
+for a free Personal Team under **Settings → Accounts → Manage Certificates**. No paid Apple
+Developer Program membership, Developer ID certificate, or notarization is required for
+local use.
 
-Pull request tests explicitly disable signing from the command line. Any build that needs to install the SMART Helper must keep signing enabled and use the same Apple Development team for both targets.
+Pull request tests explicitly disable signing from the command line. Local compile/test
+commands may do the same. Any running build that uses the SMART Helper must instead sign the
+App, Helper, and companion with the same free Apple Development team.
 
-The normal Debug build does not download third-party tools. To prepare a signed build with SMART support, build the pinned companion and pass it to Xcode:
+The normal Debug build does not download third-party tools. To build a local SMART-enabled
+App, use the dedicated entry point after creating the free Apple Development identity:
 
 ```sh
-Scripts/build-smartctl-companion.sh /tmp/drivepulse-smartctl
-codesign --force \
-  --sign "Apple Development: Your Name (TEAMID)" \
-  --identifier com.drivepulse.smartservice.smartctl \
-  --options runtime \
-  --timestamp=none \
-  /tmp/drivepulse-smartctl/smartctl
-SMARTCTL_COMPANION_SHA256="$(shasum -a 256 /tmp/drivepulse-smartctl/smartctl | awk '{ print $1 }')"
-xcodebuild build \
-  -workspace DrivePulse.xcworkspace \
-  -scheme DrivePulseApp \
-  -configuration Release \
-  SMARTCTL_COMPANION_PATH=/tmp/drivepulse-smartctl/smartctl \
-  SMARTCTL_COMPANION_SHA256="$SMARTCTL_COMPANION_SHA256" \
-  SMARTCTL_COMPANION_REQUIRED=YES
+Scripts/build-local-smart-app.sh
 ```
 
-The release workflow performs these steps automatically and fails closed if the companion, signature, license, or source archive is missing.
+If more than one Apple Development identity is available, list their SHA-1 hashes with
+`security find-identity -v -p codesigning`, then select one explicitly:
+
+```sh
+Scripts/build-local-smart-app.sh --identity APPLE_DEVELOPMENT_SHA1
+```
+
+The script rebuilds smartctl from the pinned, SHA-verified source archive in an isolated
+directory on every run. It signs that fresh binary, propagates its post-signing SHA-256 into
+the Helper, builds every component with the Team ID extracted from the signed companion, and
+runs the full signing verifier. A verified companion is then published under an immutable,
+digest-named path in `DerivedData/LocalSMART`; only after every check succeeds does the script
+atomically replace the git-ignored `Config/xcconfigs/Local.xcconfig`. Later Xcode **Cmd+R**
+builds reuse that exact signed companion and Personal Team, while command-line builds that
+explicitly disable signing omit it. The script prints the exact verified `.app` path to launch.
+
+If the selected Personal Team differs from the Team ID of an already installed Helper,
+remove the old Helper with the commands in [Removing the Helper](#removing-the-helper)
+before installing from the new build. The installed Helper authorizes clients from its
+original Team and the local build script deliberately does not perform destructive system
+cleanup automatically.
+
+The release workflow performs the equivalent steps in CI and fails closed if the companion,
+signature, license, or source archive is missing.
 
 ### GitHub Release Signing
 

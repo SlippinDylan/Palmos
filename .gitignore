@@ -17,6 +17,8 @@ build/
 # Xcode user-specific state
 *.xcuserstate
 xcuserdata/
+Config/xcconfigs/Local.xcconfig
+Config/xcconfigs/Local.xcconfig.tmp.*
 *.pbxuser
 !default.pbxuser
 *.mode1v3

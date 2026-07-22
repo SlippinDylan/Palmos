@@ -213,7 +213,7 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="" \
             SMARTCTL_COMPANION_PATH="$SMARTCTL_COMPANION_PATH" \
             SMARTCTL_COMPANION_SHA256="$SMARTCTL_COMPANION_SHA256" \
-            SMARTCTL_COMPANION_REQUIRED=YES
+            SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD=YES
 
       - name: Verify Release signatures
         if: steps.check.outputs.exists == 'false'
