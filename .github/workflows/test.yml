@@ -30,6 +30,7 @@ jobs:
         run: |
           bash -n Scripts/build-local-smart-app.sh
           bash -n Scripts/build-smartctl-companion.sh
+          bash -n Scripts/create-dmg.sh
           bash -n Scripts/verify/code-signing.sh
           bash -n Scripts/verify/code-signing-tests.sh
           bash -n Scripts/verify/local-smart-build-tests.sh

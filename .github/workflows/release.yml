@@ -217,8 +217,8 @@ jobs:
           APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/PalmosApp.app"
           Scripts/verify/code-signing.sh "$APP_PATH" "$SIGNING_TEAM_ID"
 
-      # ditto preserves symlinks and resource forks inside .app bundles.
-      - name: Package
+      # Build drag-to-install DMG with custom background and Finder layout.
+      - name: Package DMG
         if: steps.check.outputs.exists == 'false'
         id: package
         run: |
@@ -229,10 +229,14 @@ jobs:
             echo "Built app bundle not found at $APP_PATH." >&2
             exit 1
           fi
-          ZIP_NAME="Palmos-${{ steps.version.outputs.tag }}.zip"
-          ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/$ZIP_NAME"
-          echo "zip=$RUNNER_TEMP/$ZIP_NAME" >> "$GITHUB_OUTPUT"
-          echo "name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+          DMG_NAME="Palmos-${{ steps.version.outputs.tag }}.dmg"
+          DMG_PATH="$RUNNER_TEMP/$DMG_NAME"
+
+          Scripts/create-dmg.sh "$APP_PATH" "$DMG_PATH" "Palmos"
+
+          echo "dmg=$DMG_PATH" >> "$GITHUB_OUTPUT"
+          echo "name=$DMG_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
@@ -242,7 +246,7 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             --title "Palmos ${{ steps.version.outputs.tag }}" \
             --generate-notes \
-            "${{ steps.package.outputs.zip }}#${{ steps.package.outputs.name }}" \
+            "${{ steps.package.outputs.dmg }}#${{ steps.package.outputs.name }}" \
             "$SMARTMONTOOLS_SOURCE_ARCHIVE#smartmontools-7.5.tar.gz"
 
       - name: Remove signing keychain
