@@ -113,3 +113,4 @@ enum MenuBarIcon {
         hasConnectedDevices ? "externaldrive.fill" : "externaldrive"
     }
 }
+
