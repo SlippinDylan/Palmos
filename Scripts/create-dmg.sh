@@ -327,3 +327,4 @@ echo "    Converting to compressed read-only DMG (UDZO)"
 work_created=false
 
 echo "==> DMG created at $OUTPUT_DMG"
+
