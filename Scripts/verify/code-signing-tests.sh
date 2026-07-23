@@ -57,6 +57,10 @@ EOF
 /bin/chmod 0755 "$COMPANION_PATH"
 /bin/cp "$REPOSITORY_ROOT/Shared/Licensing/smartmontools-COPYING.txt" \
   "$APP_PATH/Contents/Resources/smartmontools-COPYING.txt"
+/bin/cp "$REPOSITORY_ROOT/Shared/Licensing/MenuBarExtraAccess-LICENSE.txt" \
+  "$APP_PATH/Contents/Resources/MenuBarExtraAccess-LICENSE.txt"
+/bin/cp "$REPOSITORY_ROOT/LICENSE" \
+  "$APP_PATH/Contents/Resources/LICENSE"
 readonly COMPANION_SHA256="$(/usr/bin/shasum -a 256 "$COMPANION_PATH" | /usr/bin/awk '{ print $1 }')"
 
 /usr/bin/sed \

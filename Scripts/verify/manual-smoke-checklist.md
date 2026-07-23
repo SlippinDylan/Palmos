@@ -75,7 +75,7 @@ Run this checklist after each significant change to the app or helper. Every ite
 ## SMART — Helper Not Installed
 
 - [ ] Verify the release bundle with `Scripts/verify/code-signing.sh /path/to/PalmosApp.app <TEAM_ID>` before packaging
-- [ ] Confirm the release bundle contains `Contents/Library/Helpers/com.palmos.smartservice.smartctl` and the bundled smartmontools GPLv2 license
+- [ ] Confirm the release bundle contains `Contents/Library/Helpers/com.palmos.smartservice.smartctl` and the bundled Palmos, MenuBarExtraAccess, and smartmontools license files
 - [ ] After copying a downloaded build to `/Applications`, run `sudo xattr -rd com.apple.quarantine /Applications/PalmosApp.app` once; do not extract or separately modify the embedded helper
 - [ ] Opening SMART section without the helper shows "Helper required" state
 - [ ] "Install Helper" button triggers the system credential prompt

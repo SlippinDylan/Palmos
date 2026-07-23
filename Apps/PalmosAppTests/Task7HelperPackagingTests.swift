@@ -44,6 +44,22 @@ final class Task7HelperPackagingTests: XCTestCase {
         )
     }
 
+    func testAppBundleIncludesExactPalmosLicense() throws {
+        try assertBundledLicense(
+            resource: "LICENSE",
+            extension: nil,
+            expectedSHA256: "054515e39d8e9ec2004aeafc2aba2700aad7f7c94041c43fd316ac998c822b59"
+        )
+    }
+
+    func testAppBundleIncludesExactMenuBarExtraAccessLicense() throws {
+        try assertBundledLicense(
+            resource: "MenuBarExtraAccess-LICENSE",
+            extension: "txt",
+            expectedSHA256: "c5359afef4354cebfefe6632278be29f6607fb6f4bd35c07028c9a7a639eebf3"
+        )
+    }
+
     func testAppBundleURLRequirementFailsForNonAppHostedTests() {
         let nonAppBundleURL = URL(fileURLWithPath: "/tmp/PalmosAppTests.xctest")
 
@@ -73,6 +89,22 @@ final class Task7HelperPackagingTests: XCTestCase {
                 helper: helper
             )
         )
+    }
+
+    private func assertBundledLicense(
+        resource: String,
+        extension fileExtension: String?,
+        expectedSHA256: String
+    ) throws {
+        let licenseURL = try XCTUnwrap(
+            Bundle.main.url(forResource: resource, withExtension: fileExtension)
+        )
+        let data = try Data(contentsOf: licenseURL)
+        let digest = SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+
+        XCTAssertEqual(digest, expectedSHA256)
     }
 
     func testHelperPreflightRejectsAdHocAppBeforeAuthorization() {

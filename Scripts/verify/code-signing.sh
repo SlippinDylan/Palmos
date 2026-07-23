@@ -14,6 +14,10 @@ readonly APP_EXECUTABLE="$APP_PATH/Contents/MacOS/PalmosApp"
 readonly HELPER_PATH="$APP_PATH/Contents/Library/LaunchServices/$HELPER_IDENTIFIER"
 readonly COMPANION_IDENTIFIER="com.palmos.smartservice.smartctl"
 readonly COMPANION_PATH="$APP_PATH/Contents/Library/Helpers/$COMPANION_IDENTIFIER"
+readonly PALMOS_LICENSE_PATH="$APP_PATH/Contents/Resources/LICENSE"
+readonly PALMOS_LICENSE_SHA256="054515e39d8e9ec2004aeafc2aba2700aad7f7c94041c43fd316ac998c822b59"
+readonly MENUBAREXTRAACCESS_LICENSE_PATH="$APP_PATH/Contents/Resources/MenuBarExtraAccess-LICENSE.txt"
+readonly MENUBAREXTRAACCESS_LICENSE_SHA256="c5359afef4354cebfefe6632278be29f6607fb6f4bd35c07028c9a7a639eebf3"
 readonly SMARTMONTOOLS_LICENSE_PATH="$APP_PATH/Contents/Resources/smartmontools-COPYING.txt"
 readonly SMARTMONTOOLS_LICENSE_SHA256="8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
 readonly APP_INFO_PLIST="$APP_PATH/Contents/Info.plist"
@@ -116,6 +120,10 @@ extract_helper_info_plist() {
   || fail "embedded helper not found at $HELPER_PATH"
 [[ -f "$COMPANION_PATH" && ! -L "$COMPANION_PATH" ]] \
   || fail "embedded smartctl companion not found at $COMPANION_PATH"
+[[ -f "$PALMOS_LICENSE_PATH" && ! -L "$PALMOS_LICENSE_PATH" ]] \
+  || fail "bundled Palmos license not found at $PALMOS_LICENSE_PATH"
+[[ -f "$MENUBAREXTRAACCESS_LICENSE_PATH" && ! -L "$MENUBAREXTRAACCESS_LICENSE_PATH" ]] \
+  || fail "bundled MenuBarExtraAccess license not found at $MENUBAREXTRAACCESS_LICENSE_PATH"
 [[ -f "$SMARTMONTOOLS_LICENSE_PATH" && ! -L "$SMARTMONTOOLS_LICENSE_PATH" ]] \
   || fail "bundled smartmontools license not found at $SMARTMONTOOLS_LICENSE_PATH"
 [[ -f "$APP_INFO_PLIST" && ! -L "$APP_INFO_PLIST" ]] \
@@ -192,9 +200,15 @@ case "$smartctl_version" in
   *) fail "companion reported unexpected version: $smartctl_version" ;;
 esac
 
-license_sha256="$(sha256 "$SMARTMONTOOLS_LICENSE_PATH")"
-[[ "$license_sha256" == "$SMARTMONTOOLS_LICENSE_SHA256" ]] \
-  || fail "bundled smartmontools license SHA-256 is '$license_sha256', expected '$SMARTMONTOOLS_LICENSE_SHA256'"
+palmos_license_sha256="$(sha256 "$PALMOS_LICENSE_PATH")"
+[[ "$palmos_license_sha256" == "$PALMOS_LICENSE_SHA256" ]] \
+  || fail "bundled Palmos license SHA-256 is '$palmos_license_sha256', expected '$PALMOS_LICENSE_SHA256'"
+menubarextraaccess_license_sha256="$(sha256 "$MENUBAREXTRAACCESS_LICENSE_PATH")"
+[[ "$menubarextraaccess_license_sha256" == "$MENUBAREXTRAACCESS_LICENSE_SHA256" ]] \
+  || fail "bundled MenuBarExtraAccess license SHA-256 is '$menubarextraaccess_license_sha256', expected '$MENUBAREXTRAACCESS_LICENSE_SHA256'"
+smartmontools_license_sha256="$(sha256 "$SMARTMONTOOLS_LICENSE_PATH")"
+[[ "$smartmontools_license_sha256" == "$SMARTMONTOOLS_LICENSE_SHA256" ]] \
+  || fail "bundled smartmontools license SHA-256 is '$smartmontools_license_sha256', expected '$SMARTMONTOOLS_LICENSE_SHA256'"
 
 if [[ -n "$EXPECTED_TEAM_ID" && "$app_team_id" != "$EXPECTED_TEAM_ID" ]]; then
   fail "signed TeamIdentifier '$app_team_id' does not match expected Team ID '$EXPECTED_TEAM_ID'"

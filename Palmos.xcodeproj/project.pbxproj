@@ -122,6 +122,8 @@
 		100000000000000000000077 /* SmartctlCompanionInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000065 /* SmartctlCompanionInstaller.swift */; };
 		100000000000000000000078 /* SmartctlCompanionInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000065 /* SmartctlCompanionInstaller.swift */; };
 		100000000000000000000079 /* smartmontools-COPYING.txt in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000066 /* smartmontools-COPYING.txt */; };
+		10000000000000000000008B /* MenuBarExtraAccess-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000008B /* MenuBarExtraAccess-LICENSE.txt */; };
+		10000000000000000000008C /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000008C /* LICENSE */; };
 		100000000000000000000060 /* HelperAuthoritativeSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000057 /* HelperAuthoritativeSnapshot.swift */; };
 		100000000000000000000061 /* OccupancyScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000058 /* OccupancyScannerTests.swift */; };
 		100000000000000000000062 /* OccupancyScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000059 /* OccupancyScanner.swift */; };
@@ -239,6 +241,8 @@
 		200000000000000000000026 /* SmartctlRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartctlRunner.swift; sourceTree = "<group>"; };
 		200000000000000000000065 /* SmartctlCompanionInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartctlCompanionInstaller.swift; sourceTree = "<group>"; };
 		200000000000000000000066 /* smartmontools-COPYING.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "smartmontools-COPYING.txt"; sourceTree = "<group>"; };
+		20000000000000000000008B /* MenuBarExtraAccess-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "MenuBarExtraAccess-LICENSE.txt"; sourceTree = "<group>"; };
+		20000000000000000000008C /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 		200000000000000000000080 /* BoundedProcessFDEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedProcessFDEnumerator.swift; sourceTree = "<group>"; };
 		200000000000000000000085 /* ThroughputSamplingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThroughputSamplingCoordinator.swift; sourceTree = "<group>"; };
 		200000000000000000000084 /* SettingsWindowActivatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowActivatorTests.swift; sourceTree = "<group>"; };
@@ -355,6 +359,7 @@
 		300000000000000000000002 = {
 			isa = PBXGroup;
 			children = (
+				20000000000000000000008C /* LICENSE */,
 				300000000000000000000003 /* PalmosApp */,
 				30000000000000000000000D /* PalmosSMARTService */,
 				300000000000000000000023 /* PalmosSMARTServiceTests */,
@@ -567,6 +572,7 @@
 		300000000000000000000024 /* Licensing */ = {
 			isa = PBXGroup;
 			children = (
+				20000000000000000000008B /* MenuBarExtraAccess-LICENSE.txt */,
 				200000000000000000000066 /* smartmontools-COPYING.txt */,
 			);
 			path = Licensing;
@@ -785,6 +791,8 @@
 				10000000000000000000003B /* Assets.xcassets in Resources */,
 				100000000000000000000012 /* Localizable.xcstrings in Resources */,
 				100000000000000000000039 /* PrivacyInfo.xcprivacy in Resources */,
+				10000000000000000000008B /* MenuBarExtraAccess-LICENSE.txt in Resources */,
+				10000000000000000000008C /* LICENSE in Resources */,
 				100000000000000000000079 /* smartmontools-COPYING.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

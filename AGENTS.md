@@ -73,7 +73,7 @@ Palmos/
 │   │   └── Settings/                   # 可持久化用户设置
 │   └── Tests/PalmosCoreTests/
 ├── Shared/XPCContracts/                # App/Helper 共同编译的版本化 XPC 合约
-├── Shared/Licensing/                   # bundled third-party license
+├── Shared/Licensing/                   # bundled third-party licenses
 ├── Config/xcconfigs/                   # Swift、部署版本、签名、bundle ID
 ├── Config/Plists/                      # App/Helper Info.plist 与 SMJobBless 约束
 ├── Scripts/verify/                     # 签名与真机 smoke 验证
@@ -188,7 +188,7 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 - PR CI 使用 macOS 26 runner 与固定 Xcode，命令行禁用签名；修改 SDK/API 使用后同时确认本地与 CI Xcode 能力。
 - release 使用免费 Apple Development 证书，不依赖 paid Developer ID/notarization；不要擅自改成要求付费签名的分发模型。
 - `MARKETING_VERSION` 是 release tag 的版本来源；版本与 release workflow 的更改必须保持单一来源。
-- `Shared/Licensing/smartmontools-COPYING.txt` 不得随意删除；任何分发 `smartctl` 的方案都必须同步核对 GPLv2 许可义务。
+- `Shared/Licensing/smartmontools-COPYING.txt` 与 `MenuBarExtraAccess-LICENSE.txt` 不得随意删除；任何分发 `smartctl` 的方案都必须同步核对 GPLv2 许可义务，升级 SwiftPM 依赖时必须同步核对并测试随包分发的许可声明。
 
 ## 9. 文档导航
 
