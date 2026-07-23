@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - 'README.md'
       - 'README.*.md'
+  workflow_dispatch:
 
 concurrency:
   group: test-${{ github.ref }}
