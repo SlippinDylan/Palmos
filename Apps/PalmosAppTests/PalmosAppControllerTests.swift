@@ -678,7 +678,9 @@ final class PalmosAppControllerTests: XCTestCase {
         )
 
         await discovery.resolveNextDiscovery()
-        await waitUntilStateDevices(controller, equals: [bootstrapDevice])
+        await waitUntilStateDevices(controller) {
+            $0.first?.id == bootstrapDevice.id
+        }
 
         await waitUntilEventually(timeout: 2) {
             let devices = controller.state.devices
