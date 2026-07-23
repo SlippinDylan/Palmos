@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'README.*.md'
 
 # Allow only one release job at a time; never cancel mid-flight.
 concurrency:
