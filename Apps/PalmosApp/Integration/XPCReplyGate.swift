@@ -10,21 +10,24 @@ final class XPCReplyGate: @unchecked Sendable {
         self.continuation = continuation
     }
 
-    func resume(returning data: Data) {
+    @discardableResult
+    func resume(returning data: Data) -> Bool {
         resume(.success(data))
     }
 
-    func resume(throwing error: Error) {
+    @discardableResult
+    func resume(throwing error: Error) -> Bool {
         resume(.failure(error))
     }
 
-    private func resume(_ result: Result<Data, Error>) {
+    private func resume(_ result: Result<Data, Error>) -> Bool {
         let shouldResume = lock.withLock {
             guard didResume == false else { return false }
             didResume = true
             return true
         }
-        guard shouldResume else { return }
+        guard shouldResume else { return false }
         continuation.resume(with: result)
+        return true
     }
 }

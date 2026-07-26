@@ -30,6 +30,9 @@ final class PalmosAppControllerTests: XCTestCase {
         await smartService.waitUntilRefreshStarts()
         let topologyGenerations = await smartService.recordedTopologyGenerations()
         XCTAssertEqual(topologyGenerations, [1])
+        let queries = await smartService.recordedQueries()
+        XCTAssertEqual(queries.map(\.sections), [Set([SMARTQuerySection.liveTelemetry])])
+        XCTAssertEqual(queries.map(\.allowsLegacyFullRead), [false])
         XCTAssertEqual(controller.state.selectedDeviceID, device.id)
     }
 
@@ -3525,7 +3528,13 @@ private extension Duration {
 }
 
 private actor TopologyRecordingSMARTService: SMARTServiceProviding {
+    struct Query: Sendable {
+        let sections: Set<SMARTQuerySection>
+        let allowsLegacyFullRead: Bool
+    }
+
     private var topologyGenerations: [Int] = []
+    private var queries: [Query] = []
 
     func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
         .failed("Legacy SMART refresh overload was called.")
@@ -3539,6 +3548,20 @@ private actor TopologyRecordingSMARTService: SMARTServiceProviding {
         return .helperNotInstalled
     }
 
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        topologyGenerations.append(topologyGeneration)
+        queries.append(Query(
+            sections: sections,
+            allowsLegacyFullRead: allowsLegacyFullRead
+        ))
+        return .helperNotInstalled
+    }
+
     func waitUntilRefreshStarts() async {
         while topologyGenerations.isEmpty {
             await Task.yield()
@@ -3547,6 +3570,10 @@ private actor TopologyRecordingSMARTService: SMARTServiceProviding {
 
     func recordedTopologyGenerations() -> [Int] {
         topologyGenerations
+    }
+
+    func recordedQueries() -> [Query] {
+        queries
     }
 }
 

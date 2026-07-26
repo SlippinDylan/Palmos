@@ -108,16 +108,119 @@ public enum SmartDataParsingQuality: Equatable, Sendable {
     case degraded([SmartDataParseIssue])
 }
 
-public struct SmartData: Equatable, Sendable {
+public enum SmartReportSection<Value: Equatable & Sendable>: Equatable, Sendable {
+    case unsupported
+    case available(Value)
+    case degraded(Value, issues: [SmartDataParseIssue])
+
+    public var value: Value? {
+        switch self {
+        case .unsupported:
+            return nil
+        case let .available(value), let .degraded(value, _):
+            return value
+        }
+    }
+
+    public var issues: [SmartDataParseIssue] {
+        guard case let .degraded(_, issues) = self else {
+            return []
+        }
+        return issues
+    }
+
+    fileprivate mutating func update(
+        defaultValue: @autoclosure () -> Value,
+        _ transform: (inout Value) -> Void
+    ) {
+        switch self {
+        case .unsupported:
+            var value = defaultValue()
+            transform(&value)
+            self = .available(value)
+        case let .available(existing):
+            var value = existing
+            transform(&value)
+            self = .available(value)
+        case let .degraded(existing, issues):
+            var value = existing
+            transform(&value)
+            self = .degraded(value, issues: issues)
+        }
+    }
+}
+
+public enum SmartReportSectionKind: String, CaseIterable, Equatable, Hashable, Sendable {
+    case health
+    case thermal
+    case endurance
+    case lifetime
+}
+
+public struct SmartHealthReport: Equatable, Sendable {
     public var overallHealth: SMARTOverallHealth?
-    public var parsingQuality: SmartDataParsingQuality
+    public var criticalWarning: Int?
+    public var mediaIntegrityErrors: UInt64?
+    public var errorLogEntries: UInt64?
+
+    public init(
+        overallHealth: SMARTOverallHealth? = nil,
+        criticalWarning: Int? = nil,
+        mediaIntegrityErrors: UInt64? = nil,
+        errorLogEntries: UInt64? = nil
+    ) {
+        self.overallHealth = overallHealth
+        self.criticalWarning = criticalWarning
+        self.mediaIntegrityErrors = mediaIntegrityErrors
+        self.errorLogEntries = errorLogEntries
+    }
+}
+
+public struct SmartThermalReport: Equatable, Sendable {
     public var primaryTemperature: Int?
     public var highestTemperature: Int?
     public var sensorTemperatures: [String: Int]
-    public var criticalWarning: Int?
+    public var warningTempTime: UInt64?
+    public var criticalTempTime: UInt64?
+    public var warningTempThreshold: Int?
+    public var criticalTempThreshold: Int?
+
+    public init(
+        primaryTemperature: Int? = nil,
+        highestTemperature: Int? = nil,
+        sensorTemperatures: [String: Int] = [:],
+        warningTempTime: UInt64? = nil,
+        criticalTempTime: UInt64? = nil,
+        warningTempThreshold: Int? = nil,
+        criticalTempThreshold: Int? = nil
+    ) {
+        self.primaryTemperature = primaryTemperature
+        self.highestTemperature = highestTemperature
+        self.sensorTemperatures = sensorTemperatures
+        self.warningTempTime = warningTempTime
+        self.criticalTempTime = criticalTempTime
+        self.warningTempThreshold = warningTempThreshold
+        self.criticalTempThreshold = criticalTempThreshold
+    }
+}
+
+public struct SmartEnduranceReport: Equatable, Sendable {
     public var availableSpare: Int?
     public var availableSpareThreshold: Int?
     public var percentageUsed: Int?
+
+    public init(
+        availableSpare: Int? = nil,
+        availableSpareThreshold: Int? = nil,
+        percentageUsed: Int? = nil
+    ) {
+        self.availableSpare = availableSpare
+        self.availableSpareThreshold = availableSpareThreshold
+        self.percentageUsed = percentageUsed
+    }
+}
+
+public struct SmartLifetimeReport: Equatable, Sendable {
     public var dataUnitsRead: UInt64?
     public var dataUnitsWritten: UInt64?
     public var hostReadCommands: UInt64?
@@ -126,12 +229,203 @@ public struct SmartData: Equatable, Sendable {
     public var powerCycles: UInt64?
     public var powerOnHours: UInt64?
     public var unsafeShutdowns: UInt64?
-    public var mediaIntegrityErrors: UInt64?
-    public var errorLogEntries: UInt64?
-    public var warningTempTime: UInt64?
-    public var criticalTempTime: UInt64?
-    public var warningTempThreshold: Int?
-    public var criticalTempThreshold: Int?
+
+    public init(
+        dataUnitsRead: UInt64? = nil,
+        dataUnitsWritten: UInt64? = nil,
+        hostReadCommands: UInt64? = nil,
+        hostWriteCommands: UInt64? = nil,
+        controllerBusyTime: UInt64? = nil,
+        powerCycles: UInt64? = nil,
+        powerOnHours: UInt64? = nil,
+        unsafeShutdowns: UInt64? = nil
+    ) {
+        self.dataUnitsRead = dataUnitsRead
+        self.dataUnitsWritten = dataUnitsWritten
+        self.hostReadCommands = hostReadCommands
+        self.hostWriteCommands = hostWriteCommands
+        self.controllerBusyTime = controllerBusyTime
+        self.powerCycles = powerCycles
+        self.powerOnHours = powerOnHours
+        self.unsafeShutdowns = unsafeShutdowns
+    }
+}
+
+public struct SmartReport: Equatable, Sendable {
+    public var health: SmartReportSection<SmartHealthReport>
+    public var thermal: SmartReportSection<SmartThermalReport>
+    public var endurance: SmartReportSection<SmartEnduranceReport>
+    public var lifetime: SmartReportSection<SmartLifetimeReport>
+
+    public init(
+        health: SmartReportSection<SmartHealthReport> = .unsupported,
+        thermal: SmartReportSection<SmartThermalReport> = .unsupported,
+        endurance: SmartReportSection<SmartEnduranceReport> = .unsupported,
+        lifetime: SmartReportSection<SmartLifetimeReport> = .unsupported
+    ) {
+        self.health = health
+        self.thermal = thermal
+        self.endurance = endurance
+        self.lifetime = lifetime
+    }
+
+    public var parsingQuality: SmartDataParsingQuality {
+        var issues: [SmartDataParseIssue] = []
+        for issue in health.issues + thermal.issues + endurance.issues + lifetime.issues
+        where issues.contains(issue) == false {
+            issues.append(issue)
+        }
+        issues.sort { $0.field.rawValue < $1.field.rawValue }
+        return issues.isEmpty ? .clean : .degraded(issues)
+    }
+
+    public func merging(
+        _ patch: SmartReport,
+        sections: Set<SmartReportSectionKind>
+    ) -> SmartReport {
+        SmartReport(
+            health: sections.contains(.health) ? patch.health : health,
+            thermal: sections.contains(.thermal) ? patch.thermal : thermal,
+            endurance: sections.contains(.endurance) ? patch.endurance : endurance,
+            lifetime: sections.contains(.lifetime) ? patch.lifetime : lifetime
+        )
+    }
+}
+
+/// Compatibility facade for existing presentation code. New SMART refresh code
+/// should merge the typed sections in `report`, not replace this value wholesale.
+public struct SmartData: Equatable, Sendable {
+    public var report: SmartReport
+
+    public var overallHealth: SMARTOverallHealth? {
+        get { report.health.value?.overallHealth }
+        set { report.health.update(defaultValue: .init()) { $0.overallHealth = newValue } }
+    }
+    public var parsingQuality: SmartDataParsingQuality {
+        get { report.parsingQuality }
+        set {
+            report = SmartData(
+                overallHealth: overallHealth,
+                parsingQuality: newValue,
+                primaryTemperature: primaryTemperature,
+                highestTemperature: highestTemperature,
+                sensorTemperatures: sensorTemperatures,
+                criticalWarning: criticalWarning,
+                availableSpare: availableSpare,
+                availableSpareThreshold: availableSpareThreshold,
+                percentageUsed: percentageUsed,
+                dataUnitsRead: dataUnitsRead,
+                dataUnitsWritten: dataUnitsWritten,
+                hostReadCommands: hostReadCommands,
+                hostWriteCommands: hostWriteCommands,
+                controllerBusyTime: controllerBusyTime,
+                powerCycles: powerCycles,
+                powerOnHours: powerOnHours,
+                unsafeShutdowns: unsafeShutdowns,
+                mediaIntegrityErrors: mediaIntegrityErrors,
+                errorLogEntries: errorLogEntries,
+                warningTempTime: warningTempTime,
+                criticalTempTime: criticalTempTime,
+                warningTempThreshold: warningTempThreshold,
+                criticalTempThreshold: criticalTempThreshold
+            ).report
+        }
+    }
+    public var primaryTemperature: Int? {
+        get { report.thermal.value?.primaryTemperature }
+        set { report.thermal.update(defaultValue: .init()) { $0.primaryTemperature = newValue } }
+    }
+    public var highestTemperature: Int? {
+        get { report.thermal.value?.highestTemperature }
+        set { report.thermal.update(defaultValue: .init()) { $0.highestTemperature = newValue } }
+    }
+    public var sensorTemperatures: [String: Int] {
+        get { report.thermal.value?.sensorTemperatures ?? [:] }
+        set { report.thermal.update(defaultValue: .init()) { $0.sensorTemperatures = newValue } }
+    }
+    public var criticalWarning: Int? {
+        get { report.health.value?.criticalWarning }
+        set { report.health.update(defaultValue: .init()) { $0.criticalWarning = newValue } }
+    }
+    public var availableSpare: Int? {
+        get { report.endurance.value?.availableSpare }
+        set { report.endurance.update(defaultValue: .init()) { $0.availableSpare = newValue } }
+    }
+    public var availableSpareThreshold: Int? {
+        get { report.endurance.value?.availableSpareThreshold }
+        set { report.endurance.update(defaultValue: .init()) { $0.availableSpareThreshold = newValue } }
+    }
+    public var percentageUsed: Int? {
+        get { report.endurance.value?.percentageUsed }
+        set { report.endurance.update(defaultValue: .init()) { $0.percentageUsed = newValue } }
+    }
+    public var dataUnitsRead: UInt64? {
+        get { report.lifetime.value?.dataUnitsRead }
+        set { report.lifetime.update(defaultValue: .init()) { $0.dataUnitsRead = newValue } }
+    }
+    public var dataUnitsWritten: UInt64? {
+        get { report.lifetime.value?.dataUnitsWritten }
+        set { report.lifetime.update(defaultValue: .init()) { $0.dataUnitsWritten = newValue } }
+    }
+    public var hostReadCommands: UInt64? {
+        get { report.lifetime.value?.hostReadCommands }
+        set { report.lifetime.update(defaultValue: .init()) { $0.hostReadCommands = newValue } }
+    }
+    public var hostWriteCommands: UInt64? {
+        get { report.lifetime.value?.hostWriteCommands }
+        set { report.lifetime.update(defaultValue: .init()) { $0.hostWriteCommands = newValue } }
+    }
+    public var controllerBusyTime: UInt64? {
+        get { report.lifetime.value?.controllerBusyTime }
+        set { report.lifetime.update(defaultValue: .init()) { $0.controllerBusyTime = newValue } }
+    }
+    public var powerCycles: UInt64? {
+        get { report.lifetime.value?.powerCycles }
+        set { report.lifetime.update(defaultValue: .init()) { $0.powerCycles = newValue } }
+    }
+    public var powerOnHours: UInt64? {
+        get { report.lifetime.value?.powerOnHours }
+        set { report.lifetime.update(defaultValue: .init()) { $0.powerOnHours = newValue } }
+    }
+    public var unsafeShutdowns: UInt64? {
+        get { report.lifetime.value?.unsafeShutdowns }
+        set { report.lifetime.update(defaultValue: .init()) { $0.unsafeShutdowns = newValue } }
+    }
+    public var mediaIntegrityErrors: UInt64? {
+        get { report.health.value?.mediaIntegrityErrors }
+        set { report.health.update(defaultValue: .init()) { $0.mediaIntegrityErrors = newValue } }
+    }
+    public var errorLogEntries: UInt64? {
+        get { report.health.value?.errorLogEntries }
+        set { report.health.update(defaultValue: .init()) { $0.errorLogEntries = newValue } }
+    }
+    public var warningTempTime: UInt64? {
+        get { report.thermal.value?.warningTempTime }
+        set { report.thermal.update(defaultValue: .init()) { $0.warningTempTime = newValue } }
+    }
+    public var criticalTempTime: UInt64? {
+        get { report.thermal.value?.criticalTempTime }
+        set { report.thermal.update(defaultValue: .init()) { $0.criticalTempTime = newValue } }
+    }
+    public var warningTempThreshold: Int? {
+        get { report.thermal.value?.warningTempThreshold }
+        set { report.thermal.update(defaultValue: .init()) { $0.warningTempThreshold = newValue } }
+    }
+    public var criticalTempThreshold: Int? {
+        get { report.thermal.value?.criticalTempThreshold }
+        set { report.thermal.update(defaultValue: .init()) { $0.criticalTempThreshold = newValue } }
+    }
+
+    public init(report: SmartReport) {
+        self.report = report
+    }
+
+    public func merging(
+        _ patch: SmartReport,
+        sections: Set<SmartReportSectionKind>
+    ) -> SmartData {
+        SmartData(report: report.merging(patch, sections: sections))
+    }
 
     public init(
         overallHealth: SMARTOverallHealth? = nil,
@@ -158,29 +452,96 @@ public struct SmartData: Equatable, Sendable {
         warningTempThreshold: Int? = nil,
         criticalTempThreshold: Int? = nil
     ) {
-        self.overallHealth = overallHealth
-        self.parsingQuality = parsingQuality
-        self.primaryTemperature = primaryTemperature
-        self.highestTemperature = highestTemperature
-        self.sensorTemperatures = sensorTemperatures
-        self.criticalWarning = criticalWarning
-        self.availableSpare = availableSpare
-        self.availableSpareThreshold = availableSpareThreshold
-        self.percentageUsed = percentageUsed
-        self.dataUnitsRead = dataUnitsRead
-        self.dataUnitsWritten = dataUnitsWritten
-        self.hostReadCommands = hostReadCommands
-        self.hostWriteCommands = hostWriteCommands
-        self.controllerBusyTime = controllerBusyTime
-        self.powerCycles = powerCycles
-        self.powerOnHours = powerOnHours
-        self.unsafeShutdowns = unsafeShutdowns
-        self.mediaIntegrityErrors = mediaIntegrityErrors
-        self.errorLogEntries = errorLogEntries
-        self.warningTempTime = warningTempTime
-        self.criticalTempTime = criticalTempTime
-        self.warningTempThreshold = warningTempThreshold
-        self.criticalTempThreshold = criticalTempThreshold
+        let issues: [SmartDataParseIssue]
+        switch parsingQuality {
+        case .clean:
+            issues = []
+        case let .degraded(parseIssues):
+            issues = parseIssues
+        }
+        func section<Value: Equatable & Sendable>(
+            _ value: Value,
+            fields: Set<SmartDataField>,
+            isSupported: Bool
+        ) -> SmartReportSection<Value> {
+            let sectionIssues = issues.filter { fields.contains($0.field) }
+            if sectionIssues.isEmpty == false {
+                return .degraded(value, issues: sectionIssues)
+            }
+            return isSupported ? .available(value) : .unsupported
+        }
+
+        let health = SmartHealthReport(
+            overallHealth: overallHealth,
+            criticalWarning: criticalWarning,
+            mediaIntegrityErrors: mediaIntegrityErrors,
+            errorLogEntries: errorLogEntries
+        )
+        let thermal = SmartThermalReport(
+            primaryTemperature: primaryTemperature,
+            highestTemperature: highestTemperature,
+            sensorTemperatures: sensorTemperatures,
+            warningTempTime: warningTempTime,
+            criticalTempTime: criticalTempTime,
+            warningTempThreshold: warningTempThreshold,
+            criticalTempThreshold: criticalTempThreshold
+        )
+        let endurance = SmartEnduranceReport(
+            availableSpare: availableSpare,
+            availableSpareThreshold: availableSpareThreshold,
+            percentageUsed: percentageUsed
+        )
+        let lifetime = SmartLifetimeReport(
+            dataUnitsRead: dataUnitsRead,
+            dataUnitsWritten: dataUnitsWritten,
+            hostReadCommands: hostReadCommands,
+            hostWriteCommands: hostWriteCommands,
+            controllerBusyTime: controllerBusyTime,
+            powerCycles: powerCycles,
+            powerOnHours: powerOnHours,
+            unsafeShutdowns: unsafeShutdowns
+        )
+        report = SmartReport(
+            health: section(
+                health,
+                fields: [
+                    .overallHealth, .nvmeHealthLog, .criticalWarning,
+                    .mediaIntegrityErrors, .errorLogEntries
+                ],
+                isSupported: overallHealth != nil || criticalWarning != nil ||
+                    mediaIntegrityErrors != nil || errorLogEntries != nil
+            ),
+            thermal: section(
+                thermal,
+                fields: [
+                    .primaryTemperature, .nvmeHealthLog, .nvmeTemperature, .sensorTemperatures,
+                    .warningTempTime, .criticalTempTime, .warningTempThreshold,
+                    .criticalTempThreshold
+                ],
+                isSupported: primaryTemperature != nil || highestTemperature != nil ||
+                    sensorTemperatures.isEmpty == false || warningTempTime != nil ||
+                    criticalTempTime != nil || warningTempThreshold != nil || criticalTempThreshold != nil
+            ),
+            endurance: section(
+                endurance,
+                fields: [
+                    .nvmeHealthLog, .availableSpare, .availableSpareThreshold, .percentageUsed
+                ],
+                isSupported: availableSpare != nil || availableSpareThreshold != nil || percentageUsed != nil
+            ),
+            lifetime: section(
+                lifetime,
+                fields: [
+                    .nvmeHealthLog, .dataUnitsRead, .dataUnitsWritten, .hostReadCommands,
+                    .hostWriteCommands, .controllerBusyTime, .powerCycles,
+                    .powerOnHours, .unsafeShutdowns
+                ],
+                isSupported: dataUnitsRead != nil || dataUnitsWritten != nil ||
+                    hostReadCommands != nil || hostWriteCommands != nil ||
+                    controllerBusyTime != nil || powerCycles != nil ||
+                    powerOnHours != nil || unsafeShutdowns != nil
+            )
+        )
     }
 }
 

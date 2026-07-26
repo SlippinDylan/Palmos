@@ -53,6 +53,10 @@ public enum TransportHintResolver {
 }
 
 public enum SmartDataParser {
+    public static func parseReport(jsonData: Data) throws -> SmartReport {
+        try parse(jsonData: jsonData).report
+    }
+
     public static func parse(jsonData: Data) throws -> SmartData {
         let payload = try JSONDecoder().decode(SmartctlPayload.self, from: jsonData)
 

@@ -1271,6 +1271,17 @@ private final class ControlledSMARTXPCSession: SMARTCompletionXPCSession, @unche
         }
     }
 
+    func querySMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        let requestID = try? PalmosXPCMessages.decodeSMARTQueryRequest(from: requestData).requestID
+        lock.withLock {
+            handler = eventHandler
+            self.requestID = requestID
+        }
+    }
+
     func waitUntilHandlerInstalled() async {
         while lock.withLock({ handler == nil }) { await Task.yield() }
     }

@@ -38,6 +38,40 @@ struct SMARTReadRequest: Codable, Equatable, Sendable {
     }
 }
 
+enum SMARTQuerySection: String, Codable, CaseIterable, Hashable, Sendable {
+    case liveTelemetry
+    case capabilityMetadata
+    case errorHistory
+    case selfTestHistory
+}
+
+struct SMARTQueryRequest: Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 1
+
+    let schemaVersion: Int
+    let physicalDeviceBSDName: String
+    let deviceProtocol: String?
+    let deviceModel: String?
+    let requestID: String
+    let sections: [SMARTQuerySection]
+
+    init(
+        schemaVersion: Int = SMARTQueryRequest.currentSchemaVersion,
+        physicalDeviceBSDName: String,
+        deviceProtocol: String?,
+        deviceModel: String?,
+        requestID: String,
+        sections: [SMARTQuerySection]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.physicalDeviceBSDName = physicalDeviceBSDName
+        self.deviceProtocol = deviceProtocol
+        self.deviceModel = deviceModel
+        self.requestID = requestID
+        self.sections = sections
+    }
+}
+
 struct SMARTReadCompletionResponse: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
 
@@ -128,6 +162,8 @@ enum SMARTXPCLimits {
     static let cancelResponseBytes = 4 * 1024
     static let errorMessageUTF8Bytes = 1 * 1024
     static let legacyCancelRequestUTF8Bytes = 64
+    static let maxQuerySections = SMARTQuerySection.allCases.count
+    static let queryContextUTF8Bytes = 512
 }
 
 struct SMARTCompanionInstallRequest: Codable, Equatable, Sendable {
@@ -198,6 +234,7 @@ struct XPCFeatureCapabilities: Equatable, Sendable {
     let smartCancellation: Bool
     let observableSMARTFailures: Bool
     let smartctlCompanionInstallation: Bool
+    let sectionedSMARTQueries: Bool
     let occupancyScanning: Bool
 
     init(
@@ -205,12 +242,14 @@ struct XPCFeatureCapabilities: Equatable, Sendable {
         smartCancellation: Bool,
         observableSMARTFailures: Bool,
         smartctlCompanionInstallation: Bool = false,
+        sectionedSMARTQueries: Bool = false,
         occupancyScanning: Bool
     ) {
         self.completionAwareSMART = completionAwareSMART
         self.smartCancellation = smartCancellation
         self.observableSMARTFailures = observableSMARTFailures
         self.smartctlCompanionInstallation = smartctlCompanionInstallation
+        self.sectionedSMARTQueries = sectionedSMARTQueries
         self.occupancyScanning = occupancyScanning
     }
 
@@ -221,6 +260,7 @@ struct XPCFeatureCapabilities: Equatable, Sendable {
             smartCancellation: helperContractMinor >= XPCContractVersion.smartCancellationMinor,
             observableSMARTFailures: helperContractMinor >= XPCContractVersion.observableSMARTFailuresMinor,
             smartctlCompanionInstallation: helperContractMinor >= XPCContractVersion.smartctlCompanionInstallationMinor,
+            sectionedSMARTQueries: helperContractMinor >= XPCContractVersion.sectionedSMARTQueriesMinor,
             occupancyScanning: supportsMinorFour
         )
     }
@@ -405,6 +445,24 @@ enum PalmosXPCMessages {
         return data
     }
 
+    static func encodeSMARTQueryRequest(_ request: SMARTQueryRequest) throws -> Data {
+        try validateSMARTQueryRequest(request)
+        let data = try encode(request)
+        guard data.count <= SMARTXPCLimits.requestBytes else {
+            throw PalmosXPCMessageError.encodedMessageTooLarge
+        }
+        return data
+    }
+
+    static func decodeSMARTQueryRequest(from data: Data) throws -> SMARTQueryRequest {
+        guard data.count <= SMARTXPCLimits.requestBytes else {
+            throw PalmosXPCMessageError.encodedMessageTooLarge
+        }
+        let request = try decode(SMARTQueryRequest.self, from: data)
+        try validateSMARTQueryRequest(request)
+        return request
+    }
+
     static func decodeSMARTReadRequest(from data: Data) throws -> SMARTReadRequest {
         guard data.count <= SMARTXPCLimits.requestBytes else {
             throw PalmosXPCMessageError.encodedMessageTooLarge
@@ -422,6 +480,24 @@ enum PalmosXPCMessages {
 
     private static func validateSMARTReadRequest(_ request: SMARTReadRequest) throws {
         if let requestID = request.requestID, UUID(uuidString: requestID) == nil {
+            throw PalmosXPCMessageError.invalidSMARTMessage
+        }
+    }
+
+    private static func validateSMARTQueryRequest(_ request: SMARTQueryRequest) throws {
+        guard request.schemaVersion == SMARTQueryRequest.currentSchemaVersion else {
+            throw PalmosXPCMessageError.unsupportedSchemaVersion(request.schemaVersion)
+        }
+        guard normalizedUUIDString(request.requestID) != nil,
+              request.physicalDeviceBSDName.range(
+                of: #"^disk\d+$"#,
+                options: .regularExpression
+              ) != nil,
+              request.sections.isEmpty == false,
+              request.sections.count <= SMARTXPCLimits.maxQuerySections,
+              Set(request.sections).count == request.sections.count,
+              request.deviceProtocol?.utf8.count ?? 0 <= SMARTXPCLimits.queryContextUTF8Bytes,
+              request.deviceModel?.utf8.count ?? 0 <= SMARTXPCLimits.queryContextUTF8Bytes else {
             throw PalmosXPCMessageError.invalidSMARTMessage
         }
     }

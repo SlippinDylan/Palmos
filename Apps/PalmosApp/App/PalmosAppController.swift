@@ -10,6 +10,21 @@ final class PalmosAppController: ObservableObject {
     private static let actionSuccessFeedbackDuration: TimeInterval = 1.2
     private static let actionFailureFeedbackDuration: TimeInterval = 2.8
     private static let quitFeedbackDuration: TimeInterval = 0.75
+    private static let visibleSMARTRefreshInterval: TimeInterval = 30
+    private static let hiddenSMARTRefreshInterval: TimeInterval = 5 * 60
+    private static let panelSMARTFreshnessWindow: TimeInterval = 15
+    private static let unavailableSMARTRetryInterval: Duration = .seconds(5 * 60)
+
+    private enum SMARTRefreshOrigin {
+        case automatic
+        case manual
+    }
+
+    private enum SMARTTelemetryFailureDisposition {
+        case transient
+        case helperUnavailable
+        case sessionUnsupported
+    }
 
     private enum SystemProfilerRefreshMode {
         case fetchIfNeeded
@@ -33,6 +48,7 @@ final class PalmosAppController: ObservableObject {
     @Published var isMenuBarPanelPresented = true {
         didSet {
             throughputMetricsStore.setPanelPresented(isMenuBarPanelPresented)
+            restartSMARTTelemetrySchedule(refreshImmediatelyIfStale: isMenuBarPanelPresented)
         }
     }
 
@@ -56,6 +72,11 @@ final class PalmosAppController: ObservableObject {
     private var quitTask: Task<Void, Never>?
     private var smartRefreshTasksByDeviceID: [DeviceID: Task<Void, Never>] = [:]
     private var smartRefreshGenerationsByDeviceID: [DeviceID: Int] = [:]
+    private var smartTelemetryScheduleTask: Task<Void, Never>?
+    private var smartTelemetryLastActivityByDeviceID: [DeviceID: ContinuousClock.Instant] = [:]
+    private var smartTelemetryFailureCountByDeviceID: [DeviceID: Int] = [:]
+    private var smartTelemetryNextEligibleByDeviceID: [DeviceID: ContinuousClock.Instant] = [:]
+    private var smartTelemetrySuppressedDeviceIDs: Set<DeviceID> = []
     private var ejectStateObservation: AnyCancellable?
     private var isSystemActionInFlight = false
     private var isEjectWorkflowActive = false
@@ -81,6 +102,9 @@ final class PalmosAppController: ObservableObject {
     private let quitFeedbackDuration: TimeInterval
     private let discoveryObservationDebounce: Duration
     private let externalEjectIntentLifetime: Duration
+    private let visibleSMARTRefreshInterval: TimeInterval
+    private let hiddenSMARTRefreshInterval: TimeInterval
+    private let panelSMARTFreshnessWindow: TimeInterval
     private let quitHandler: @MainActor @Sendable () -> Void
 
     init(
@@ -104,6 +128,9 @@ final class PalmosAppController: ObservableObject {
         quitFeedbackDuration: TimeInterval = 0.75,
         discoveryObservationDebounce: Duration = .milliseconds(75),
         externalEjectIntentLifetime: Duration = .seconds(5),
+        visibleSMARTRefreshInterval: TimeInterval = PalmosAppController.visibleSMARTRefreshInterval,
+        hiddenSMARTRefreshInterval: TimeInterval = PalmosAppController.hiddenSMARTRefreshInterval,
+        panelSMARTFreshnessWindow: TimeInterval = PalmosAppController.panelSMARTFreshnessWindow,
         quitHandler: @escaping @MainActor @Sendable () -> Void = {
             NSApplication.shared.terminate(nil)
         }
@@ -148,6 +175,9 @@ final class PalmosAppController: ObservableObject {
         self.quitFeedbackDuration = quitFeedbackDuration
         self.discoveryObservationDebounce = discoveryObservationDebounce
         self.externalEjectIntentLifetime = externalEjectIntentLifetime
+        self.visibleSMARTRefreshInterval = max(0.01, visibleSMARTRefreshInterval)
+        self.hiddenSMARTRefreshInterval = max(0.01, hiddenSMARTRefreshInterval)
+        self.panelSMARTFreshnessWindow = max(0, panelSMARTFreshnessWindow)
         self.quitHandler = quitHandler
         self.state = state ?? PalmosAppState(
             devices: [],
@@ -167,6 +197,7 @@ final class PalmosAppController: ObservableObject {
             self?.handleEjectStateChange(state)
         }
         reconcileThroughputSamplingLifecycle()
+        restartSMARTTelemetrySchedule(refreshImmediatelyIfStale: true)
 
         if state == nil {
             loadDiscoveredDevices()
@@ -186,23 +217,26 @@ final class PalmosAppController: ObservableObject {
         actionFeedbackClearTask?.cancel()
         quitTask?.cancel()
         smartRefreshTasksByDeviceID.values.forEach { $0.cancel() }
+        smartTelemetryScheduleTask?.cancel()
         externalEjectIntentExpiryTasks.values.forEach { $0.cancel() }
         volumeCapacityRefresher.stop()
     }
 
     func selectDevice(_ id: DeviceID?) {
         state.selectDevice(id)
+        restartSMARTTelemetrySchedule(refreshImmediatelyIfStale: true)
     }
 
     func refreshSelectedDeviceSMART() {
         guard let device = selectedPanelDevice else { return }
-        refreshSMART(for: device)
+        refreshSMART(for: device, supersedingExisting: true)
     }
 
     func installSMARTHelper() {
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard await smartHelperManager.installOrUpdate() else { return }
+            resetSMARTTelemetryRetryState()
             state.devices.forEach {
                 refreshSMART(
                     for: $0,
@@ -215,6 +249,8 @@ final class PalmosAppController: ObservableObject {
 
     func refreshSMARTHelperStatus() {
         smartHelperManager.refreshStatus()
+        resetSMARTTelemetryRetryState()
+        restartSMARTTelemetrySchedule(refreshImmediatelyIfStale: true)
     }
 
     var panelDevices: [ExternalDevice] {
@@ -868,85 +904,350 @@ final class PalmosAppController: ObservableObject {
         helperEvidenceAuthority: SMARTHelperEvidenceAuthority = .normal
     ) {
         let deviceID = device.id
-        if state.smartDetails(for: deviceID)?.isRefreshing == true,
-           supersedingExisting == false {
+        let previousTask = smartRefreshTasksByDeviceID[deviceID]
+        if previousTask != nil, supersedingExisting == false {
             return
         }
 
         if supersedingExisting {
-            smartRefreshTasksByDeviceID[deviceID]?.cancel()
+            previousTask?.cancel()
+            resetSMARTTelemetryRetryState(for: deviceID)
         }
 
         let generation = smartRefreshGenerationsByDeviceID[deviceID, default: 0] + 1
         let topologyGeneration = discoveryWriteGeneration
+        let refreshedSections = Set(SmartReportSectionKind.allCases)
         smartRefreshGenerationsByDeviceID[deviceID] = generation
+        smartTelemetryLastActivityByDeviceID[deviceID] = .now
 
-        state.setSMARTRefreshing(for: deviceID)
-        smartRefreshTasksByDeviceID[deviceID] = Task { @MainActor [weak self] in
+        state.setSMARTRefreshing(
+            for: deviceID,
+            sections: refreshedSections,
+            startedAt: Date()
+        )
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            let result = await smartService.refreshSMART(
-                for: device,
-                topologyGeneration: topologyGeneration
-            )
+            if let previousTask {
+                await previousTask.value
+            }
             guard Task.isCancelled == false,
                   smartRefreshGenerationsByDeviceID[deviceID] == generation else {
                 return
             }
+            let result = await smartService.querySMART(
+                for: device,
+                sections: [.liveTelemetry],
+                topologyGeneration: topologyGeneration,
+                allowsLegacyFullRead: true
+            )
+            guard Task.isCancelled == false,
+                  smartRefreshGenerationsByDeviceID[deviceID] == generation,
+                  discoveryWriteGeneration == topologyGeneration,
+                  state.device(id: deviceID)?.physicalStoreBSDName == device.physicalStoreBSDName else {
+                if smartRefreshGenerationsByDeviceID[deviceID] == generation {
+                    smartRefreshTasksByDeviceID[deviceID] = nil
+                }
+                return
+            }
             smartRefreshTasksByDeviceID[deviceID] = nil
-            applySMARTRefreshResult(
+            applySMARTQueryResult(
                 result,
                 for: deviceID,
+                attemptedSections: refreshedSections,
+                origin: .manual,
                 helperEvidenceAuthority: helperEvidenceAuthority
+            )
+        }
+        smartRefreshTasksByDeviceID[deviceID] = task
+    }
+
+    private func restartSMARTTelemetrySchedule(refreshImmediatelyIfStale: Bool) {
+        smartTelemetryScheduleTask?.cancel()
+        guard state.devices.isEmpty == false else {
+            smartTelemetryScheduleTask = nil
+            return
+        }
+
+        smartTelemetryScheduleTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            if refreshImmediatelyIfStale {
+                await refreshDueSMARTTelemetry(maxAge: panelSMARTFreshnessWindow)
+            }
+            while Task.isCancelled == false {
+                let interval = isMenuBarPanelPresented
+                    ? visibleSMARTRefreshInterval
+                    : hiddenSMARTRefreshInterval
+                do {
+                    try await Task.sleep(nanoseconds: Self.nanoseconds(for: interval))
+                } catch {
+                    return
+                }
+                guard Task.isCancelled == false else { return }
+                await refreshDueSMARTTelemetry(maxAge: interval)
+            }
+        }
+    }
+
+    private func refreshDueSMARTTelemetry(maxAge: TimeInterval) async {
+        let candidates = isMenuBarPanelPresented
+            ? selectedPanelDevice.map { [$0] } ?? []
+            : panelDevices
+        let now = ContinuousClock.now
+        for device in candidates {
+            guard Task.isCancelled == false else { return }
+            guard smartTelemetrySuppressedDeviceIDs.contains(device.id) == false else { continue }
+            if let nextEligible = smartTelemetryNextEligibleByDeviceID[device.id], now < nextEligible {
+                continue
+            }
+            if let mostRecentActivity = smartTelemetryLastActivityByDeviceID[device.id],
+               mostRecentActivity.duration(to: now) < .milliseconds(Int64(maxAge * 1_000)) {
+                continue
+            }
+            await refreshLiveSMARTTelemetry(for: device)
+        }
+    }
+
+    private func refreshLiveSMARTTelemetry(for device: ExternalDevice) async {
+        let deviceID = device.id
+        if let existing = smartRefreshTasksByDeviceID[deviceID] {
+            await existing.value
+            return
+        }
+        guard ejectWorkflowDeviceID != deviceID else { return }
+        guard smartTelemetrySuppressedDeviceIDs.contains(deviceID) == false else { return }
+        if let nextEligible = smartTelemetryNextEligibleByDeviceID[deviceID],
+           ContinuousClock.now < nextEligible {
+            return
+        }
+
+        let generation = smartRefreshGenerationsByDeviceID[deviceID, default: 0] + 1
+        let topologyGeneration = discoveryWriteGeneration
+        let refreshedSections = Set(SmartReportSectionKind.allCases)
+        smartRefreshGenerationsByDeviceID[deviceID] = generation
+        smartTelemetryLastActivityByDeviceID[deviceID] = .now
+        state.setSMARTRefreshing(
+            for: deviceID,
+            sections: refreshedSections,
+            startedAt: Date()
+        )
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await smartService.querySMART(
+                for: device,
+                sections: [.liveTelemetry],
+                topologyGeneration: topologyGeneration,
+                allowsLegacyFullRead: false
+            )
+            guard Task.isCancelled == false,
+                  smartRefreshGenerationsByDeviceID[deviceID] == generation,
+                  discoveryWriteGeneration == topologyGeneration,
+                  state.device(id: deviceID)?.physicalStoreBSDName == device.physicalStoreBSDName else {
+                if smartRefreshGenerationsByDeviceID[deviceID] == generation {
+                    smartRefreshTasksByDeviceID[deviceID] = nil
+                }
+                return
+            }
+            smartRefreshTasksByDeviceID[deviceID] = nil
+            applySMARTQueryResult(
+                result,
+                for: deviceID,
+                attemptedSections: refreshedSections,
+                origin: .automatic
+            )
+        }
+        smartRefreshTasksByDeviceID[deviceID] = task
+        await task.value
+    }
+
+    private func applySMARTQueryResult(
+        _ result: SMARTServiceQueryResult,
+        for deviceID: DeviceID,
+        attemptedSections: Set<SmartReportSectionKind>,
+        origin: SMARTRefreshOrigin,
+        helperEvidenceAuthority: SMARTHelperEvidenceAuthority = .normal
+    ) {
+        switch result {
+        case let .available(report, refreshedSections, compatibility):
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
+            let sampledAt = Date()
+            smartTelemetryLastActivityByDeviceID[deviceID] = .now
+            resetSMARTTelemetryRetryState(for: deviceID)
+            state.applySMARTReportPatch(
+                for: deviceID,
+                report: report,
+                sections: refreshedSections,
+                compatibility: compatibility,
+                sampledAt: sampledAt
+            )
+        case .unsupported:
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
+            applySMARTQueryFailure(
+                for: deviceID,
+                sections: attemptedSections,
+                snapshot: .unsupported,
+                message: "SMART monitoring is unsupported for this device.",
+                disposition: .sessionUnsupported,
+                origin: origin
+            )
+        case .transportUnsupported:
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
+            applySMARTQueryFailure(
+                for: deviceID,
+                sections: attemptedSections,
+                snapshot: .transportUnsupported,
+                message: "SMART monitoring is unsupported through this connection.",
+                disposition: .sessionUnsupported,
+                origin: origin
+            )
+        case .companionUnavailable:
+            smartHelperManager.record(.companionUnavailable, authority: helperEvidenceAuthority)
+            applySMARTQueryFailure(
+                for: deviceID,
+                sections: attemptedSections,
+                snapshot: .companionUnavailable,
+                message: "The SMART companion is unavailable.",
+                disposition: .helperUnavailable,
+                origin: origin
+            )
+        case .helperNotInstalled:
+            smartHelperManager.record(.notInstalled, authority: helperEvidenceAuthority)
+            applySMARTQueryFailure(
+                for: deviceID,
+                sections: attemptedSections,
+                snapshot: .helperNotInstalled,
+                message: "The SMART helper is not installed.",
+                disposition: .helperUnavailable,
+                origin: origin
+            )
+        case .updateRequired:
+            smartHelperManager.record(.updateRequired, authority: helperEvidenceAuthority)
+            applySMARTQueryFailure(
+                for: deviceID,
+                sections: attemptedSections,
+                snapshot: .updateRequired,
+                message: "The SMART helper must be updated.",
+                disposition: .helperUnavailable,
+                origin: origin
+            )
+        case .permissionRequired:
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
+            applySMARTQueryFailure(
+                for: deviceID,
+                sections: attemptedSections,
+                snapshot: .permissionRequired,
+                message: "SMART access requires administrator permission.",
+                disposition: .helperUnavailable,
+                origin: origin
+            )
+        case .deviceUnavailable:
+            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
+            applySMARTQueryFailure(
+                for: deviceID,
+                sections: attemptedSections,
+                snapshot: .deviceUnavailable,
+                message: "The SMART device is no longer available.",
+                disposition: .transient,
+                origin: origin
+            )
+        case let .failed(message):
+            applySMARTQueryFailure(
+                for: deviceID,
+                sections: attemptedSections,
+                snapshot: .failed(message),
+                message: message,
+                disposition: .transient,
+                origin: origin
             )
         }
     }
 
-    private func applySMARTRefreshResult(
-        _ result: SMARTServiceRefreshResult,
+    private func applySMARTQueryFailure(
         for deviceID: DeviceID,
-        helperEvidenceAuthority: SMARTHelperEvidenceAuthority = .normal
+        sections: Set<SmartReportSectionKind>,
+        snapshot: SmartSnapshot,
+        message: String,
+        disposition: SMARTTelemetryFailureDisposition,
+        origin: SMARTRefreshOrigin
     ) {
-        switch result {
-        case let .available(smartData, compatibility):
-            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
-            state.applySMARTResult(
+        if case .available = state.device(id: deviceID)?.smartSnapshot {
+            state.failSMARTReportSections(
                 for: deviceID,
-                snapshot: .available(smartData),
-                compatibility: compatibility
+                sections: sections,
+                message: message,
+                attemptedAt: Date()
             )
-        case .unsupported:
-            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
-            state.applySMARTResult(for: deviceID, snapshot: .unsupported, compatibility: nil)
-        case .transportUnsupported:
-            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
-            state.applySMARTResult(for: deviceID, snapshot: .transportUnsupported, compatibility: nil)
-        case .companionUnavailable:
-            smartHelperManager.record(.companionUnavailable, authority: helperEvidenceAuthority)
+        } else {
             state.applySMARTResult(
                 for: deviceID,
-                snapshot: .companionUnavailable,
-                compatibility: nil
-            )
-        case .helperNotInstalled:
-            smartHelperManager.record(.notInstalled, authority: helperEvidenceAuthority)
-            state.applySMARTResult(for: deviceID, snapshot: .helperNotInstalled, compatibility: nil)
-        case .updateRequired:
-            smartHelperManager.record(.updateRequired, authority: helperEvidenceAuthority)
-            state.applySMARTResult(for: deviceID, snapshot: .updateRequired, compatibility: nil)
-        case .permissionRequired:
-            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
-            state.applySMARTResult(for: deviceID, snapshot: .permissionRequired, compatibility: nil)
-        case .deviceUnavailable:
-            smartHelperManager.record(.installed, authority: helperEvidenceAuthority)
-            state.applySMARTResult(for: deviceID, snapshot: .deviceUnavailable, compatibility: nil)
-        case let .failed(message):
-            state.applySMARTResult(
-                for: deviceID,
-                snapshot: .failed(message),
+                snapshot: snapshot,
                 compatibility: nil,
                 lastError: message
             )
         }
+        recordSMARTTelemetryFailure(
+            for: deviceID,
+            disposition: disposition,
+            origin: origin
+        )
+    }
+
+    private func recordSMARTTelemetryFailure(
+        for deviceID: DeviceID,
+        disposition: SMARTTelemetryFailureDisposition,
+        origin: SMARTRefreshOrigin
+    ) {
+        let now = ContinuousClock.now
+        switch disposition {
+        case .sessionUnsupported:
+            smartTelemetrySuppressedDeviceIDs.insert(deviceID)
+            smartTelemetryNextEligibleByDeviceID.removeValue(forKey: deviceID)
+        case .helperUnavailable:
+            smartTelemetryNextEligibleByDeviceID[deviceID] = now.advanced(
+                by: Self.unavailableSMARTRetryInterval
+            )
+        case .transient:
+            let failureCount = smartTelemetryFailureCountByDeviceID[deviceID, default: 0] + 1
+            smartTelemetryFailureCountByDeviceID[deviceID] = failureCount
+            let baseInterval: TimeInterval
+            switch origin {
+            case .automatic:
+                baseInterval = visibleSMARTRefreshInterval
+            case .manual:
+                baseInterval = 30
+            }
+            let multiplier = pow(2, Double(min(failureCount - 1, 3)))
+            let retryInterval = min(max(baseInterval, 30) * multiplier, 300)
+            smartTelemetryNextEligibleByDeviceID[deviceID] = now.advanced(
+                by: .milliseconds(Int64(retryInterval * 1_000))
+            )
+        }
+    }
+
+    private func resetSMARTTelemetryRetryState(for deviceID: DeviceID) {
+        smartTelemetryFailureCountByDeviceID.removeValue(forKey: deviceID)
+        smartTelemetryNextEligibleByDeviceID.removeValue(forKey: deviceID)
+        smartTelemetrySuppressedDeviceIDs.remove(deviceID)
+    }
+
+    private func resetSMARTTelemetryRetryState() {
+        smartTelemetryFailureCountByDeviceID.removeAll()
+        smartTelemetryNextEligibleByDeviceID.removeAll()
+        smartTelemetrySuppressedDeviceIDs.removeAll()
+    }
+
+    private func cancelSMARTRefreshForEject(_ deviceID: DeviceID) {
+        guard let task = smartRefreshTasksByDeviceID.removeValue(forKey: deviceID) else {
+            return
+        }
+        smartRefreshGenerationsByDeviceID[deviceID, default: 0] += 1
+        task.cancel()
+        state.failSMARTReportSections(
+            for: deviceID,
+            sections: Set(SmartReportSectionKind.allCases),
+            message: "SMART refresh was cancelled for safe eject.",
+            attemptedAt: Date()
+        )
     }
 
     var isThroughputSamplingActive: Bool {
@@ -989,9 +1290,19 @@ final class PalmosAppController: ObservableObject {
     }
 
     private func triggerInitialSMARTForNewDevices(_ devices: [ExternalDevice]) {
-        for device in devices {
-            guard state.smartDetails(for: device.id)?.snapshot == .notRequested else { continue }
-            refreshSMART(for: device)
+        let candidates = isMenuBarPanelPresented
+            ? selectedPanelDevice.map { [$0] } ?? []
+            : devices
+        let pendingDevices = candidates.filter {
+            state.smartDetails(for: $0.id)?.snapshot == .notRequested
+        }
+        guard pendingDevices.isEmpty == false else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            for device in pendingDevices {
+                guard Task.isCancelled == false else { return }
+                await refreshLiveSMARTTelemetry(for: device)
+            }
         }
     }
 
@@ -1006,6 +1317,13 @@ final class PalmosAppController: ObservableObject {
         let liveDeviceIDs = Set(state.devices.map(\.id))
         let livePhysicalBSDNames = Set(state.devices.map(\.physicalStoreBSDName))
         let currentSamplingTopology = Self.samplingTopology(for: state.devices)
+        let changedSMARTTopologyDeviceIDs = liveDeviceIDs.filter {
+            throughputSamplingTopology[$0] != currentSamplingTopology[$0]
+        }
+        changedSMARTTopologyDeviceIDs.forEach { deviceID in
+            smartTelemetryLastActivityByDeviceID.removeValue(forKey: deviceID)
+            resetSMARTTelemetryRetryState(for: deviceID)
+        }
         if currentSamplingTopology != throughputSamplingTopology {
             diskSampler.invalidateCachedServices()
             throughputSamplingTopology = currentSamplingTopology
@@ -1024,13 +1342,23 @@ final class PalmosAppController: ObservableObject {
                 topologyGeneration: topologyGeneration
             )
         }
-        let removedSMARTDeviceIDs = Set(smartRefreshTasksByDeviceID.keys).subtracting(liveDeviceIDs)
+        let trackedSMARTDeviceIDs = Set(smartRefreshTasksByDeviceID.keys)
+            .union(smartTelemetryLastActivityByDeviceID.keys)
+            .union(smartTelemetryFailureCountByDeviceID.keys)
+            .union(smartTelemetryNextEligibleByDeviceID.keys)
+            .union(smartTelemetrySuppressedDeviceIDs)
+        let removedSMARTDeviceIDs = trackedSMARTDeviceIDs.subtracting(liveDeviceIDs)
         removedSMARTDeviceIDs.forEach { deviceID in
             smartRefreshTasksByDeviceID.removeValue(forKey: deviceID)?.cancel()
             smartRefreshGenerationsByDeviceID.removeValue(forKey: deviceID)
+            smartTelemetryLastActivityByDeviceID.removeValue(forKey: deviceID)
+            smartTelemetryFailureCountByDeviceID.removeValue(forKey: deviceID)
+            smartTelemetryNextEligibleByDeviceID.removeValue(forKey: deviceID)
+            smartTelemetrySuppressedDeviceIDs.remove(deviceID)
         }
         throughputMetricsStore.prune(liveDeviceIDs: liveDeviceIDs)
         reconcileThroughputSamplingLifecycle()
+        restartSMARTTelemetrySchedule(refreshImmediatelyIfStale: isMenuBarPanelPresented)
     }
 
     private static func samplingTopology(for devices: [ExternalDevice]) -> [DeviceID: String] {

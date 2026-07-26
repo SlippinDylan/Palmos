@@ -2,12 +2,13 @@ import Foundation
 
 enum XPCContractVersion {
     static let currentMajor = 1
-    static let currentMinor = 7
+    static let currentMinor = 8
     static let completionAwareSMARTMinor = 4
     static let legacySMARTCancellationMinor = 5
     static let smartCancellationMinor = 6
     static let observableSMARTFailuresMinor = 6
     static let smartctlCompanionInstallationMinor = 7
+    static let sectionedSMARTQueriesMinor = 8
 }
 
 @objc protocol PalmosSMARTXPCProtocol {
@@ -17,6 +18,10 @@ enum XPCContractVersion {
         withReply reply: @escaping (Data?, NSError?) -> Void
     )
     func readSMARTDataWithCompletion(
+        for requestData: Data,
+        withReply reply: @escaping (Data?, NSError?) -> Void
+    )
+    @objc optional func querySMARTData(
         for requestData: Data,
         withReply reply: @escaping (Data?, NSError?) -> Void
     )

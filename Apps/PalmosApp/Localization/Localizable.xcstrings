@@ -4804,6 +4804,50 @@
         }
       }
     },
+    "Temperature update failed. Showing the last reading." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temperature update failed. Showing the last reading."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "温度更新失败，正在显示上次读数。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "溫度更新失敗，正在顯示上次讀數。"
+          }
+        }
+      }
+    },
+    "Updating temperature…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updating temperature…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新温度…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新溫度…"
+          }
+        }
+      }
+    },
     "Update" : {
       "localizations" : {
         "en" : {
