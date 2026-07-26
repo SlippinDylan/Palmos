@@ -18,11 +18,13 @@ final class EjectCoordinator: ObservableObject {
     private var pendingTarget: EjectWorkflowTarget?
     private var activeWorkflow: ActiveWorkflow?
     private var operationTask: Task<Void, Never>?
+    private var diagnosisTask: Task<Void, Never>?
     private var topologyValidationTask: Task<Void, Never>?
     private var latestTopologyGeneration: Int?
     private var validatedTopologyGeneration: Int?
     private var releaseWorkflowID: UUID?
     private var releaseTask: Task<Void, Never>?
+    private var cancellationWorkflowID: UUID?
 
     init(
         resolver: any EjectTargetResolving,
@@ -60,40 +62,67 @@ final class EjectCoordinator: ObservableObject {
 
     func cancel() {
         guard let id = workflowID else { return }
+        guard cancellationWorkflowID != id else { return }
+        cancellationWorkflowID = id
         operationTask?.cancel()
+        diagnosisTask?.cancel()
         topologyValidationTask?.cancel()
+        if let target = activeWorkflow?.target {
+            state = .working(target: target, stage: .preparing)
+        }
         operationTask = Task { [weak self] in
             await self?.finishCancellation(workflowID: id)
         }
     }
 
+    func cancelAndWait() async {
+        cancel()
+        await operationTask?.value
+    }
+
     func retry() {
-        guard case .awaitingRecovery(let recovery) = state,
+        guard cancellationWorkflowID == nil,
+              case .awaitingRecovery(let recovery) = state,
               let activeWorkflow else { return }
+        diagnosisTask?.cancel()
+        let attempt = activeWorkflow.beginNextAttempt()
         retainedRecovery = recovery
         state = .working(target: activeWorkflow.target, stage: .preparing)
         startOperation(workflowID: activeWorkflow.id) { [weak self] in
-            await self?.prepareExistingAttempt(workflowID: activeWorkflow.id, force: false)
+            await self?.prepareExistingAttempt(
+                workflowID: activeWorkflow.id,
+                attempt: attempt,
+                force: false
+            )
         }
     }
 
     func requestForce() {
-        guard case .awaitingRecovery(let recovery) = state else { return }
+        guard cancellationWorkflowID == nil,
+              case .awaitingRecovery(let recovery) = state else { return }
         state = .awaitingForceConfirmation(recovery)
     }
 
     func cancelForceConfirmation() {
-        guard case .awaitingForceConfirmation(let recovery) = state else { return }
+        guard cancellationWorkflowID == nil,
+              case .awaitingForceConfirmation(let recovery) = state else { return }
         state = .awaitingRecovery(recovery)
     }
 
     func confirmForce() {
-        guard case .awaitingForceConfirmation(let recovery) = state,
+        guard cancellationWorkflowID == nil,
+              case .awaitingForceConfirmation(let recovery) = state,
               let activeWorkflow else { return }
+        diagnosisTask?.cancel()
+        let attempt = activeWorkflow.beginNextAttempt()
         retainedRecovery = recovery
         state = .working(target: activeWorkflow.target, stage: .preparing)
         startOperation(workflowID: activeWorkflow.id) { [weak self] in
-            await self?.prepareExistingAttempt(workflowID: activeWorkflow.id, force: true)
+            await self?.prepareExistingAttempt(
+                workflowID: activeWorkflow.id,
+                attempt: attempt,
+                force: true
+            )
         }
     }
 
@@ -181,34 +210,14 @@ final class EjectCoordinator: ObservableObject {
         }
     }
 
-    private func prepareExistingAttempt(workflowID id: UUID, force: Bool) async {
-        guard let workflow = activeWorkflow, workflow.id == id else { return }
-        do {
-            let barrier = try await quiescer.acquireBarrier(
-                for: workflow.target,
-                timeout: preparationTimeout
-            )
-            guard isCurrent(id) else {
-                await barrier.release()
-                return
-            }
-            workflow.setBarrier(barrier)
-            try await barrier.waitUntilReady()
-            guard isCurrent(id) else { return }
-            if force {
-                await revalidateAndPerformForceEject(workflowID: id)
-            } else {
-                await revalidateAndPerformNormalEject(workflowID: id)
-            }
-        } catch let error as DeviceIOQuiescenceError {
-            guard isCurrent(id) else { return }
-            await finishFailure(
-                preparationFailure(error, target: workflow.target),
-                target: workflow.target,
-                workflowID: id
-            )
-        } catch {
-            await handleRevalidationError(error, target: workflow.target, workflowID: id)
+    private func prepareExistingAttempt(workflowID id: UUID, attempt: Int, force: Bool) async {
+        guard let workflow = activeWorkflow,
+              workflow.id == id,
+              isCurrentAttempt(id, attempt: attempt) else { return }
+        if force {
+            await revalidateAndPerformForceEject(workflowID: id)
+        } else {
+            await revalidateAndPerformNormalEject(workflowID: id)
         }
     }
 
@@ -244,6 +253,7 @@ final class EjectCoordinator: ObservableObject {
                 await finishExternalUnmount(workflowID: id)
                 return
             }
+            restartDiagnosisAfterTopologyRefresh(workflow: workflow)
         } catch {
             guard isCurrent(id), latestTopologyGeneration == generation else { return }
             if isDisappearance(error) {
@@ -308,36 +318,90 @@ final class EjectCoordinator: ObservableObject {
         failure: EjectFailure,
         workflow: ActiveWorkflow
     ) async {
-        let holders: [OccupancyHolder]
-        if failure.holders.isEmpty {
-            state = .working(target: workflow.target, stage: .diagnosingOccupancy)
-            let scan = await occupancyScanner.scan(workflowID: workflow.id, scope: workflow.scope)
-            guard isCurrent(workflow.id) else { return }
-            holders = scan.holders
-        } else {
-            holders = failure.holders
-        }
-
         if workflow.hasObservedExternalUnmount {
             await finishExternalUnmount(workflowID: workflow.id)
             return
         }
 
-        var diagnosedFailure = failure
-        diagnosedFailure.holders = holders
+        let diagnosis: OccupancyDiagnosis = failure.holders.isEmpty
+            ? .pending
+            : .known(failure.holders)
         let recovery = EjectRecoveryState(
             target: workflow.target,
-            failure: diagnosedFailure,
-            holders: holders
+            failure: failure,
+            diagnosis: diagnosis
         )
-        await releaseBarrier(workflowID: workflow.id)
-        guard isCurrent(workflow.id) else { return }
-        if workflow.hasObservedExternalUnmount {
-            await finishExternalUnmount(workflowID: workflow.id)
-            return
-        }
         retainedRecovery = recovery
         state = .awaitingRecovery(recovery)
+
+        if failure.holders.isEmpty {
+            startDiagnosis(workflow: workflow, failure: failure)
+        }
+    }
+
+    private func startDiagnosis(workflow: ActiveWorkflow, failure: EjectFailure) {
+        diagnosisTask?.cancel()
+        let attempt = workflow.attemptGeneration
+        let scopeGeneration = workflow.scopeGeneration
+        let scope = workflow.scope
+        diagnosisTask = Task { [weak self] in
+            guard let self else { return }
+            let scan = await occupancyScanner.scan(workflowID: workflow.id, scope: scope)
+            guard isCurrentAttempt(workflow.id, attempt: attempt),
+                  activeWorkflow?.scopeGeneration == scopeGeneration else { return }
+            var diagnosedFailure = failure
+            diagnosedFailure.holders = scan.holders
+            let diagnosis: OccupancyDiagnosis
+            if scan.holders.isEmpty == false {
+                diagnosis = .known(scan.holders)
+            } else if scan.isComplete {
+                diagnosis = .unknown
+            } else {
+                diagnosis = .unavailable
+            }
+            let recovery = EjectRecoveryState(
+                target: workflow.target,
+                failure: diagnosedFailure,
+                diagnosis: diagnosis
+            )
+            retainedRecovery = recovery
+            switch state {
+            case .awaitingRecovery:
+                state = .awaitingRecovery(recovery)
+            case .awaitingForceConfirmation:
+                state = .awaitingForceConfirmation(recovery)
+            default:
+                break
+            }
+        }
+    }
+
+    private func restartDiagnosisAfterTopologyRefresh(workflow: ActiveWorkflow) {
+        let previous: EjectRecoveryState
+        let isConfirmingForce: Bool
+        switch state {
+        case .awaitingRecovery(let recovery):
+            previous = recovery
+            isConfirmingForce = false
+        case .awaitingForceConfirmation(let recovery):
+            previous = recovery
+            isConfirmingForce = true
+        default:
+            return
+        }
+
+        var failure = previous.failure
+        failure.holders = []
+        let pending = EjectRecoveryState(
+            target: workflow.target,
+            failure: failure,
+            diagnosis: .pending
+        )
+        retainedRecovery = pending
+        state = isConfirmingForce
+            ? .awaitingForceConfirmation(pending)
+            : .awaitingRecovery(pending)
+        startDiagnosis(workflow: workflow, failure: failure)
     }
 
     private func handleRevalidationError(
@@ -455,16 +519,23 @@ final class EjectCoordinator: ObservableObject {
         pendingTarget = nil
         activeWorkflow = nil
         operationTask = nil
+        diagnosisTask?.cancel()
+        diagnosisTask = nil
         topologyValidationTask = nil
         latestTopologyGeneration = nil
         validatedTopologyGeneration = nil
         releaseWorkflowID = nil
         releaseTask = nil
+        cancellationWorkflowID = nil
         retainedRecovery = nil
     }
 
     private func isCurrent(_ id: UUID) -> Bool {
         workflowID == id && Task.isCancelled == false
+    }
+
+    private func isCurrentAttempt(_ id: UUID, attempt: Int) -> Bool {
+        isCurrent(id) && activeWorkflow?.attemptGeneration == attempt
     }
 
     private func canCommitTerminal(_ id: UUID) -> Bool {
@@ -514,6 +585,7 @@ private final class ActiveWorkflow {
     private(set) var operationPlan: DiskEjectOperationPlan
     private(set) var scopeGeneration: Int
     private(set) var hasObservedExternalUnmount = false
+    private(set) var attemptGeneration = 0
     private var barrier: (any EjectBarrier)?
 
     init(
@@ -542,9 +614,9 @@ private final class ActiveWorkflow {
         scopeGeneration = generation
     }
 
-    func setBarrier(_ barrier: any EjectBarrier) {
-        precondition(self.barrier == nil)
-        self.barrier = barrier
+    func beginNextAttempt() -> Int {
+        attemptGeneration += 1
+        return attemptGeneration
     }
 
     func takeBarrier() -> (any EjectBarrier)? {

@@ -1690,6 +1690,21 @@ final class PalmosAppControllerTests: XCTestCase {
 
         controller.perform(action)
         await ejecter.waitUntilNormalEjectStarts()
+
+        let activeActions = controller.selectedFooterActions
+        XCTAssertFalse(controller.isFooterActionEnabled(
+            try XCTUnwrap(activeActions.first(where: { $0.kind == .openInFinder }))
+        ))
+        XCTAssertFalse(controller.isFooterActionEnabled(
+            try XCTUnwrap(activeActions.first(where: { $0.kind == .eject }))
+        ))
+        XCTAssertFalse(controller.isFooterActionEnabled(
+            try XCTUnwrap(activeActions.first(where: { $0.kind == .openDiskUtility }))
+        ))
+        XCTAssertTrue(controller.isFooterActionEnabled(
+            try XCTUnwrap(activeActions.first(where: { $0.kind == .quit }))
+        ))
+
         controller.selectDevice(secondDevice.id)
 
         XCTAssertTrue(controller.isPerformingSystemAction)

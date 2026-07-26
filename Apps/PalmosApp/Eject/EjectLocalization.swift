@@ -160,12 +160,24 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         isOperationActive: Bool,
         operationStatus: String? = nil
     ) -> Self {
-        let holders = recovery.holders.map(\.preferredName)
-        let reason = holders.isEmpty
-            ? EjectLocalization.unknownHolderReason
-            : EjectLocalization.knownHolderReason(
-                ListFormatter.localizedString(byJoining: holders)
+        let reason: String
+        let diagnosisStatus: String?
+        switch recovery.diagnosis {
+        case .pending:
+            reason = EjectLocalization.busyReason
+            diagnosisStatus = EjectLocalization.diagnosingOccupancy
+        case .known(let holders):
+            reason = EjectLocalization.knownHolderReason(
+                ListFormatter.localizedString(byJoining: holders.map(\.preferredName))
             )
+            diagnosisStatus = nil
+        case .unknown:
+            reason = EjectLocalization.unknownHolderReason
+            diagnosisStatus = nil
+        case .unavailable:
+            reason = EjectLocalization.unavailableDiagnosisReason
+            diagnosisStatus = nil
+        }
         return Self(
             deviceID: recovery.target.deviceID,
             displayName: recovery.target.displayName,
@@ -176,7 +188,7 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
             technicalDetail: EjectLocalization.technicalDetail(recovery.failure),
             actions: [.cancel, .retry, .requestForce],
             isOperationActive: isOperationActive,
-            operationStatus: operationStatus
+            operationStatus: operationStatus ?? diagnosisStatus
         )
     }
 }
@@ -196,6 +208,18 @@ enum EjectLocalization {
 
     static var unknownHolderReason: String {
         String(localized: "eject.recovery.unknownHolder")
+    }
+
+    static var busyReason: String {
+        String(localized: "eject.recovery.busy")
+    }
+
+    static var diagnosingOccupancy: String {
+        String(localized: "eject.recovery.diagnosing")
+    }
+
+    static var unavailableDiagnosisReason: String {
+        String(localized: "eject.recovery.diagnosisUnavailable")
     }
 
     static var recoveryGuidance: String {

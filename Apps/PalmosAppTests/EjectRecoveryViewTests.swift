@@ -73,6 +73,30 @@ final class EjectRecoveryViewTests: XCTestCase {
         XCTAssertTrue(presentation?.reason.contains("Palmos") == true)
     }
 
+    func testPendingDiagnosisShowsImmediateBusyPromptAndProgress() {
+        let pending = EjectRecoveryState(
+            target: target,
+            failure: .init(
+                stage: .unmounting,
+                category: .busy,
+                rawStatus: EBUSY,
+                systemMessage: nil,
+                physicalBSDName: target.physicalBSDName,
+                holders: []
+            ),
+            diagnosis: .pending
+        )
+        let presentation = EjectRecoveryPresentation(
+            state: .awaitingRecovery(pending),
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertEqual(presentation?.reason, EjectLocalization.busyReason)
+        XCTAssertEqual(presentation?.operationStatus, EjectLocalization.diagnosingOccupancy)
+        XCTAssertEqual(presentation?.actions, [.cancel, .retry, .requestForce])
+        XCTAssertFalse(presentation?.isOperationActive == true)
+    }
+
     func testRecoveryOnlyRendersForCapturedSelectedDevice() {
         XCTAssertNotNil(EjectRecoveryPresentation(
             state: .awaitingRecovery(recovery()),

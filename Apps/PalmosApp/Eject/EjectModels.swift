@@ -127,10 +127,46 @@ struct OccupancyScanResult: Equatable, Sendable {
     let isComplete: Bool
 }
 
+enum OccupancyDiagnosis: Equatable, Sendable {
+    case pending
+    case known([OccupancyHolder])
+    case unknown
+    case unavailable
+
+    var holders: [OccupancyHolder] {
+        guard case .known(let holders) = self else { return [] }
+        return holders
+    }
+}
+
 struct EjectRecoveryState: Equatable, Sendable {
     let target: EjectWorkflowTarget
     let failure: EjectFailure
-    let holders: [OccupancyHolder]
+    let diagnosis: OccupancyDiagnosis
+
+    var holders: [OccupancyHolder] { diagnosis.holders }
+
+    init(
+        target: EjectWorkflowTarget,
+        failure: EjectFailure,
+        diagnosis: OccupancyDiagnosis
+    ) {
+        self.target = target
+        self.failure = failure
+        self.diagnosis = diagnosis
+    }
+
+    init(
+        target: EjectWorkflowTarget,
+        failure: EjectFailure,
+        holders: [OccupancyHolder]
+    ) {
+        self.init(
+            target: target,
+            failure: failure,
+            diagnosis: holders.isEmpty ? .unknown : .known(holders)
+        )
+    }
 }
 
 enum EjectWorkflowState: Equatable, Sendable {

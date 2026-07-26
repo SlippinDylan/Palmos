@@ -158,16 +158,10 @@ private struct PanelControlSurfaceModifier<S: InsettableShape>: ViewModifier {
 struct ActionBarView: View {
     let actions: [SystemAction]
     let mode: FooterActionBarMode
-    let isPerformingAction: Bool
+    let isActionEnabled: (SystemAction) -> Bool
     let message: String?
-    let ejectState: EjectWorkflowState
-    let retainedRecovery: EjectRecoveryState?
-    let selectedDeviceID: DeviceID?
-    let availableHeight: CGFloat
     let onAction: (SystemAction) -> Void
-    let onCancelEject: () -> Void
-    let onRetryEject: () -> Void
-    let onRequestForceEject: () -> Void
+    let onActivateEjectRecovery: () -> Void
 
     private var visualStyle: MenuBarVisualStyle {
         .current()
@@ -188,6 +182,7 @@ struct ActionBarView: View {
                     ForEach(actions) { action in
                         Button {
                             onAction(action)
+                            if action.kind == .eject { onActivateEjectRecovery() }
                         } label: {
                             FooterActionButtonLabel(
                                 action: action,
@@ -206,6 +201,7 @@ struct ActionBarView: View {
                                 ? .infinity
                                 : layoutMetrics.fixedWidth
                         )
+                        .disabled(isActionEnabled(action) == false)
                     }
 
                     if mode == .empty {
@@ -215,7 +211,6 @@ struct ActionBarView: View {
                 .frame(maxWidth: .infinity)
             }
             .controlSize(.small)
-            .disabled(isPerformingAction)
 
             if let message, message.isEmpty == false {
                 Text(message)
@@ -224,30 +219,7 @@ struct ActionBarView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
-
-            if let presentation = EjectRecoveryPresentation(
-                state: ejectState,
-                retainedRecovery: retainedRecovery,
-                selectedDeviceID: selectedDeviceID
-            ) {
-                ScrollView(.vertical, showsIndicators: true) {
-                    EjectRecoveryView(
-                        presentation: presentation,
-                        onCancel: onCancelEject,
-                        onRetry: onRetryEject,
-                        onRequestForce: onRequestForceEject
-                    )
-                }
-                .frame(maxHeight: recoveryViewMaximumHeight)
-            }
         }
-    }
-
-    private var recoveryViewMaximumHeight: CGFloat {
-        MenuBarPanelLayout.recoveryViewMaximumHeight(
-            availableHeight: availableHeight,
-            showsFeedback: message?.isEmpty == false
-        )
     }
 }
 

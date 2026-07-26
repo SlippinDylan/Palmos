@@ -55,6 +55,7 @@ final class PalmosAppController: ObservableObject {
     let settings: AppSettings
     let launchAtLoginController: LaunchAtLoginController
     let ejectCoordinator: EjectCoordinator
+    let ejectRecoveryWindowPresenter: EjectRecoveryWindowPresenter
     let smartHelperManager: SMARTHelperManager
     let throughputMetricsStore: ThroughputMetricsStore
 
@@ -153,11 +154,15 @@ final class PalmosAppController: ObservableObject {
             inspector: resolvedHelperInspector,
             installer: helperInstaller
         )
-        self.ejectCoordinator = ejectCoordinator ?? EjectCoordinator(
+        let resolvedEjectCoordinator = ejectCoordinator ?? EjectCoordinator(
             resolver: LiveEjectTargetResolver(),
             quiescer: DeviceIOQuiescer(tracker: deviceIOTracker),
             ejecter: DiskArbitrationEjectClient(),
             occupancyScanner: OccupancyScanner(helperScanner: resolvedOccupancyHelper)
+        )
+        self.ejectCoordinator = resolvedEjectCoordinator
+        self.ejectRecoveryWindowPresenter = EjectRecoveryWindowPresenter(
+            coordinator: resolvedEjectCoordinator
         )
         self.systemActions = systemActions
         self.systemProfilerProvider = systemProfilerProvider ?? LiveSystemProfilerProvider(
@@ -285,9 +290,7 @@ final class PalmosAppController: ObservableObject {
     }
 
     func perform(_ action: SystemAction) {
-        guard isPerformingSystemAction == false else {
-            return
-        }
+        guard isFooterActionEnabled(action) else { return }
 
         if case .ejectPhysicalDevice = action.intent {
             guard let device = selectedPanelDevice else { return }
@@ -298,14 +301,20 @@ final class PalmosAppController: ObservableObject {
                 ejectCoordinator.retry()
                 return
             }
+            if case .awaitingForceConfirmation(let recovery) = ejectCoordinator.state,
+               recovery.target.deviceID == device.id {
+                return
+            }
+            ejectWorkflowDeviceID = device.id
+            cancelSMARTRefreshForEject(device.id)
             guard ejectCoordinator.begin(
                 deviceID: device.id,
                 displayName: device.displayName,
                 topologyGeneration: discoveryWriteGeneration
             ) else {
+                ejectWorkflowDeviceID = nil
                 return
             }
-            ejectWorkflowDeviceID = device.id
             return
         }
 
@@ -327,6 +336,7 @@ final class PalmosAppController: ObservableObject {
                     return
                 }
 
+                await ejectCoordinator.cancelAndWait()
                 try? await Task.sleep(nanoseconds: Self.nanoseconds(for: quitFeedbackDuration))
                 guard Task.isCancelled == false else {
                     return
@@ -360,6 +370,21 @@ final class PalmosAppController: ObservableObject {
         }
     }
 
+    func isFooterActionEnabled(_ action: SystemAction) -> Bool {
+        guard isSystemActionInFlight == false else { return false }
+
+        switch ejectCoordinator.state {
+        case .preparing, .working:
+            return action.kind == .quit
+        case .awaitingRecovery(let recovery), .awaitingForceConfirmation(let recovery):
+            guard action.kind == .eject else { return true }
+            return recovery.target.deviceID == selectedPanelDevice?.id
+        case .idle, .succeeded, .externallyUnmounted, .disappeared,
+             .resolutionFailed, .failed:
+            return action.kind != .eject || selectedPanelDevice != nil
+        }
+    }
+
     func cancelEject() {
         ejectCoordinator.cancel()
     }
@@ -385,7 +410,17 @@ final class PalmosAppController: ObservableObject {
     }
 
     func quit() {
-        quitHandler()
+        guard isEjectWorkflowActive else {
+            quitHandler()
+            return
+        }
+        quitTask?.cancel()
+        quitTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await ejectCoordinator.cancelAndWait()
+            guard Task.isCancelled == false else { return }
+            quitHandler()
+        }
     }
 
     private func clearActionFeedback() {
