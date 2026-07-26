@@ -6,6 +6,7 @@ import PalmosCore
 enum EjectRecoveryAction: Equatable, Sendable {
     case cancel
     case retry
+    case retryFailure
     case requestForce
     case confirmForce
 }
@@ -131,7 +132,7 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
                 reason: reason,
                 guidance: EjectLocalization.failureGuidance(failure),
                 technicalDetail: EjectLocalization.technicalDetail(failure),
-                actions: [],
+                actions: failure.category == .io ? [.cancel, .retryFailure] : [],
                 isOperationActive: false,
                 operationStatus: nil
             )
@@ -250,6 +251,7 @@ enum EjectLocalization {
         switch action {
         case .cancel: String(localized: "eject.action.cancel")
         case .retry: String(localized: "eject.action.retry")
+        case .retryFailure: String(localized: "eject.action.retryFailure")
         case .requestForce: String(localized: "eject.action.requestForce")
         case .confirmForce: String(localized: "eject.action.confirmForce")
         }
@@ -258,7 +260,7 @@ enum EjectLocalization {
     static func accessibilityLabel(for action: EjectRecoveryAction) -> String {
         switch action {
         case .cancel: String(localized: "eject.accessibility.cancel")
-        case .retry: String(localized: "eject.accessibility.retry")
+        case .retry, .retryFailure: String(localized: "eject.accessibility.retry")
         case .requestForce: String(localized: "eject.accessibility.requestForce")
         case .confirmForce: String(localized: "eject.accessibility.confirmForce")
         }
@@ -287,7 +289,7 @@ enum EjectLocalization {
 
     static func failureBody(_ failure: EjectFailure) -> String {
         let reason = categoryName(failure.category)
-        if failure.category == .smartCompletionUnobservable {
+        if failure.category == .smartCompletionUnobservable || failure.category == .io {
             return reason
         }
         let primaryText = failurePrimaryText(failure)
@@ -308,9 +310,18 @@ enum EjectLocalization {
     }
 
     static func failureGuidance(_ failure: EjectFailure) -> String? {
-        failure.category == .smartCompletionUnobservable
-            ? smartCompletionUnobservableGuidance
-            : nil
+        switch failure.category {
+        case .io:
+            ioFailureGuidance
+        case .smartCompletionUnobservable:
+            smartCompletionUnobservableGuidance
+        default:
+            nil
+        }
+    }
+
+    static var ioFailureGuidance: String {
+        String(localized: "eject.error.ioGuidance")
     }
 
     static func technicalDetail(_ failure: EjectFailure) -> String? {

@@ -266,6 +266,26 @@ final class EjectCoordinatorTests: XCTestCase {
         XCTAssertEqual(forceBSDNames, [])
     }
 
+    func testTerminalFailureDismissesWithoutStartingAnotherDiskOperation() async throws {
+        let fixture = Fixture(normalResults: [.failure(Fixture.failure(.io))])
+        fixture.coordinator.begin(
+            deviceID: fixture.target.deviceID,
+            displayName: "T7",
+            topologyGeneration: 9
+        )
+        try await waitUntil { fixture.coordinator.state.failure?.category == .io }
+
+        fixture.coordinator.dismissTerminalFailure()
+
+        let resolveCalls = await fixture.resolver.resolveCalls()
+        let normalCalls = await fixture.ejecter.normalCalls()
+        let releaseCount = await fixture.barrier.releases()
+        XCTAssertEqual(fixture.coordinator.state, .idle)
+        XCTAssertEqual(resolveCalls, [fixture.target.deviceID])
+        XCTAssertEqual(normalCalls, [fixture.target.physicalBSDName])
+        XCTAssertEqual(releaseCount, 1)
+    }
+
     func testCancelClearsRecoveryAndReleasesBarrier() async throws {
         let fixture = Fixture(normalResults: [.failure(Fixture.failure(.busy))])
         fixture.coordinator.begin(deviceID: fixture.target.deviceID, displayName: "T7", topologyGeneration: 9)

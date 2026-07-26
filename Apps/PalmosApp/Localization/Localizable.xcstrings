@@ -1275,6 +1275,28 @@
         }
       }
     },
+    "eject.action.retryFailure" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重試"
+          }
+        }
+      }
+    },
     "eject.error.busy" : {
       "localizations" : {
         "en" : {
@@ -1337,6 +1359,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "發生輸入/輸出錯誤。"
+          }
+        }
+      }
+    },
+    "eject.error.ioGuidance" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check the disk connection, then try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请检查磁盘连接状态，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請檢查磁碟連接狀態，然後重試。"
           }
         }
       }
@@ -1852,41 +1896,19 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Couldn't eject “%@”."
+            "value" : "Couldn't eject “%@”"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法弹出“%@”。"
+            "value" : "无法弹出“%@”"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法退出「%@」。"
-          }
-        }
-      }
-    },
-    "eject.recovery.windowTitle" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disk in Use"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "磁盘正在使用中"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "磁碟正在使用中"
+            "value" : "無法退出「%@」"
           }
         }
       }

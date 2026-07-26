@@ -1013,6 +1013,57 @@ final class PalmosAppControllerTests: XCTestCase {
         await ejecter.finishNormalEject()
     }
 
+    func testTerminalIORetryUsesLatestTopologyAndStartsOneFreshNormalWorkflow() async throws {
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let updatedDevice = makeDevice(id: "disk21", volumes: ["disk21s2"])
+        let discovery = StubExternalDeviceDiscovery(results: [[device]])
+        let resolver = RecordingEjectTargetResolver(device: device)
+        let failure = EjectFailure(
+            stage: .ejecting,
+            category: .io,
+            rawStatus: EIO,
+            systemMessage: "I/O error",
+            physicalBSDName: device.physicalStoreBSDName,
+            holders: []
+        )
+        let ejecter = BusyThenBlockingDiskEjecter(busyFailure: failure)
+        let coordinator = makeEjectCoordinator(resolver: resolver, ejecter: ejecter)
+        let controller = PalmosAppController(
+            state: PalmosAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator,
+            discoveryObservationDebounce: .zero
+        )
+        let action = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+
+        controller.perform(action)
+        await waitUntil {
+            guard case .failed(_, let failure) = coordinator.state else { return false }
+            return failure.category == .io
+        }
+        discovery.emit([updatedDevice])
+        await waitUntil { controller.state.selectedDevice?.volumes == updatedDevice.volumes }
+
+        controller.retryEject()
+        controller.retryEject()
+        await ejecter.waitUntilRetryStarts()
+
+        let requests = await resolver.resolveRequestsSnapshot()
+        let normalCallCount = await ejecter.normalCallCount()
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests.map(\.deviceID), [device.id, device.id])
+        XCTAssertGreaterThan(requests[1].topologyGeneration, requests[0].topologyGeneration)
+        XCTAssertEqual(normalCallCount, 2)
+
+        await ejecter.finishRetry()
+        await waitUntil {
+            if case .succeeded = coordinator.state { return true }
+            return false
+        }
+    }
+
     func testObservedTopologyChangesAreForwardedDuringActiveEjectWorkflow() async throws {
         let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let discovery = StubExternalDeviceDiscovery(results: [[device]])

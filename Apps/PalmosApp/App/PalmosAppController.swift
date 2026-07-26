@@ -188,6 +188,9 @@ final class PalmosAppController: ObservableObject {
             devices: [],
             selectedDeviceID: nil
         )
+        self.ejectRecoveryWindowPresenter.setTerminalRetryHandler { [weak self] request in
+            self?.retryTerminalEject(request)
+        }
         self.throughputSamplingTopology = Self.samplingTopology(for: self.state.devices)
         self.volumeCapacityRefresher.onUpdate = { [weak self] updates in
             Task { @MainActor [weak self] in self?.applyCapacityUpdates(updates) }
@@ -386,11 +389,23 @@ final class PalmosAppController: ObservableObject {
     }
 
     func cancelEject() {
-        ejectCoordinator.cancel()
+        switch ejectCoordinator.state {
+        case .failed, .resolutionFailed:
+            ejectCoordinator.dismissTerminalFailure()
+        default:
+            ejectCoordinator.cancel()
+        }
     }
 
     func retryEject() {
-        ejectCoordinator.retry()
+        guard case .failed(let target, _) = ejectCoordinator.state else {
+            ejectCoordinator.retry()
+            return
+        }
+        retryTerminalEject(EjectWorkflowRequest(
+            deviceID: target.deviceID,
+            displayName: target.displayName
+        ))
     }
 
     func requestForceEject() {
@@ -403,6 +418,23 @@ final class PalmosAppController: ObservableObject {
 
     func cancelForceConfirmation() {
         ejectCoordinator.cancelForceConfirmation()
+    }
+
+    private func retryTerminalEject(_ request: EjectWorkflowRequest) {
+        guard case .failed(let target, _) = ejectCoordinator.state,
+              target.deviceID == request.deviceID,
+              target.displayName == request.displayName else { return }
+        clearActionFeedback()
+        ejectWorkflowDeviceID = request.deviceID
+        cancelSMARTRefreshForEject(request.deviceID)
+        guard ejectCoordinator.begin(
+            deviceID: request.deviceID,
+            displayName: request.displayName,
+            topologyGeneration: discoveryWriteGeneration
+        ) else {
+            ejectWorkflowDeviceID = nil
+            return
+        }
     }
 
     func refresh() {

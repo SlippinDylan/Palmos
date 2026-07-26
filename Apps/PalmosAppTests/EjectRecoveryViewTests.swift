@@ -168,7 +168,7 @@ final class EjectRecoveryViewTests: XCTestCase {
         ])
     }
 
-    func testNonBusyFailureUsesSingleBodyAndIncludesTechnicalDetail() {
+    func testIOFailureUsesRequestedCopyAndSafeRetryActions() {
         let failure = EjectFailure(
             stage: .ejecting,
             category: .io,
@@ -182,10 +182,11 @@ final class EjectRecoveryViewTests: XCTestCase {
             selectedDeviceID: target.deviceID
         )
 
-        XCTAssertEqual(presentation?.actions, [])
+        XCTAssertEqual(presentation?.actions, [.cancel, .retryFailure])
         XCTAssertEqual(presentation?.primaryText, presentation?.reason)
-        XCTAssertTrue(presentation?.reason.contains(failure.systemMessage ?? "") == true)
-        XCTAssertNotEqual(presentation?.primaryText, failure.systemMessage)
+        XCTAssertEqual(presentation?.primaryText, String(localized: "eject.error.io"))
+        XCTAssertEqual(presentation?.guidance, EjectLocalization.ioFailureGuidance)
+        XCTAssertFalse(presentation?.reason.contains(failure.systemMessage ?? "") == true)
         XCTAssertTrue(presentation?.technicalDetail?.contains("0xFEDCBA98") == true)
     }
 
@@ -221,7 +222,7 @@ final class EjectRecoveryViewTests: XCTestCase {
     func testTerminalFailureCollapsesSystemMessageLineBreaksIntoSingleBody() {
         let failure = EjectFailure(
             stage: .ejecting,
-            category: .io,
+            category: .unknown,
             rawStatus: EIO,
             systemMessage: "First line\nSecond line\rThird line",
             physicalBSDName: "disk4",
@@ -267,6 +268,10 @@ final class EjectRecoveryViewTests: XCTestCase {
         XCTAssertNotEqual(
             EjectLocalization.accessibilityLabel(for: .retry),
             EjectLocalization.accessibilityLabel(for: .requestForce)
+        )
+        XCTAssertNotEqual(
+            EjectLocalization.actionTitle(for: .retryFailure),
+            EjectLocalization.actionTitle(for: .retry)
         )
     }
 

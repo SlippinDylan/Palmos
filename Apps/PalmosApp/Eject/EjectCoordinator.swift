@@ -530,6 +530,16 @@ final class EjectCoordinator: ObservableObject {
         retainedRecovery = nil
     }
 
+    func dismissTerminalFailure() {
+        guard workflowID == nil else { return }
+        switch state {
+        case .failed, .resolutionFailed:
+            state = .idle
+        default:
+            break
+        }
+    }
+
     private func isCurrent(_ id: UUID) -> Bool {
         workflowID == id && Task.isCancelled == false
     }
