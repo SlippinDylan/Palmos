@@ -45,7 +45,7 @@ struct HealthSMARTCardView: View {
                     PanelKeyValueRow("Critical Temp Time", value: criticalTempTimeString, usesMonospacedDigits: true)
                 }
 
-                if !isLoading && canRefresh {
+                if canRefresh {
                     refreshButton
                         .padding(.top, 8)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -73,6 +73,7 @@ struct HealthSMARTCardView: View {
     }
 
     private var isLoading: Bool {
+        if smartDetails?.isRefreshing == true { return true }
         guard let snapshot = smartDetails?.snapshot else { return false }
         if case .loading = snapshot { return true }
         return false

@@ -38,6 +38,76 @@ struct SMARTReadRequest: Codable, Equatable, Sendable {
     }
 }
 
+enum SMARTQuerySection: String, Codable, CaseIterable, Hashable, Sendable {
+    case health
+    case thermal
+    case endurance
+    case lifetime
+    case capabilityMetadata
+    case errorHistory
+    case selfTestHistory
+}
+
+struct SMARTQueryRequest: Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 2
+
+    let schemaVersion: Int
+    let physicalDeviceBSDName: String
+    let deviceProtocol: String?
+    let deviceModel: String?
+    let requestID: String
+    let sections: [SMARTQuerySection]
+
+    init(
+        schemaVersion: Int = SMARTQueryRequest.currentSchemaVersion,
+        physicalDeviceBSDName: String,
+        deviceProtocol: String?,
+        deviceModel: String?,
+        requestID: String,
+        sections: [SMARTQuerySection]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.physicalDeviceBSDName = physicalDeviceBSDName
+        self.deviceProtocol = deviceProtocol
+        self.deviceModel = deviceModel
+        self.requestID = requestID
+        self.sections = sections
+    }
+}
+
+private enum LegacySMARTQuerySection: String, Codable, Hashable {
+    case liveTelemetry
+    case capabilityMetadata
+    case errorHistory
+    case selfTestHistory
+
+    var currentSections: [SMARTQuerySection] {
+        switch self {
+        case .liveTelemetry:
+            return [.health, .thermal, .endurance, .lifetime]
+        case .capabilityMetadata:
+            return [.capabilityMetadata]
+        case .errorHistory:
+            return [.errorHistory]
+        case .selfTestHistory:
+            return [.selfTestHistory]
+        }
+    }
+}
+
+private struct LegacySMARTQueryRequest: Codable {
+    let schemaVersion: Int
+    let physicalDeviceBSDName: String
+    let deviceProtocol: String?
+    let deviceModel: String?
+    let requestID: String
+    let sections: [LegacySMARTQuerySection]
+}
+
+private struct SMARTQuerySchema: Decodable {
+    let schemaVersion: Int
+}
+
 struct SMARTReadCompletionResponse: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
 
@@ -53,6 +123,9 @@ struct SMARTReadCompletionResponse: Codable, Equatable, Sendable {
     /// nothing about another request already using that device.
     let deviceSMARTIOQuiesced: Bool?
     let requestID: String?
+    /// The sections whose data is represented by `payload`. Section-aware
+    /// clients must merge only these sections into their existing snapshot.
+    let completedSections: [SMARTQuerySection]?
     let error: SMARTReadCompletionError?
 
     init(
@@ -61,6 +134,7 @@ struct SMARTReadCompletionResponse: Codable, Equatable, Sendable {
         processDidExit: Bool,
         deviceSMARTIOQuiesced: Bool? = nil,
         requestID: String? = nil,
+        completedSections: [SMARTQuerySection]? = nil,
         error: SMARTReadCompletionError? = nil
     ) {
         self.schemaVersion = schemaVersion
@@ -68,6 +142,7 @@ struct SMARTReadCompletionResponse: Codable, Equatable, Sendable {
         self.processDidExit = processDidExit
         self.deviceSMARTIOQuiesced = deviceSMARTIOQuiesced
         self.requestID = requestID
+        self.completedSections = completedSections
         self.error = error
     }
 }
@@ -128,6 +203,8 @@ enum SMARTXPCLimits {
     static let cancelResponseBytes = 4 * 1024
     static let errorMessageUTF8Bytes = 1 * 1024
     static let legacyCancelRequestUTF8Bytes = 64
+    static let maxQuerySections = SMARTQuerySection.allCases.count
+    static let queryContextUTF8Bytes = 512
 }
 
 struct SMARTCompanionInstallRequest: Codable, Equatable, Sendable {
@@ -198,6 +275,8 @@ struct XPCFeatureCapabilities: Equatable, Sendable {
     let smartCancellation: Bool
     let observableSMARTFailures: Bool
     let smartctlCompanionInstallation: Bool
+    let sectionedSMARTQueries: Bool
+    let typedSMARTSections: Bool
     let occupancyScanning: Bool
 
     init(
@@ -205,12 +284,16 @@ struct XPCFeatureCapabilities: Equatable, Sendable {
         smartCancellation: Bool,
         observableSMARTFailures: Bool,
         smartctlCompanionInstallation: Bool = false,
+        sectionedSMARTQueries: Bool = false,
+        typedSMARTSections: Bool = false,
         occupancyScanning: Bool
     ) {
         self.completionAwareSMART = completionAwareSMART
         self.smartCancellation = smartCancellation
         self.observableSMARTFailures = observableSMARTFailures
         self.smartctlCompanionInstallation = smartctlCompanionInstallation
+        self.sectionedSMARTQueries = sectionedSMARTQueries
+        self.typedSMARTSections = typedSMARTSections
         self.occupancyScanning = occupancyScanning
     }
 
@@ -221,6 +304,8 @@ struct XPCFeatureCapabilities: Equatable, Sendable {
             smartCancellation: helperContractMinor >= XPCContractVersion.smartCancellationMinor,
             observableSMARTFailures: helperContractMinor >= XPCContractVersion.observableSMARTFailuresMinor,
             smartctlCompanionInstallation: helperContractMinor >= XPCContractVersion.smartctlCompanionInstallationMinor,
+            sectionedSMARTQueries: helperContractMinor >= XPCContractVersion.sectionedSMARTQueriesMinor,
+            typedSMARTSections: helperContractMinor >= XPCContractVersion.typedSMARTSectionsMinor,
             occupancyScanning: supportsMinorFour
         )
     }
@@ -405,6 +490,28 @@ enum PalmosXPCMessages {
         return data
     }
 
+    static func encodeSMARTQueryRequest(_ request: SMARTQueryRequest) throws -> Data {
+        try validateSMARTQueryRequest(request)
+        let data = try encode(request)
+        guard data.count <= SMARTXPCLimits.requestBytes else {
+            throw PalmosXPCMessageError.encodedMessageTooLarge
+        }
+        return data
+    }
+
+    static func decodeSMARTQueryRequest(from data: Data) throws -> SMARTQueryRequest {
+        guard data.count <= SMARTXPCLimits.requestBytes else {
+            throw PalmosXPCMessageError.encodedMessageTooLarge
+        }
+        let schema = try decode(SMARTQuerySchema.self, from: data)
+        if schema.schemaVersion == 1 {
+            return try migratedLegacySMARTQueryRequest(from: data)
+        }
+        let request = try decode(SMARTQueryRequest.self, from: data)
+        try validateSMARTQueryRequest(request)
+        return request
+    }
+
     static func decodeSMARTReadRequest(from data: Data) throws -> SMARTReadRequest {
         guard data.count <= SMARTXPCLimits.requestBytes else {
             throw PalmosXPCMessageError.encodedMessageTooLarge
@@ -424,6 +531,44 @@ enum PalmosXPCMessages {
         if let requestID = request.requestID, UUID(uuidString: requestID) == nil {
             throw PalmosXPCMessageError.invalidSMARTMessage
         }
+    }
+
+    private static func validateSMARTQueryRequest(_ request: SMARTQueryRequest) throws {
+        guard request.schemaVersion == SMARTQueryRequest.currentSchemaVersion else {
+            throw PalmosXPCMessageError.unsupportedSchemaVersion(request.schemaVersion)
+        }
+        guard normalizedUUIDString(request.requestID) != nil,
+              request.physicalDeviceBSDName.range(
+                of: #"^disk\d+$"#,
+                options: .regularExpression
+              ) != nil,
+              request.sections.isEmpty == false,
+              request.sections.count <= SMARTXPCLimits.maxQuerySections,
+              Set(request.sections).count == request.sections.count,
+              request.deviceProtocol?.utf8.count ?? 0 <= SMARTXPCLimits.queryContextUTF8Bytes,
+              request.deviceModel?.utf8.count ?? 0 <= SMARTXPCLimits.queryContextUTF8Bytes else {
+            throw PalmosXPCMessageError.invalidSMARTMessage
+        }
+    }
+
+    private static func migratedLegacySMARTQueryRequest(from data: Data) throws -> SMARTQueryRequest {
+        let legacy = try decode(LegacySMARTQueryRequest.self, from: data)
+        guard legacy.schemaVersion == 1,
+              legacy.sections.isEmpty == false,
+              legacy.sections.count <= SMARTXPCLimits.maxQuerySections,
+              Set(legacy.sections).count == legacy.sections.count else {
+            throw PalmosXPCMessageError.invalidSMARTMessage
+        }
+        let sections = legacy.sections.flatMap(\.currentSections)
+        let migrated = SMARTQueryRequest(
+            physicalDeviceBSDName: legacy.physicalDeviceBSDName,
+            deviceProtocol: legacy.deviceProtocol,
+            deviceModel: legacy.deviceModel,
+            requestID: legacy.requestID,
+            sections: SMARTQuerySection.allCases.filter(Set(sections).contains)
+        )
+        try validateSMARTQueryRequest(migrated)
+        return migrated
     }
 
     private static func normalizedSMARTCompletionResponse(
@@ -456,6 +601,7 @@ enum PalmosXPCMessages {
             processDidExit: response.processDidExit,
             deviceSMARTIOQuiesced: response.deviceSMARTIOQuiesced,
             requestID: requestID,
+            completedSections: response.completedSections,
             error: error
         )
         try validateSMARTCompletionResponse(normalized)
@@ -466,6 +612,11 @@ enum PalmosXPCMessages {
         _ response: SMARTReadCompletionResponse
     ) throws {
         guard response.requestID.map({ normalizedUUIDString($0) != nil }) ?? true,
+              response.completedSections.map({
+                  $0.isEmpty == false &&
+                      $0.count <= SMARTXPCLimits.maxQuerySections &&
+                      Set($0).count == $0.count
+              }) ?? true,
               response.error?.message.utf8.count ?? 0 <= SMARTXPCLimits.errorMessageUTF8Bytes,
               response.error == nil || response.payload.isEmpty,
               response.deviceSMARTIOQuiesced != true || response.processDidExit else {

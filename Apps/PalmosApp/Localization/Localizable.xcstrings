@@ -1275,6 +1275,28 @@
         }
       }
     },
+    "eject.action.retryFailure" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重試"
+          }
+        }
+      }
+    },
     "eject.error.busy" : {
       "localizations" : {
         "en" : {
@@ -1337,6 +1359,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "發生輸入/輸出錯誤。"
+          }
+        }
+      }
+    },
+    "eject.error.ioGuidance" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check the disk connection, then try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请检查磁盘连接状态，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請檢查磁碟連接狀態，然後重試。"
           }
         }
       }
@@ -1491,6 +1535,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "為確保磁碟安全，請退出並重新開啟 Palmos，然後再次嘗試退出。"
+          }
+        }
+      }
+    },
+    "eject.error.systemMessageDetail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS message: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 信息：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 訊息：%@"
           }
         }
       }
@@ -1715,6 +1781,72 @@
         }
       }
     },
+    "eject.recovery.busy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One or more apps may be using this disk."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个或多个 App 可能正在使用此磁盘。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一個或多個 App 可能正在使用此磁碟。"
+          }
+        }
+      }
+    },
+    "eject.recovery.diagnosing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finding apps using this disk…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在查找占用此磁盘的 App…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在尋找佔用此磁碟的 App…"
+          }
+        }
+      }
+    },
+    "eject.recovery.diagnosisUnavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palmos couldn't complete the occupancy analysis. Close related files or apps, then try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palmos 无法完成占用分析。请关闭相关文件或 App，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palmos 無法完成佔用分析。請關閉相關檔案或 App，然後重試。"
+          }
+        }
+      }
+    },
     "eject.recovery.guidance" : {
       "localizations" : {
         "en" : {
@@ -1786,19 +1918,19 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Couldn't eject “%@”."
+            "value" : "Couldn't eject “%@”"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法弹出“%@”。"
+            "value" : "无法弹出“%@”"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法退出「%@」。"
+            "value" : "無法退出「%@」"
           }
         }
       }
@@ -4800,6 +4932,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不支援"
+          }
+        }
+      }
+    },
+    "Temperature update failed. Showing the last reading." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temperature update failed. Showing the last reading."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "温度更新失败，正在显示上次读数。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "溫度更新失敗，正在顯示上次讀數。"
+          }
+        }
+      }
+    },
+    "Updating temperature…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updating temperature…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新温度…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新溫度…"
           }
         }
       }

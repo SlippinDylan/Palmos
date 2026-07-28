@@ -8,12 +8,199 @@ enum SMARTPresentationPrimaryAction: Equatable {
     case refresh
 }
 
+enum SMARTSectionPresentationState<Value: Equatable & Sendable>: Equatable {
+    case notRequested
+    case refreshing(previous: SmartReportSection<Value>?, startedAt: Date)
+    case available(SmartReportSection<Value>, sampledAt: Date)
+    case failed(previous: SmartReportSection<Value>?, message: String, attemptedAt: Date)
+    case unsupported
+
+    var previousValue: SmartReportSection<Value>? {
+        switch self {
+        case let .refreshing(previous, _), let .failed(previous, _, _):
+            return previous
+        case let .available(value, _):
+            return value
+        case .notRequested, .unsupported:
+            return nil
+        }
+    }
+}
+
+struct SMARTReportPresentationState: Equatable {
+    var health: SMARTSectionPresentationState<SmartHealthReport>
+    var thermal: SMARTSectionPresentationState<SmartThermalReport>
+    var endurance: SMARTSectionPresentationState<SmartEnduranceReport>
+    var lifetime: SMARTSectionPresentationState<SmartLifetimeReport>
+    var capabilityMetadata: SMARTSectionPresentationState<SmartCapabilityReport>
+    var errorHistory: SMARTSectionPresentationState<SmartErrorHistoryReport>
+    var selfTestHistory: SMARTSectionPresentationState<SmartSelfTestHistoryReport>
+
+    static let notRequested = SMARTReportPresentationState(
+        health: .notRequested,
+        thermal: .notRequested,
+        endurance: .notRequested,
+        lifetime: .notRequested,
+        capabilityMetadata: .notRequested,
+        errorHistory: .notRequested,
+        selfTestHistory: .notRequested
+    )
+
+    init(report: SmartReport, sampledAt: Date) {
+        health = Self.presentationState(for: report.health, sampledAt: sampledAt)
+        thermal = Self.presentationState(for: report.thermal, sampledAt: sampledAt)
+        endurance = Self.presentationState(for: report.endurance, sampledAt: sampledAt)
+        lifetime = Self.presentationState(for: report.lifetime, sampledAt: sampledAt)
+        capabilityMetadata = Self.presentationState(for: report.capabilityMetadata, sampledAt: sampledAt)
+        errorHistory = Self.presentationState(for: report.errorHistory, sampledAt: sampledAt)
+        selfTestHistory = Self.presentationState(for: report.selfTestHistory, sampledAt: sampledAt)
+    }
+
+    private init(
+        health: SMARTSectionPresentationState<SmartHealthReport>,
+        thermal: SMARTSectionPresentationState<SmartThermalReport>,
+        endurance: SMARTSectionPresentationState<SmartEnduranceReport>,
+        lifetime: SMARTSectionPresentationState<SmartLifetimeReport>,
+        capabilityMetadata: SMARTSectionPresentationState<SmartCapabilityReport>,
+        errorHistory: SMARTSectionPresentationState<SmartErrorHistoryReport>,
+        selfTestHistory: SMARTSectionPresentationState<SmartSelfTestHistoryReport>
+    ) {
+        self.health = health
+        self.thermal = thermal
+        self.endurance = endurance
+        self.lifetime = lifetime
+        self.capabilityMetadata = capabilityMetadata
+        self.errorHistory = errorHistory
+        self.selfTestHistory = selfTestHistory
+    }
+
+    mutating func beginRefreshing(
+        sections: Set<SmartReportSectionKind>,
+        startedAt: Date
+    ) {
+        if sections.contains(.health) {
+            health = .refreshing(previous: health.previousValue, startedAt: startedAt)
+        }
+        if sections.contains(.thermal) {
+            thermal = .refreshing(previous: thermal.previousValue, startedAt: startedAt)
+        }
+        if sections.contains(.endurance) {
+            endurance = .refreshing(previous: endurance.previousValue, startedAt: startedAt)
+        }
+        if sections.contains(.lifetime) {
+            lifetime = .refreshing(previous: lifetime.previousValue, startedAt: startedAt)
+        }
+        if sections.contains(.capabilityMetadata) {
+            capabilityMetadata = .refreshing(previous: capabilityMetadata.previousValue, startedAt: startedAt)
+        }
+        if sections.contains(.errorHistory) {
+            errorHistory = .refreshing(previous: errorHistory.previousValue, startedAt: startedAt)
+        }
+        if sections.contains(.selfTestHistory) {
+            selfTestHistory = .refreshing(previous: selfTestHistory.previousValue, startedAt: startedAt)
+        }
+    }
+
+    mutating func apply(
+        report: SmartReport,
+        sections: Set<SmartReportSectionKind>,
+        sampledAt: Date
+    ) {
+        if sections.contains(.health) {
+            health = Self.presentationState(for: report.health, sampledAt: sampledAt)
+        }
+        if sections.contains(.thermal) {
+            thermal = Self.presentationState(for: report.thermal, sampledAt: sampledAt)
+        }
+        if sections.contains(.endurance) {
+            endurance = Self.presentationState(for: report.endurance, sampledAt: sampledAt)
+        }
+        if sections.contains(.lifetime) {
+            lifetime = Self.presentationState(for: report.lifetime, sampledAt: sampledAt)
+        }
+        if sections.contains(.capabilityMetadata) {
+            capabilityMetadata = Self.presentationState(for: report.capabilityMetadata, sampledAt: sampledAt)
+        }
+        if sections.contains(.errorHistory) {
+            errorHistory = Self.presentationState(for: report.errorHistory, sampledAt: sampledAt)
+        }
+        if sections.contains(.selfTestHistory) {
+            selfTestHistory = Self.presentationState(for: report.selfTestHistory, sampledAt: sampledAt)
+        }
+    }
+
+    mutating func fail(
+        sections: Set<SmartReportSectionKind>,
+        message: String,
+        attemptedAt: Date
+    ) {
+        if sections.contains(.health) {
+            health = .failed(previous: health.previousValue, message: message, attemptedAt: attemptedAt)
+        }
+        if sections.contains(.thermal) {
+            thermal = .failed(previous: thermal.previousValue, message: message, attemptedAt: attemptedAt)
+        }
+        if sections.contains(.endurance) {
+            endurance = .failed(previous: endurance.previousValue, message: message, attemptedAt: attemptedAt)
+        }
+        if sections.contains(.lifetime) {
+            lifetime = .failed(previous: lifetime.previousValue, message: message, attemptedAt: attemptedAt)
+        }
+        if sections.contains(.capabilityMetadata) {
+            capabilityMetadata = .failed(
+                previous: capabilityMetadata.previousValue,
+                message: message,
+                attemptedAt: attemptedAt
+            )
+        }
+        if sections.contains(.errorHistory) {
+            errorHistory = .failed(previous: errorHistory.previousValue, message: message, attemptedAt: attemptedAt)
+        }
+        if sections.contains(.selfTestHistory) {
+            selfTestHistory = .failed(
+                previous: selfTestHistory.previousValue,
+                message: message,
+                attemptedAt: attemptedAt
+            )
+        }
+    }
+
+    private static func presentationState<Value>(
+        for section: SmartReportSection<Value>,
+        sampledAt: Date
+    ) -> SMARTSectionPresentationState<Value> where Value: Equatable & Sendable {
+        switch section {
+        case .unsupported:
+            return .unsupported
+        case .available, .degraded:
+            return .available(section, sampledAt: sampledAt)
+        }
+    }
+}
+
 struct SMARTPresentationDetails: Equatable {
     var snapshot: SmartSnapshot
+    var reportState: SMARTReportPresentationState
     var compatibility: XPCCompatibilityResult?
     var isRefreshing: Bool
     var isInstalling: Bool
     var lastError: String?
+
+    init(
+        snapshot: SmartSnapshot,
+        reportState: SMARTReportPresentationState? = nil,
+        compatibility: XPCCompatibilityResult?,
+        isRefreshing: Bool,
+        isInstalling: Bool,
+        lastError: String?
+    ) {
+        self.snapshot = snapshot
+        self.reportState = reportState ?? Self.makeReportState(from: snapshot)
+        self.compatibility = compatibility
+        self.isRefreshing = isRefreshing
+        self.isInstalling = isInstalling
+        self.lastError = lastError
+    }
 
     var primaryAction: SMARTPresentationPrimaryAction {
         switch snapshot {
@@ -24,6 +211,13 @@ struct SMARTPresentationDetails: Equatable {
         default:
             return .refresh
         }
+    }
+
+    private static func makeReportState(from snapshot: SmartSnapshot) -> SMARTReportPresentationState {
+        guard case let .available(data) = snapshot else {
+            return .notRequested
+        }
+        return SMARTReportPresentationState(report: data.report, sampledAt: .distantPast)
     }
 }
 
@@ -140,6 +334,75 @@ struct PalmosAppState: Equatable {
         updateDeviceSnapshot(.loading, for: deviceID)
     }
 
+    mutating func setSMARTRefreshing(
+        for deviceID: DeviceID,
+        sections: Set<SmartReportSectionKind>,
+        startedAt: Date
+    ) {
+        guard device(id: deviceID) != nil else {
+            return
+        }
+        var details = smartDetails(for: deviceID) ?? SMARTPresentationDetails(
+            snapshot: .notRequested,
+            compatibility: nil,
+            isRefreshing: false,
+            isInstalling: false,
+            lastError: nil
+        )
+        details.reportState.beginRefreshing(sections: sections, startedAt: startedAt)
+        details.isRefreshing = true
+        details.isInstalling = false
+        details.lastError = nil
+        smartDetailsByDeviceID[deviceID] = details
+    }
+
+    mutating func applySMARTReportPatch(
+        for deviceID: DeviceID,
+        report patch: SmartReport,
+        sections: Set<SmartReportSectionKind>,
+        compatibility: XPCCompatibilityResult?,
+        sampledAt: Date
+    ) {
+        guard let device = device(id: deviceID) else {
+            return
+        }
+        let existingDetails = smartDetails(for: deviceID)
+        let mergedData: SmartData
+        if case let .available(existingData) = device.smartSnapshot {
+            mergedData = existingData.merging(patch, sections: sections)
+        } else if case let .available(existingData) = existingDetails?.snapshot {
+            mergedData = existingData.merging(patch, sections: sections)
+        } else {
+            mergedData = SmartData(report: SmartReport().merging(patch, sections: sections))
+        }
+        var reportState = existingDetails?.reportState ?? .notRequested
+        reportState.apply(report: patch, sections: sections, sampledAt: sampledAt)
+        applySMARTDetails(
+            for: deviceID,
+            snapshot: .available(mergedData),
+            reportState: reportState,
+            compatibility: compatibility,
+            isRefreshing: false,
+            lastError: nil
+        )
+    }
+
+    mutating func failSMARTReportSections(
+        for deviceID: DeviceID,
+        sections: Set<SmartReportSectionKind>,
+        message: String,
+        attemptedAt: Date
+    ) {
+        guard device(id: deviceID) != nil,
+              var details = smartDetails(for: deviceID) else {
+            return
+        }
+        details.reportState.fail(sections: sections, message: message, attemptedAt: attemptedAt)
+        details.isRefreshing = false
+        details.lastError = message
+        smartDetailsByDeviceID[deviceID] = details
+    }
+
     mutating func applySMARTResult(
         for deviceID: DeviceID,
         snapshot: SmartSnapshot,
@@ -228,5 +491,24 @@ struct PalmosAppState: Equatable {
         }
 
         devices[deviceIndex].smartSnapshot = snapshot
+    }
+
+    private mutating func applySMARTDetails(
+        for deviceID: DeviceID,
+        snapshot: SmartSnapshot,
+        reportState: SMARTReportPresentationState,
+        compatibility: XPCCompatibilityResult?,
+        isRefreshing: Bool,
+        lastError: String?
+    ) {
+        updateDeviceSnapshot(snapshot, for: deviceID)
+        smartDetailsByDeviceID[deviceID] = SMARTPresentationDetails(
+            snapshot: snapshot,
+            reportState: reportState,
+            compatibility: compatibility,
+            isRefreshing: isRefreshing,
+            isInstalling: false,
+            lastError: lastError
+        )
     }
 }

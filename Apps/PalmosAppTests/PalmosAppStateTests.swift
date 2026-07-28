@@ -4,6 +4,118 @@ import XCTest
 import PalmosCore
 
 final class PalmosAppStateTests: XCTestCase {
+    func testSectionRefreshKeepsPreviousSnapshotVisible() throws {
+        let cached = SmartData(report: SmartReport(
+            health: .available(.init(overallHealth: .passed)),
+            thermal: .available(.init(primaryTemperature: 34)),
+            endurance: .available(.init(percentageUsed: 2)),
+            lifetime: .available(.init(powerOnHours: 100)),
+            capabilityMetadata: .available(.init(modelName: "Stable Model"))
+        ))
+        var device = ExternalDevice.preview(id: "disk4")
+        device.smartSnapshot = .available(cached)
+        var state = PalmosAppState(devices: [device], selectedDeviceID: device.id)
+        let startedAt = Date(timeIntervalSince1970: 1_000)
+
+        state.setSMARTRefreshing(
+            for: device.id,
+            sections: Set([SmartReportSectionKind.thermal]),
+            startedAt: startedAt
+        )
+
+        XCTAssertEqual(state.device(id: device.id)?.smartSnapshot, .available(cached))
+        XCTAssertEqual(
+            state.smartDetails(for: device.id)?.reportState.thermal,
+            .refreshing(previous: cached.report.thermal, startedAt: startedAt)
+        )
+        XCTAssertEqual(
+            state.smartDetails(for: device.id)?.reportState.endurance.previousValue,
+            cached.report.endurance
+        )
+    }
+
+    func testApplyingSectionPatchPreservesUnrequestedSections() throws {
+        let cached = SmartData(report: SmartReport(
+            health: .available(.init(overallHealth: .passed)),
+            thermal: .available(.init(primaryTemperature: 34)),
+            endurance: .available(.init(percentageUsed: 2)),
+            lifetime: .available(.init(powerOnHours: 100)),
+            capabilityMetadata: .available(.init(modelName: "Stable Model"))
+        ))
+        var device = ExternalDevice.preview(id: "disk4")
+        device.smartSnapshot = .available(cached)
+        var state = PalmosAppState(devices: [device], selectedDeviceID: device.id)
+        let sampledAt = Date(timeIntervalSince1970: 2_000)
+
+        state.applySMARTReportPatch(
+            for: device.id,
+            report: SmartReport(thermal: .available(.init(primaryTemperature: 43))),
+            sections: Set([SmartReportSectionKind.thermal]),
+            compatibility: XPCCompatibilityResult.compatible,
+            sampledAt: sampledAt
+        )
+
+        let result: SmartData
+        if case let .available(value) = state.device(id: device.id)?.smartSnapshot {
+            result = value
+        } else {
+            return XCTFail("Expected the merged SMART snapshot to remain available")
+        }
+        XCTAssertEqual(result.overallHealth, .passed)
+        XCTAssertEqual(result.primaryTemperature, 43)
+        XCTAssertEqual(result.percentageUsed, 2)
+        XCTAssertEqual(result.powerOnHours, 100)
+        XCTAssertEqual(result.report.capabilityMetadata.value?.modelName, "Stable Model")
+        XCTAssertEqual(
+            state.smartDetails(for: device.id)?.reportState.thermal,
+            SMARTSectionPresentationState<SmartThermalReport>.available(
+                .available(SmartThermalReport(primaryTemperature: 43)),
+                sampledAt: sampledAt
+            )
+        )
+    }
+
+    func testSectionFailureRetainsPreviousValueAndSnapshot() {
+        let cached = SmartData(report: SmartReport(
+            thermal: .available(.init(primaryTemperature: 34))
+        ))
+        var device = ExternalDevice.preview(id: "disk4")
+        device.smartSnapshot = .available(cached)
+        var state = PalmosAppState(devices: [device], selectedDeviceID: device.id)
+        let attemptedAt = Date(timeIntervalSince1970: 3_000)
+
+        state.setSMARTRefreshing(
+            for: device.id,
+            sections: Set([SmartReportSectionKind.thermal]),
+            startedAt: attemptedAt
+        )
+        state.failSMARTReportSections(
+            for: device.id,
+            sections: Set([SmartReportSectionKind.thermal]),
+            message: "Read failed",
+            attemptedAt: attemptedAt
+        )
+
+        XCTAssertEqual(state.device(id: device.id)?.smartSnapshot, .available(cached))
+        XCTAssertEqual(
+            state.smartDetails(for: device.id)?.reportState.thermal,
+            .failed(previous: cached.report.thermal, message: "Read failed", attemptedAt: attemptedAt)
+        )
+        XCTAssertEqual(
+            TemperatureSMARTRefreshStatus(state.smartDetails(for: device.id)?.reportState.thermal),
+            .showingLastReadingAfterFailure
+        )
+    }
+
+    func testTemperatureRefreshStatusReportsAnInFlightUpdate() {
+        XCTAssertEqual(
+            TemperatureSMARTRefreshStatus(
+                .refreshing(previous: nil, startedAt: Date(timeIntervalSince1970: 1_000))
+            ),
+            .updating
+        )
+    }
+
     func testSelectionKeepsUnmountedDevicesAvailable() {
         let unmountedDevice = ExternalDevice(
             physicalStoreBSDName: "disk4",

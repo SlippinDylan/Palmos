@@ -2,6 +2,114 @@ import XCTest
 @testable import PalmosCore
 
 final class SmartDataParserTests: XCTestCase {
+    func testParserBuildsIndependentLiveTelemetrySectionsFromOnePayload() throws {
+        let report = try SmartDataParser.parseReport(jsonData: Data(
+            """
+            {
+              "smart_status": { "passed": true },
+              "temperature": { "current": 41 },
+              "nvme_smart_health_information_log": {
+                "critical_warning": 0,
+                "percentage_used": 7,
+                "power_on_hours": 1234
+              }
+            }
+            """.utf8
+        ))
+
+        XCTAssertEqual(report.health.value?.overallHealth, .passed)
+        XCTAssertEqual(report.health.value?.criticalWarning, 0)
+        XCTAssertEqual(report.thermal.value?.primaryTemperature, 41)
+        XCTAssertEqual(report.endurance.value?.percentageUsed, 7)
+        XCTAssertEqual(report.lifetime.value?.powerOnHours, 1_234)
+        XCTAssertEqual(report.parsingQuality, .clean)
+    }
+
+    func testMissingSectionsAreExplicitlyUnsupported() throws {
+        let report = try SmartDataParser.parseReport(jsonData: Data(
+            #"{"temperature":{"current":35}}"#.utf8
+        ))
+
+        XCTAssertEqual(report.health, .unsupported)
+        XCTAssertEqual(report.thermal.value?.primaryTemperature, 35)
+        XCTAssertEqual(report.endurance, .unsupported)
+        XCTAssertEqual(report.lifetime, .unsupported)
+    }
+
+    func testParseIssueDegradesOnlyItsOwningSection() throws {
+        let report = try SmartDataParser.parseReport(jsonData: Data(
+            #"{"temperature":{"current":"hot"},"nvme_smart_health_information_log":{"percentage_used":2,"power_on_hours":8}}"#.utf8
+        ))
+
+        XCTAssertEqual(
+            report.thermal,
+            .degraded(
+                SmartThermalReport(),
+                issues: [.init(field: .primaryTemperature, reason: .invalidNumericString)]
+            )
+        )
+        XCTAssertEqual(report.endurance.value?.percentageUsed, 2)
+        XCTAssertEqual(report.endurance.issues, [])
+        XCTAssertEqual(report.lifetime.value?.powerOnHours, 8)
+        XCTAssertEqual(report.lifetime.issues, [])
+    }
+
+    func testPartialMergeDoesNotClearUnrequestedSections() {
+        let cached = SmartData(report: SmartReport(
+            health: .available(.init(overallHealth: .passed)),
+            thermal: .available(.init(primaryTemperature: 35)),
+            endurance: .available(.init(percentageUsed: 4)),
+            lifetime: .available(.init(powerOnHours: 200)),
+            capabilityMetadata: .available(.init(modelName: "Stable Model")),
+            errorHistory: .available(.init(loggedErrorCount: 3)),
+            selfTestHistory: .available(.init(recordedTestCount: 2))
+        ))
+        let patch = SmartReport(
+            thermal: .available(.init(primaryTemperature: 42))
+        )
+
+        let merged = cached.merging(patch, sections: [.thermal])
+
+        XCTAssertEqual(merged.overallHealth, .passed)
+        XCTAssertEqual(merged.primaryTemperature, 42)
+        XCTAssertEqual(merged.percentageUsed, 4)
+        XCTAssertEqual(merged.powerOnHours, 200)
+        XCTAssertEqual(merged.report.capabilityMetadata.value?.modelName, "Stable Model")
+        XCTAssertEqual(merged.report.errorHistory.value?.loggedErrorCount, 3)
+        XCTAssertEqual(merged.report.selfTestHistory.value?.recordedTestCount, 2)
+    }
+
+    func testParserPreservesCapabilityErrorAndSelfTestSections() throws {
+        let report = try SmartDataParser.parseReport(jsonData: Data(
+            """
+            {
+              "model_family": "Example Family",
+              "model_name": "Example NVMe",
+              "serial_number": "SERIAL",
+              "firmware_version": "1.2.3",
+              "smart_support": { "available": true, "enabled": true },
+              "ata_smart_data": { "capabilities": { "values": [1, 2] } },
+              "ata_smart_error_log": { "summary": { "count": 4, "table": [{ "error_number": 4 }] } },
+              "ata_smart_self_test_log": {
+                "standard": {
+                  "table": [{ "status": { "string": "Completed without error" } }]
+                }
+              }
+            }
+            """.utf8
+        ))
+
+        XCTAssertEqual(report.capabilityMetadata.value?.modelFamily, "Example Family")
+        XCTAssertEqual(report.capabilityMetadata.value?.modelName, "Example NVMe")
+        XCTAssertEqual(report.capabilityMetadata.value?.smartAvailable, true)
+        XCTAssertNotNil(report.capabilityMetadata.value?.detailsJSON)
+        XCTAssertEqual(report.errorHistory.value?.loggedErrorCount, 4)
+        XCTAssertNotNil(report.errorHistory.value?.detailsJSON)
+        XCTAssertEqual(report.selfTestHistory.value?.recordedTestCount, 1)
+        XCTAssertEqual(report.selfTestHistory.value?.latestStatus, "Completed without error")
+        XCTAssertNotNil(report.selfTestHistory.value?.detailsJSON)
+    }
+
     func testParserExtractsHighestAndPrimaryTemperatures() throws {
         let jsonData = Data(
             #"{"temperature":{"current":47},"nvme_smart_health_information_log":{"temperature_sensors":[47,52]}}"#
@@ -299,6 +407,27 @@ final class SmartDataParserTests: XCTestCase {
             result.parsingQuality,
             .degraded([SmartDataParseIssue(field: .nvmeHealthLog, reason: .typeMismatch)])
         )
+    }
+
+    func testMalformedNVMeHealthLogDegradesEveryDependentSectionWithoutDuplicatingIssue() throws {
+        let data = Data(
+            #"{"smart_status":{"passed":true},"temperature":{"current":42},"nvme_smart_health_information_log":[]}"#.utf8
+        )
+
+        let report = try SmartDataParser.parseReport(jsonData: data)
+        let issue = SmartDataParseIssue(field: .nvmeHealthLog, reason: .typeMismatch)
+
+        XCTAssertEqual(
+            report.health,
+            .degraded(SmartHealthReport(overallHealth: .passed), issues: [issue])
+        )
+        XCTAssertEqual(
+            report.thermal,
+            .degraded(SmartThermalReport(primaryTemperature: 42, highestTemperature: 42), issues: [issue])
+        )
+        XCTAssertEqual(report.endurance, .degraded(SmartEnduranceReport(), issues: [issue]))
+        XCTAssertEqual(report.lifetime, .degraded(SmartLifetimeReport(), issues: [issue]))
+        XCTAssertEqual(report.parsingQuality, .degraded([issue]))
     }
 
     func testMalformedTemperatureLeafPreservesOtherHealthLogFields() throws {

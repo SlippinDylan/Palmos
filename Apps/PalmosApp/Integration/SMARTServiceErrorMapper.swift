@@ -79,7 +79,11 @@ enum SMARTServiceClientError: LocalizedError, Equatable {
     case connectionInvalidated
     case unsupportedOccupancyEndpoint
     case mismatchedOccupancyWorkflow
+    case occupancyRequestTimedOut
+    case smartRequestTimedOut
+    case unsupportedSectionedSMARTEndpoint
     case mismatchedSMARTRequest
+    case invalidSMARTCompletedSections
     case unsupportedCompanionInstallationEndpoint
     case companionInstallationUnconfirmed
 
@@ -97,8 +101,16 @@ enum SMARTServiceClientError: LocalizedError, Equatable {
             return "The SMART helper does not support disk occupancy scans."
         case .mismatchedOccupancyWorkflow:
             return "The SMART helper returned an occupancy result for another workflow."
+        case .occupancyRequestTimedOut:
+            return "The SMART helper did not complete the occupancy scan in time."
+        case .smartRequestTimedOut:
+            return "The SMART helper did not complete the SMART query in time."
+        case .unsupportedSectionedSMARTEndpoint:
+            return "The installed SMART Helper does not support sectioned SMART queries."
         case .mismatchedSMARTRequest:
             return "The SMART helper returned a completion for another request."
+        case .invalidSMARTCompletedSections:
+            return "The SMART helper returned an invalid set of completed SMART sections."
         case .unsupportedCompanionInstallationEndpoint:
             return "The installed SMART Helper cannot install the bundled smartctl companion."
         case .companionInstallationUnconfirmed:

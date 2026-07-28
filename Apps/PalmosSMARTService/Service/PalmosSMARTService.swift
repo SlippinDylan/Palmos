@@ -158,6 +158,72 @@ final class PalmosSMARTService: NSObject, PalmosSMARTXPCProtocol, @unchecked Sen
         ).start(using: reservation.handle)
     }
 
+    func querySMARTData(
+        for requestData: Data,
+        withReply reply: @escaping (Data?, NSError?) -> Void
+    ) {
+        let replyBox = XPCReplyBox(reply)
+        let request: SMARTQueryRequest
+        do {
+            request = try PalmosXPCMessages.decodeSMARTQueryRequest(from: requestData)
+        } catch {
+            replyCompletion(
+                requestID: nil,
+                deviceSMARTIOQuiesced: false,
+                error: .init(code: .invalidRequest, message: error.localizedDescription),
+                using: replyBox
+            )
+            return
+        }
+
+        guard let reservation = reserveSMARTTask(
+            requestID: request.requestID,
+            physicalDeviceBSDName: request.physicalDeviceBSDName,
+            replyBox: replyBox
+        ) else { return }
+        SMARTQueryOperation(
+            runner: runner,
+            registry: smartTaskRegistry,
+            reservationToken: reservation.token,
+            request: request,
+            replyBox: replyBox
+        ).start(using: reservation.handle)
+    }
+
+    private func reserveSMARTTask(
+        requestID: String,
+        physicalDeviceBSDName: String,
+        replyBox: XPCReplyBox
+    ) -> SMARTTaskRegistry.Reservation? {
+        let admission = smartTaskRegistry.reserve(
+            requestID: requestID,
+            physicalDeviceBSDName: physicalDeviceBSDName
+        )
+        let error: SMARTReadCompletionError
+        switch admission.rejection {
+        case .duplicateRequest:
+            error = .init(
+                code: .duplicateRequest,
+                message: "A SMART request with this identifier is already active."
+            )
+        case .busy:
+            error = .init(
+                code: .busy,
+                message: "The SMART helper is at its bounded concurrency limit."
+            )
+        case nil:
+            if let reservation = admission.reservation { return reservation }
+            error = .init(code: .busy, message: "The SMART helper cannot admit this request.")
+        }
+        replyCompletion(
+            requestID: requestID,
+            deviceSMARTIOQuiesced: false,
+            error: error,
+            using: replyBox
+        )
+        return nil
+    }
+
     /// Legacy minor-5 cancellation selector retained for compatibility.
     func cancelSMARTData(for requestID: String) {
         guard requestID.utf8.count <= SMARTXPCLimits.legacyCancelRequestUTF8Bytes,
@@ -341,6 +407,71 @@ private final class SMARTReadOperation: @unchecked Sendable {
                     using: replyBox
                 )
             }
+        }
+    }
+}
+
+private final class SMARTQueryOperation: @unchecked Sendable {
+    private let runner: any SMARTDataRunning
+    private let registry: SMARTTaskRegistry
+    private let reservationToken: UUID
+    private let request: SMARTQueryRequest
+    private let replyBox: XPCReplyBox
+
+    init(
+        runner: any SMARTDataRunning,
+        registry: SMARTTaskRegistry,
+        reservationToken: UUID,
+        request: SMARTQueryRequest,
+        replyBox: XPCReplyBox
+    ) {
+        self.runner = runner
+        self.registry = registry
+        self.reservationToken = reservationToken
+        self.request = request
+        self.replyBox = replyBox
+    }
+
+    func start(using handle: SMARTTaskHandle) {
+        let task = Task { await run() }
+        handle.attach(task)
+    }
+
+    private func run() async {
+        defer { registry.remove(token: reservationToken) }
+        do {
+            let transportHint = TransportHintResolver.resolve(
+                protocolName: request.deviceProtocol,
+                modelName: request.deviceModel
+            )
+            let payload = try await runner.querySMARTData(
+                for: request.physicalDeviceBSDName,
+                deviceProtocol: request.deviceProtocol,
+                transportHint: transportHint,
+                sections: request.sections,
+                timeout: SmartctlRunner.defaultTimeout
+            )
+            try PalmosXPCMessages.validateSMARTPayload(payload)
+            let response = SMARTReadCompletionResponse(
+                schemaVersion: SMARTReadCompletionResponse.currentSchemaVersion,
+                payload: payload,
+                processDidExit: true,
+                deviceSMARTIOQuiesced: true,
+                requestID: request.requestID,
+                completedSections: request.sections,
+                error: nil
+            )
+            replyBox.call(
+                try PalmosXPCMessages.encodeSMARTReadCompletionResponse(response),
+                nil
+            )
+        } catch {
+            PalmosSMARTService.replyCompletion(
+                requestID: request.requestID,
+                deviceSMARTIOQuiesced: true,
+                error: smartCompletionError(for: error),
+                using: replyBox
+            )
         }
     }
 }

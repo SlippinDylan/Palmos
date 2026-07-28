@@ -144,6 +144,24 @@ final class SMARTServiceClientTests: XCTestCase {
         XCTAssertEqual(session.scanCount, 0)
     }
 
+    func testOccupancyHandshakeThatNeverRepliesTimesOutAndInvalidatesSession() async throws {
+        let session = ControlledOccupancyXPCSession(synchronouslyInvalidates: true)
+        let client = SMARTServiceClient(
+            occupancySessionFactory: { session },
+            occupancyRequestTimeout: .milliseconds(20)
+        )
+
+        do {
+            _ = try await client.scan(workflowID: UUID(), physicalBSDName: "disk4")
+            XCTFail("A never-reply occupancy session must time out")
+        } catch let error as SMARTServiceClientError {
+            XCTAssertEqual(error, .occupancyRequestTimedOut)
+        }
+
+        XCTAssertEqual(session.invalidationCount, 1)
+        XCTAssertEqual(session.scanCount, 0)
+    }
+
     func testOverlappingOccupancyScansOwnIndependentSessions() async throws {
         let sessionA = ControlledOccupancyXPCSession()
         let sessionB = ControlledOccupancyXPCSession()
@@ -408,6 +426,206 @@ final class SMARTServiceClientTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try client.encodeReadRequest(request))
+    }
+
+    func testSectionedQuerySendsOneTypedBatchAndParsesLiveReport() async throws {
+        let handshake = try currentHandshakeData()
+        let requestBox = LockedDataBox()
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            querySMARTData: { requestData in
+                requestBox.set(requestData)
+                let request = try PalmosXPCMessages.decodeSMARTQueryRequest(from: requestData)
+                return try PalmosXPCMessages.encodeSMARTReadCompletionResponse(.init(
+                    schemaVersion: SMARTReadCompletionResponse.currentSchemaVersion,
+                    payload: Data(
+                        #"{"model_name":"Field SSD","smart_support":{"available":true,"enabled":true},"smart_status":{"passed":true},"temperature":{"current":39},"nvme_smart_health_information_log":{"percentage_used":3,"power_on_hours":91},"nvme_error_information_log":[{"error_count":2}],"nvme_self_test_log":{"table":[{"status":{"string":"Completed without error"}}]}}"#.utf8
+                    ),
+                    processDidExit: true,
+                    deviceSMARTIOQuiesced: true,
+                    requestID: request.requestID,
+                    completedSections: request.sections
+                ))
+            }
+        )
+
+        let result = await client.querySMART(
+            for: makeClientDevice(id: "disk42"),
+            sections: Set(SMARTQuerySection.allCases),
+            topologyGeneration: 7,
+            allowsLegacyFullRead: false
+        )
+
+        let request = try PalmosXPCMessages.decodeSMARTQueryRequest(
+            from: XCTUnwrap(requestBox.value)
+        )
+        XCTAssertEqual(request.physicalDeviceBSDName, "disk42")
+        XCTAssertEqual(request.sections, SMARTQuerySection.allCases)
+        guard case let .available(report, refreshedSections, compatibility) = result else {
+            return XCTFail("Expected a sectioned SMART report")
+        }
+        XCTAssertEqual(compatibility, .compatible)
+        XCTAssertEqual(refreshedSections, Set(SmartReportSectionKind.allCases))
+        XCTAssertEqual(report.health.value?.overallHealth, .passed)
+        XCTAssertEqual(report.thermal.value?.primaryTemperature, 39)
+        XCTAssertEqual(report.endurance.value?.percentageUsed, 3)
+        XCTAssertEqual(report.lifetime.value?.powerOnHours, 91)
+        XCTAssertEqual(report.capabilityMetadata.value?.modelName, "Field SSD")
+        XCTAssertEqual(report.errorHistory.value?.loggedErrorCount, 1)
+        XCTAssertEqual(report.selfTestHistory.value?.recordedTestCount, 1)
+        XCTAssertEqual(report.selfTestHistory.value?.latestStatus, "Completed without error")
+    }
+
+    func testSectionedQueryThatNeverRepliesTimesOutAndInvalidatesSession() async throws {
+        let session = NeverReplySMARTXPCSession()
+        let handshake = try currentHandshakeData()
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            smartRequestTimeout: .milliseconds(20),
+            completionSession: session
+        )
+
+        let result = await client.querySMART(
+            for: makeClientDevice(id: "disk42"),
+            sections: [.thermal],
+            topologyGeneration: 0,
+            allowsLegacyFullRead: false
+        )
+
+        XCTAssertEqual(
+            result,
+            .failed("The SMART helper did not complete the SMART query in time.")
+        )
+        XCTAssertTrue(session.wasInvalidated)
+    }
+
+    func testAutomaticSectionedQueryDoesNotFallbackToLegacyFullRead() async throws {
+        let legacyReadCount = LockedCounter()
+        let oldHandshake = try PalmosXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.7.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.sectionedSMARTQueriesMinor
+        ))
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { oldHandshake },
+            readSMARTData: { _ in
+                legacyReadCount.increment()
+                return Data(#"{"temperature":{"current":99}}"#.utf8)
+            }
+        )
+
+        let result = await client.querySMART(
+            for: makeClientDevice(id: "disk42"),
+            sections: [.thermal],
+            topologyGeneration: 0,
+            allowsLegacyFullRead: false
+        )
+
+        XCTAssertEqual(result, .updateRequired)
+        XCTAssertEqual(legacyReadCount.value, 0)
+    }
+
+    func testManualRefreshFallsBackToLegacyAllReadForMinorEightHelper() async throws {
+        let legacyReadCount = LockedCounter()
+        let queryCount = LockedCounter()
+        let handshake = try PalmosXPCMessages.encode(HelperHandshake(
+            helperVersion: "1.8.0",
+            contractMajor: XPCContractVersion.currentMajor,
+            contractMinor: XPCContractVersion.sectionedSMARTQueriesMinor
+        ))
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            readSMARTDataWithCompletion: { requestData in
+                legacyReadCount.increment()
+                let request = try PalmosXPCMessages.decodeSMARTReadRequest(from: requestData)
+                return try PalmosXPCMessages.encodeSMARTReadCompletionResponse(.init(
+                    schemaVersion: SMARTReadCompletionResponse.currentSchemaVersion,
+                    payload: Data(#"{"temperature":{"current":36}}"#.utf8),
+                    processDidExit: true,
+                    deviceSMARTIOQuiesced: true,
+                    requestID: request.requestID
+                ))
+            },
+            querySMARTData: { _ in
+                queryCount.increment()
+                return Data()
+            }
+        )
+
+        let result = await client.refreshSMART(for: makeClientDevice(id: "disk42"))
+
+        guard case let .available(data, compatibility) = result else {
+            return XCTFail("Expected legacy SMART fallback")
+        }
+        XCTAssertEqual(data.primaryTemperature, 36)
+        XCTAssertEqual(compatibility, .degraded)
+        XCTAssertEqual(legacyReadCount.value, 1)
+        XCTAssertEqual(queryCount.value, 0)
+    }
+
+    func testSectionedQueryRejectsMissingCompletedSections() async throws {
+        let handshake = try currentHandshakeData()
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            querySMARTData: { requestData in
+                let request = try PalmosXPCMessages.decodeSMARTQueryRequest(from: requestData)
+                return try PalmosXPCMessages.encodeSMARTReadCompletionResponse(.init(
+                    schemaVersion: SMARTReadCompletionResponse.currentSchemaVersion,
+                    payload: Data(#"{"temperature":{"current":37}}"#.utf8),
+                    processDidExit: true,
+                    deviceSMARTIOQuiesced: true,
+                    requestID: request.requestID
+                ))
+            }
+        )
+
+        let result = await client.querySMART(
+            for: makeClientDevice(id: "disk42"),
+            sections: [.thermal],
+            topologyGeneration: 0,
+            allowsLegacyFullRead: false
+        )
+
+        XCTAssertEqual(
+            result,
+            .failed("The SMART helper returned an invalid set of completed SMART sections.")
+        )
+    }
+
+    func testManualRefreshUsesSectionedBatchInsteadOfLegacyAllQuery() async throws {
+        let legacyReadCount = LockedCounter()
+        let queryCount = LockedCounter()
+        let handshake = try currentHandshakeData()
+        let client = SMARTServiceClient(
+            fetchHelperHandshake: { handshake },
+            readSMARTData: { _ in
+                legacyReadCount.increment()
+                return Data()
+            },
+            querySMARTData: { requestData in
+                queryCount.increment()
+                let request = try PalmosXPCMessages.decodeSMARTQueryRequest(from: requestData)
+                XCTAssertEqual(request.sections, SMARTQuerySection.allCases)
+                return try PalmosXPCMessages.encodeSMARTReadCompletionResponse(.init(
+                    schemaVersion: SMARTReadCompletionResponse.currentSchemaVersion,
+                    payload: Data(#"{"temperature":{"current":37}}"#.utf8),
+                    processDidExit: true,
+                    deviceSMARTIOQuiesced: true,
+                    requestID: request.requestID,
+                    completedSections: request.sections
+                ))
+            }
+        )
+
+        let result = await client.refreshSMART(for: makeClientDevice(id: "disk42"))
+
+        guard case let .available(data, compatibility) = result else {
+            return XCTFail("Expected SMART data from the sectioned endpoint")
+        }
+        XCTAssertEqual(data.primaryTemperature, 37)
+        XCTAssertEqual(compatibility, .compatible)
+        XCTAssertEqual(queryCount.value, 1)
+        XCTAssertEqual(legacyReadCount.value, 0)
     }
 
     func testRefreshSMARTMapsMissingHelperConnectionToHelperNotInstalled() async {
@@ -890,8 +1108,8 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertEqual(controller.smartHelperManager.status, .companionUnavailable)
     }
 
-    func testRefreshUsesLoadingSnapshotWhileRefreshIsInFlightIncludingRetry() async throws {
-        let device = makeDevice(id: "disk6", smartSnapshot: .notRequested)
+    func testRefreshKeepsLastSnapshotVisibleWhileRefreshIsInFlightIncludingRetry() async throws {
+        let device = makeDevice(id: "disk6", smartSnapshot: .unsupported)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
         let smartService = ControlledSMARTService()
         let controller = makeController(
@@ -907,9 +1125,9 @@ final class SMARTPresentationTests: XCTestCase {
         await smartService.waitUntilRefreshStarts(count: 1)
 
         let firstRefreshDetails = try XCTUnwrap(controller.state.selectedSMARTDetails)
-        XCTAssertEqual(firstRefreshDetails.snapshot, .loading)
+        XCTAssertEqual(firstRefreshDetails.snapshot, .unsupported)
         XCTAssertTrue(firstRefreshDetails.isRefreshing)
-        XCTAssertEqual(controller.state.selectedDevice?.smartSnapshot, .loading)
+        XCTAssertEqual(controller.state.selectedDevice?.smartSnapshot, .unsupported)
 
         await smartService.finishCurrentRefresh(with: .failed("Read failed"))
         await waitUntilSMARTPresentationSettles(controller)
@@ -919,13 +1137,13 @@ final class SMARTPresentationTests: XCTestCase {
         await smartService.waitUntilRefreshStarts(count: 2)
 
         let retryDetails = try XCTUnwrap(controller.state.selectedSMARTDetails)
-        XCTAssertEqual(retryDetails.snapshot, .loading)
+        XCTAssertEqual(retryDetails.snapshot, .failed("Read failed"))
         XCTAssertTrue(retryDetails.isRefreshing)
-        XCTAssertEqual(controller.state.selectedDevice?.smartSnapshot, .loading)
+        XCTAssertEqual(controller.state.selectedDevice?.smartSnapshot, .failed("Read failed"))
     }
 
     func testSelectedDevicePublishesApplicationHelperNotInstalledStatus() async throws {
-        let device = makeDevice(id: "disk42", smartSnapshot: .notRequested)
+        let device = makeDevice(id: "disk42", smartSnapshot: .unsupported)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
         let helperInstaller = StubHelperInstaller()
         let controller = makeController(
@@ -958,7 +1176,7 @@ final class SMARTPresentationTests: XCTestCase {
             sensorTemperatures: ["Composite": 41]
         )
         let discovery = StubSMARTPresentationDeviceDiscovery(
-            results: [[makeDevice(id: "disk8", smartSnapshot: .notRequested)]]
+            results: [[makeDevice(id: "disk8", smartSnapshot: .unsupported)]]
         )
         let controller = makeController(
             smartService: StubSMARTService(
@@ -1049,12 +1267,13 @@ final class SMARTPresentationTests: XCTestCase {
         await smartService.waitUntilRefreshStarts(count: 1)
 
         controller.installSMARTHelper()
-        await smartService.waitUntilRefreshStarts(count: 2)
+        for _ in 0..<5 { await Task.yield() }
+        let startedCountBeforeCompletion = await smartService.startedCount()
+        XCTAssertEqual(startedCountBeforeCompletion, 1)
 
         await smartService.finishRefresh(id: 0, with: .helperNotInstalled)
-        for _ in 0..<5 { await Task.yield() }
+        await smartService.waitUntilRefreshStarts(count: 2)
 
-        XCTAssertEqual(controller.state.selectedSMARTDetails?.snapshot, .loading)
         XCTAssertEqual(controller.smartHelperManager.status, .installed)
 
         await smartService.finishRefresh(
@@ -1068,7 +1287,7 @@ final class SMARTPresentationTests: XCTestCase {
 
     func testUpdateRequiredPublishesApplicationHelperStatus() async throws {
         let discovery = StubSMARTPresentationDeviceDiscovery(
-            results: [[makeDevice(id: "disk13", smartSnapshot: .notRequested)]]
+            results: [[makeDevice(id: "disk13", smartSnapshot: .unsupported)]]
         )
         let helperInstaller = StubHelperInstaller()
         let controller = makeController(
@@ -1095,14 +1314,13 @@ final class SMARTPresentationTests: XCTestCase {
         let firstDevice = makeDevice(id: "disk20", smartSnapshot: .notRequested)
         let secondDevice = makeDevice(id: "disk21", smartSnapshot: .unsupported)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[firstDevice, secondDevice]])
-        let smartService = ControlledSMARTService()
+        let smartService = MultiDeviceControlledSMARTService()
         let controller = makeController(
             smartService: smartService,
             helperInstaller: StubHelperInstaller(),
             deviceDiscovery: discovery
         )
         let smartData = SmartData(
-            overallHealth: .passed,
             primaryTemperature: 35,
             highestTemperature: 39,
             sensorTemperatures: ["Composite": 35]
@@ -1110,12 +1328,18 @@ final class SMARTPresentationTests: XCTestCase {
 
         await discovery.resolveNextDiscovery()
         await waitUntilSelectedDevice(controller, equals: firstDevice.id)
-        await smartService.waitUntilRefreshStarts(count: 1)
+        await smartService.waitUntilRefreshStarts(for: firstDevice.physicalStoreBSDName)
 
         controller.selectDevice(secondDevice.id)
         await waitUntilSelectedDevice(controller, equals: secondDevice.id)
+        await smartService.waitUntilRefreshStarts(for: secondDevice.physicalStoreBSDName)
+        await smartService.finishRefresh(
+            for: secondDevice.physicalStoreBSDName,
+            with: .unsupported
+        )
 
-        await smartService.finishCurrentRefresh(
+        await smartService.finishRefresh(
+            for: firstDevice.physicalStoreBSDName,
             with: .available(smartData, compatibility: .compatible)
         )
         await waitUntilSMARTSnapshot(
@@ -1135,9 +1359,9 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertEqual(details.compatibility, .compatible)
     }
 
-    func testObservationUpdateDuringRefreshKeepsSelectedDeviceSnapshotLoading() async throws {
-        let initialDevice = makeDevice(id: "disk24", smartSnapshot: .notRequested)
-        let observedDevice = makeDevice(id: "disk24", smartSnapshot: .notRequested)
+    func testObservationUpdateDuringRefreshKeepsSelectedDeviceSnapshotVisible() async throws {
+        let initialDevice = makeDevice(id: "disk24", smartSnapshot: .unsupported)
+        let observedDevice = makeDevice(id: "disk24", smartSnapshot: .unsupported)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[initialDevice]])
         let smartService = ControlledSMARTService()
         let controller = makeController(
@@ -1156,13 +1380,13 @@ final class SMARTPresentationTests: XCTestCase {
         await Task.yield()
 
         let details = try XCTUnwrap(controller.state.selectedSMARTDetails)
-        XCTAssertEqual(details.snapshot, .loading)
+        XCTAssertEqual(details.snapshot, .unsupported)
         XCTAssertTrue(details.isRefreshing)
-        XCTAssertEqual(controller.state.selectedDevice?.smartSnapshot, .loading)
+        XCTAssertEqual(controller.state.selectedDevice?.smartSnapshot, .unsupported)
     }
 
     func testStartingRefreshClearsLastErrorWhileRetryIsInFlight() async throws {
-        let device = makeDevice(id: "disk25", smartSnapshot: .notRequested)
+        let device = makeDevice(id: "disk25", smartSnapshot: .unsupported)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
         let smartService = ControlledSMARTService()
         let controller = makeController(
@@ -1190,7 +1414,7 @@ final class SMARTPresentationTests: XCTestCase {
     }
 
     func testStartingHelperInstallPublishesApplicationLevelFailureAndRetryState() async throws {
-        let device = makeDevice(id: "disk26", smartSnapshot: .notRequested)
+        let device = makeDevice(id: "disk26", smartSnapshot: .unsupported)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[device]])
         let helperInstaller = ControlledHelperInstaller(
             outcomes: [
@@ -1224,8 +1448,8 @@ final class SMARTPresentationTests: XCTestCase {
     }
 
     func testRediscoveryPreservesFetchedSMARTSnapshotAndCompatibilityForSameDevice() async throws {
-        let firstPassDevice = makeDevice(id: "disk30", smartSnapshot: .notRequested)
-        let rediscoveredDevice = makeDevice(id: "disk30", smartSnapshot: .notRequested)
+        let firstPassDevice = makeDevice(id: "disk30", smartSnapshot: .unsupported)
+        let rediscoveredDevice = makeDevice(id: "disk30", smartSnapshot: .unsupported)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[firstPassDevice], [rediscoveredDevice]])
         let smartData = SmartData(
             overallHealth: .passed,
@@ -1259,7 +1483,7 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertEqual(selectedDevice.smartSnapshot, .available(smartData))
     }
 
-    func testInitialConcurrentSMARTRefreshesStayBoundToTheirDevices() async throws {
+    func testSelectingAnotherDeviceRefreshesItWithoutCrossWritingFirstRefresh() async throws {
         let firstDevice = makeDevice(id: "disk40", smartSnapshot: .notRequested)
         let secondDevice = makeDevice(id: "disk41", smartSnapshot: .notRequested)
         let discovery = StubSMARTPresentationDeviceDiscovery(results: [[firstDevice, secondDevice]])
@@ -1269,11 +1493,14 @@ final class SMARTPresentationTests: XCTestCase {
             helperInstaller: StubHelperInstaller(),
             deviceDiscovery: discovery
         )
-        let firstData = SmartData(overallHealth: .passed, primaryTemperature: 36)
-        let secondData = SmartData(overallHealth: .passed, primaryTemperature: 41)
+        let firstData = SmartData(primaryTemperature: 36)
+        let secondData = SmartData(primaryTemperature: 41)
 
         await discovery.resolveNextDiscovery()
         await smartService.waitUntilRefreshStarts(for: "disk40")
+        let secondStartCountBeforeSelection = await smartService.startedCount(for: "disk41")
+        XCTAssertEqual(secondStartCountBeforeSelection, 0)
+        controller.selectDevice(secondDevice.id)
         await smartService.waitUntilRefreshStarts(for: "disk41")
 
         await smartService.finishRefresh(
@@ -1290,10 +1517,11 @@ final class SMARTPresentationTests: XCTestCase {
             controller.state.devices.first(where: { $0.id == secondDevice.id })
         )
         XCTAssertEqual(deviceAfterSecondFinish.smartSnapshot, .available(secondData))
-        XCTAssertEqual(
-            controller.state.devices.first(where: { $0.id == firstDevice.id })?.smartSnapshot,
-            .loading
+        let firstDetailsWhileRefreshing = try XCTUnwrap(
+            controller.state.smartDetails(for: firstDevice.id)
         )
+        XCTAssertEqual(firstDetailsWhileRefreshing.snapshot, .notRequested)
+        XCTAssertTrue(firstDetailsWhileRefreshing.isRefreshing)
 
         await smartService.finishRefresh(
             for: "disk40",
@@ -1311,6 +1539,63 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertEqual(firstDetails?.compatibility, .degraded)
         XCTAssertEqual(secondDetails?.snapshot, .available(secondData))
         XCTAssertEqual(secondDetails?.compatibility, .compatible)
+    }
+
+    func testHiddenPanelRefreshesAllDevicesSequentiallyAtHiddenInterval() async throws {
+        let firstDevice = makeDevice(id: "disk50", smartSnapshot: .notRequested)
+        let secondDevice = makeDevice(id: "disk51", smartSnapshot: .notRequested)
+        let smartService = QueryConcurrencyRecordingSMARTService()
+        let controller = makeScheduledController(
+            devices: [firstDevice, secondDevice],
+            selectedDeviceID: firstDevice.id,
+            smartService: smartService,
+            visibleInterval: 10,
+            hiddenInterval: 0.03,
+            freshnessWindow: 0
+        )
+
+        try await smartService.waitUntilQueryCount(for: "disk50", reaches: 1)
+        try await smartService.waitUntilIdle()
+        let secondCountWhileVisible = await smartService.queryCount(for: "disk51")
+        XCTAssertEqual(secondCountWhileVisible, 0)
+
+        controller.isMenuBarPanelPresented = false
+        try await smartService.waitUntilQueryCount(for: "disk51", reaches: 1)
+        try await smartService.waitUntilIdle()
+
+        let order = await smartService.recordedBSDNames()
+        let maximumInFlightCount = await smartService.maximumInFlightCount()
+        let allQueriesAreTypedTelemetry = await smartService.allQueriesAreTypedTelemetry()
+        XCTAssertEqual(Array(order.suffix(2)), ["disk50", "disk51"])
+        XCTAssertEqual(maximumInFlightCount, 1)
+        XCTAssertTrue(allQueriesAreTypedTelemetry)
+    }
+
+    func testOpeningPanelRefreshesStaleTelemetryButKeepsFreshTelemetry() async throws {
+        let device = makeDevice(id: "disk52", smartSnapshot: .notRequested)
+        let smartService = QueryConcurrencyRecordingSMARTService()
+        let controller = makeScheduledController(
+            devices: [device],
+            selectedDeviceID: device.id,
+            smartService: smartService,
+            visibleInterval: 10,
+            hiddenInterval: 10,
+            freshnessWindow: 0.05
+        )
+
+        try await smartService.waitUntilQueryCount(for: "disk52", reaches: 1)
+        try await smartService.waitUntilIdle()
+
+        controller.isMenuBarPanelPresented = false
+        controller.isMenuBarPanelPresented = true
+        try await Task.sleep(for: .milliseconds(20))
+        let freshQueryCount = await smartService.queryCount(for: "disk52")
+        XCTAssertEqual(freshQueryCount, 1)
+
+        controller.isMenuBarPanelPresented = false
+        try await Task.sleep(for: .milliseconds(60))
+        controller.isMenuBarPanelPresented = true
+        try await smartService.waitUntilQueryCount(for: "disk52", reaches: 2)
     }
 
     private func makeDevice(id rawID: String, smartSnapshot: SmartSnapshot) -> ExternalDevice {
@@ -1341,6 +1626,33 @@ final class SMARTPresentationTests: XCTestCase {
             deviceDiscovery: deviceDiscovery,
             systemProfilerProvider: StubSMARTSystemProfilerProvider(),
             diskUtilAPFSProvider: StubSMARTDiskUtilAPFSProvider()
+        )
+    }
+
+    private func makeScheduledController(
+        devices: [ExternalDevice],
+        selectedDeviceID: DeviceID,
+        smartService: any SMARTServiceProviding,
+        visibleInterval: TimeInterval,
+        hiddenInterval: TimeInterval,
+        freshnessWindow: TimeInterval
+    ) -> PalmosAppController {
+        PalmosAppController(
+            state: PalmosAppState(
+                devices: devices,
+                selectedDeviceID: selectedDeviceID
+            ),
+            smartService: smartService,
+            smartHelperManager: SMARTHelperManager(
+                inspector: StubSMARTHelperInspector(result: .installed),
+                installer: StubHelperInstaller()
+            ),
+            deviceDiscovery: StubSMARTPresentationDeviceDiscovery(results: []),
+            systemProfilerProvider: StubSMARTSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubSMARTDiskUtilAPFSProvider(),
+            visibleSMARTRefreshInterval: visibleInterval,
+            hiddenSMARTRefreshInterval: hiddenInterval,
+            panelSMARTFreshnessWindow: freshnessWindow
         )
     }
 
@@ -1379,6 +1691,63 @@ final class SMARTPresentationTests: XCTestCase {
     }
 }
 
+private final class NeverReplySMARTXPCSession: SMARTCompletionXPCSession, @unchecked Sendable {
+    private let lock = NSLock()
+    private var invalidated = false
+
+    var wasInvalidated: Bool { lock.withLock { invalidated } }
+
+    func readSMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        _ = requestData
+        _ = eventHandler
+    }
+
+    func querySMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        _ = requestData
+        _ = eventHandler
+    }
+
+    func invalidate() {
+        lock.withLock { invalidated = true }
+    }
+}
+
+private func queryResult(
+    from result: SMARTServiceRefreshResult,
+    sections: Set<SMARTQuerySection>
+) -> SMARTServiceQueryResult {
+    switch result {
+    case let .available(data, compatibility):
+        return .available(
+            data.report,
+            refreshedSections: Set(sections.compactMap { SmartReportSectionKind(rawValue: $0.rawValue) }),
+            compatibility: compatibility
+        )
+    case .unsupported:
+        return .unsupported
+    case .transportUnsupported:
+        return .transportUnsupported
+    case .companionUnavailable:
+        return .companionUnavailable
+    case .helperNotInstalled:
+        return .helperNotInstalled
+    case .updateRequired:
+        return .updateRequired
+    case .permissionRequired:
+        return .permissionRequired
+    case .deviceUnavailable:
+        return .deviceUnavailable
+    case let .failed(message):
+        return .failed(message)
+    }
+}
+
 private actor StubSMARTService: SMARTServiceProviding {
     let refreshResult: SMARTServiceRefreshResult
 
@@ -1389,6 +1758,19 @@ private actor StubSMARTService: SMARTServiceProviding {
     func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
         _ = device
         return refreshResult
+    }
+
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        _ = device
+        _ = sections
+        _ = topologyGeneration
+        _ = allowsLegacyFullRead
+        return queryResult(from: refreshResult, sections: sections)
     }
 }
 
@@ -1406,6 +1788,18 @@ private actor SequencedSMARTService: SMARTServiceProviding {
         invocationCount += 1
         return refreshResults[index]
     }
+
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        _ = sections
+        _ = topologyGeneration
+        _ = allowsLegacyFullRead
+        return queryResult(from: await refreshSMART(for: device), sections: sections)
+    }
 }
 
 private actor SupersedingSMARTService: SMARTServiceProviding {
@@ -1421,10 +1815,26 @@ private actor SupersedingSMARTService: SMARTServiceProviding {
         }
     }
 
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        _ = sections
+        _ = topologyGeneration
+        _ = allowsLegacyFullRead
+        return queryResult(from: await refreshSMART(for: device), sections: sections)
+    }
+
     func waitUntilRefreshStarts(count: Int) async {
         while nextRefreshID < count {
             await Task.yield()
         }
+    }
+
+    func startedCount() -> Int {
+        nextRefreshID
     }
 
     func finishRefresh(id: Int, with result: SMARTServiceRefreshResult) async {
@@ -1445,6 +1855,18 @@ private actor ControlledSMARTService: SMARTServiceProviding {
         return await withCheckedContinuation { continuation in
             pendingContinuation = continuation
         }
+    }
+
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        _ = sections
+        _ = topologyGeneration
+        _ = allowsLegacyFullRead
+        return queryResult(from: await refreshSMART(for: device), sections: sections)
     }
 
     func waitUntilRefreshStarts(count expectedCount: Int) async {
@@ -1475,10 +1897,26 @@ private actor MultiDeviceControlledSMARTService: SMARTServiceProviding {
         }
     }
 
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        _ = sections
+        _ = topologyGeneration
+        _ = allowsLegacyFullRead
+        return queryResult(from: await refreshSMART(for: device), sections: sections)
+    }
+
     func waitUntilRefreshStarts(for bsdName: String, count expectedCount: Int = 1) async {
         while refreshStartCounts[bsdName, default: 0] < expectedCount {
             await Task.yield()
         }
+    }
+
+    func startedCount(for bsdName: String) -> Int {
+        refreshStartCounts[bsdName, default: 0]
     }
 
     func finishRefresh(for bsdName: String, with result: SMARTServiceRefreshResult) async {
@@ -1489,6 +1927,85 @@ private actor MultiDeviceControlledSMARTService: SMARTServiceProviding {
         let continuation = pendingContinuations.removeValue(forKey: bsdName)
         continuation?.resume(returning: result)
     }
+}
+
+private actor QueryConcurrencyRecordingSMARTService: SMARTServiceProviding {
+    private struct Query: Sendable {
+        let bsdName: String
+        let sections: Set<SMARTQuerySection>
+        let allowsLegacyFullRead: Bool
+    }
+
+    private var queries: [Query] = []
+    private var currentInFlightCount = 0
+    private var maximumInFlight = 0
+
+    func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
+        _ = device
+        return .failed("Legacy refresh should not be used.")
+    }
+
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        _ = topologyGeneration
+        queries.append(Query(
+            bsdName: device.physicalStoreBSDName,
+            sections: sections,
+            allowsLegacyFullRead: allowsLegacyFullRead
+        ))
+        currentInFlightCount += 1
+        maximumInFlight = max(maximumInFlight, currentInFlightCount)
+        defer { currentInFlightCount -= 1 }
+
+        try? await Task.sleep(for: .milliseconds(10))
+        return .available(
+            SmartData(primaryTemperature: 35).report,
+            refreshedSections: Set(sections.compactMap { SmartReportSectionKind(rawValue: $0.rawValue) }),
+            compatibility: .compatible
+        )
+    }
+
+    func waitUntilQueryCount(for bsdName: String, reaches expectedCount: Int) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while queryCount(for: bsdName) < expectedCount {
+            guard ContinuousClock.now < deadline else { throw SMARTSchedulingTestError.timedOut }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+    }
+
+    func waitUntilIdle() async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while currentInFlightCount > 0 {
+            guard ContinuousClock.now < deadline else { throw SMARTSchedulingTestError.timedOut }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+    }
+
+    func queryCount(for bsdName: String) -> Int {
+        queries.count(where: { $0.bsdName == bsdName })
+    }
+
+    func recordedBSDNames() -> [String] {
+        queries.map(\.bsdName)
+    }
+
+    func maximumInFlightCount() -> Int {
+        maximumInFlight
+    }
+
+    func allQueriesAreTypedTelemetry() -> Bool {
+        queries.allSatisfy {
+            $0.sections == [.thermal] && $0.allowsLegacyFullRead == false
+        }
+    }
+}
+
+private enum SMARTSchedulingTestError: Error {
+    case timedOut
 }
 
 private final class StubSMARTSystemProfilerProvider: SystemProfilerProviding, @unchecked Sendable {

@@ -73,6 +73,30 @@ final class EjectRecoveryViewTests: XCTestCase {
         XCTAssertTrue(presentation?.reason.contains("Palmos") == true)
     }
 
+    func testPendingDiagnosisShowsImmediateBusyPromptAndProgress() {
+        let pending = EjectRecoveryState(
+            target: target,
+            failure: .init(
+                stage: .unmounting,
+                category: .busy,
+                rawStatus: EBUSY,
+                systemMessage: nil,
+                physicalBSDName: target.physicalBSDName,
+                holders: []
+            ),
+            diagnosis: .pending
+        )
+        let presentation = EjectRecoveryPresentation(
+            state: .awaitingRecovery(pending),
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertEqual(presentation?.reason, EjectLocalization.busyReason)
+        XCTAssertEqual(presentation?.operationStatus, EjectLocalization.diagnosingOccupancy)
+        XCTAssertEqual(presentation?.actions, [.cancel, .retry, .requestForce])
+        XCTAssertFalse(presentation?.isOperationActive == true)
+    }
+
     func testRecoveryOnlyRendersForCapturedSelectedDevice() {
         XCTAssertNotNil(EjectRecoveryPresentation(
             state: .awaitingRecovery(recovery()),
@@ -144,12 +168,12 @@ final class EjectRecoveryViewTests: XCTestCase {
         ])
     }
 
-    func testNonBusyFailureUsesSingleBodyAndIncludesTechnicalDetail() {
+    func testIOFailureUsesRequestedCopyAndSafeRetryActions() {
         let failure = EjectFailure(
             stage: .ejecting,
             category: .io,
             rawStatus: Int32(bitPattern: 0xFEDC_BA98),
-            systemMessage: "I/O error",
+            systemMessage: "I/O error\nfrom Disk Arbitration",
             physicalBSDName: "disk4",
             holders: []
         )
@@ -158,11 +182,39 @@ final class EjectRecoveryViewTests: XCTestCase {
             selectedDeviceID: target.deviceID
         )
 
-        XCTAssertEqual(presentation?.actions, [])
+        XCTAssertEqual(presentation?.actions, [.cancel, .retryFailure])
         XCTAssertEqual(presentation?.primaryText, presentation?.reason)
-        XCTAssertTrue(presentation?.reason.contains(failure.systemMessage ?? "") == true)
-        XCTAssertNotEqual(presentation?.primaryText, failure.systemMessage)
-        XCTAssertTrue(presentation?.technicalDetail?.contains("0xFEDCBA98") == true)
+        XCTAssertEqual(presentation?.primaryText, String(localized: "eject.error.io"))
+        XCTAssertEqual(presentation?.guidance, EjectLocalization.ioFailureGuidance)
+        XCTAssertFalse(presentation?.reason.contains("I/O error") == true)
+        guard let detail = presentation?.technicalDetail else {
+            return XCTFail("Expected technical details")
+        }
+        XCTAssertEqual(detail.components(separatedBy: "\n").count, 2)
+        XCTAssertTrue(detail.contains("I/O error from Disk Arbitration"))
+        XCTAssertFalse(detail.contains("\r"))
+        XCTAssertTrue(detail.contains("0xFEDCBA98"))
+        XCTAssertTrue(detail.contains("disk4"))
+    }
+
+    func testTechnicalDetailsDoNotRepeatSystemMessageAlreadyVisibleInBody() {
+        let failure = EjectFailure(
+            stage: .ejecting,
+            category: .unknown,
+            rawStatus: EIO,
+            systemMessage: "Disk Arbitration rejected the request.",
+            physicalBSDName: "disk4",
+            holders: []
+        )
+        let presentation = EjectRecoveryPresentation(
+            state: .failed(target: target, failure: failure),
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertTrue(presentation?.primaryText.contains("Disk Arbitration rejected the request.") == true)
+        XCTAssertFalse(presentation?.technicalDetail?.contains("Disk Arbitration rejected the request.") == true)
+        XCTAssertTrue(presentation?.technicalDetail?.contains("0x00000005") == true)
+        XCTAssertTrue(presentation?.technicalDetail?.contains("disk4") == true)
     }
 
     func testBusyTerminalFailureUsesSingleBodyWhenSystemMessageRepeatsReason() {
@@ -197,7 +249,7 @@ final class EjectRecoveryViewTests: XCTestCase {
     func testTerminalFailureCollapsesSystemMessageLineBreaksIntoSingleBody() {
         let failure = EjectFailure(
             stage: .ejecting,
-            category: .io,
+            category: .unknown,
             rawStatus: EIO,
             systemMessage: "First line\nSecond line\rThird line",
             physicalBSDName: "disk4",
@@ -243,6 +295,10 @@ final class EjectRecoveryViewTests: XCTestCase {
         XCTAssertNotEqual(
             EjectLocalization.accessibilityLabel(for: .retry),
             EjectLocalization.accessibilityLabel(for: .requestForce)
+        )
+        XCTAssertNotEqual(
+            EjectLocalization.actionTitle(for: .retryFailure),
+            EjectLocalization.actionTitle(for: .retry)
         )
     }
 

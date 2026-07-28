@@ -619,7 +619,8 @@ final class DeviceIOQuiescerTests: XCTestCase {
             schemaVersion: 1,
             payload: Data("{}".utf8),
             processDidExit: true,
-            requestID: try XCTUnwrap(sessionB.currentRequestID)
+            requestID: try XCTUnwrap(sessionB.currentRequestID),
+            completedSections: SMARTQuerySection.allCases
         ))
         sessionB.emit(.reply(response))
         guard case .available = await refreshB.value else {
@@ -1265,6 +1266,17 @@ private final class ControlledSMARTXPCSession: SMARTCompletionXPCSession, @unche
         eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
     ) {
         let requestID = try? PalmosXPCMessages.decodeSMARTReadRequest(from: requestData).requestID
+        lock.withLock {
+            handler = eventHandler
+            self.requestID = requestID
+        }
+    }
+
+    func querySMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        let requestID = try? PalmosXPCMessages.decodeSMARTQueryRequest(from: requestData).requestID
         lock.withLock {
             handler = eventHandler
             self.requestID = requestID

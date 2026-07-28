@@ -99,7 +99,6 @@ enum MenuBarPanelLayout {
 struct MenuBarRootView: View {
     @ObservedObject var controller: PalmosAppController
     @ObservedObject var settingsWindowActivator: SettingsWindowActivator
-    @ObservedObject private var ejectCoordinator: EjectCoordinator
     @ObservedObject private var settings: AppSettings
     @State private var availableScreenHeight: CGFloat = 900
     @State private var fixedDetailsHeight: CGFloat = 0
@@ -111,7 +110,6 @@ struct MenuBarRootView: View {
     ) {
         self.controller = controller
         self.settingsWindowActivator = settingsWindowActivator
-        _ejectCoordinator = ObservedObject(wrappedValue: controller.ejectCoordinator)
         _settings = ObservedObject(wrappedValue: controller.settings)
     }
 
@@ -128,16 +126,10 @@ struct MenuBarRootView: View {
             ActionBarView(
                 actions: controller.selectedFooterActions,
                 mode: controller.selectedPanelDevice == nil ? .empty : .device,
-                isPerformingAction: controller.isPerformingSystemAction,
+                isActionEnabled: controller.isFooterActionEnabled,
                 message: controller.actionFeedback,
-                ejectState: ejectCoordinator.state,
-                retainedRecovery: ejectCoordinator.retainedRecovery,
-                selectedDeviceID: controller.selectedPanelDeviceID,
-                availableHeight: availableScreenHeight,
                 onAction: controller.perform,
-                onCancelEject: controller.cancelEject,
-                onRetryEject: controller.retryEject,
-                onRequestForceEject: controller.requestForceEject
+                onActivateEjectRecovery: controller.ejectRecoveryWindowPresenter.bringForwardIfVisible
             )
             .padding(14)
         }
@@ -146,12 +138,6 @@ struct MenuBarRootView: View {
         .introspectMenuBarExtraWindow { window in
             updateAvailableScreenHeight(from: window)
         }
-        .ejectForceConfirmation(
-            state: ejectCoordinator.state,
-            selectedDeviceID: controller.selectedPanelDeviceID,
-            onCancel: controller.cancelForceConfirmation,
-            onConfirm: controller.confirmForceEject
-        )
     }
 
     @ViewBuilder
@@ -236,7 +222,7 @@ struct MenuBarRootView: View {
         MenuBarPanelLayout.contentAreaHeight(
             availableHeight: availableScreenHeight,
             showsFeedback: hasActionFeedback,
-            showsRecovery: hasEjectRecovery
+            showsRecovery: false
         )
     }
 
@@ -264,14 +250,6 @@ struct MenuBarRootView: View {
 
     private var hasActionFeedback: Bool {
         controller.actionFeedback?.isEmpty == false
-    }
-
-    private var hasEjectRecovery: Bool {
-        EjectRecoveryPresentation(
-            state: ejectCoordinator.state,
-            retainedRecovery: ejectCoordinator.retainedRecovery,
-            selectedDeviceID: controller.selectedPanelDeviceID
-        ) != nil
     }
 
     @ViewBuilder

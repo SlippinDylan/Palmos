@@ -11,6 +11,14 @@ protocol SMARTDataRunning: Sendable {
         timeout: Duration
     ) async throws -> Data
 
+    func querySMARTData(
+        for physicalDeviceBSDName: String,
+        deviceProtocol: String?,
+        transportHint: SmartctlTransportHint,
+        sections: [SMARTQuerySection],
+        timeout: Duration
+    ) async throws -> Data
+
     func isCompanionAvailable() -> Bool
 }
 
@@ -61,6 +69,38 @@ final class SmartctlRunner: SMARTDataRunning, @unchecked Sendable {
         transportHint: SmartctlTransportHint,
         timeout: Duration = SmartctlRunner.defaultTimeout
     ) async throws -> Data {
+        try await run(
+            physicalDeviceBSDName: physicalDeviceBSDName,
+            transportHint: transportHint,
+            arguments: ["-a"],
+            timeout: timeout
+        )
+    }
+
+    func querySMARTData(
+        for physicalDeviceBSDName: String,
+        deviceProtocol: String?,
+        transportHint: SmartctlTransportHint,
+        sections: [SMARTQuerySection],
+        timeout: Duration = SmartctlRunner.defaultTimeout
+    ) async throws -> Data {
+        try await run(
+            physicalDeviceBSDName: physicalDeviceBSDName,
+            transportHint: transportHint,
+            arguments: SMARTQueryPlanCompiler.arguments(
+                for: sections,
+                deviceProtocol: deviceProtocol
+            ),
+            timeout: timeout
+        )
+    }
+
+    private func run(
+        physicalDeviceBSDName: String,
+        transportHint: SmartctlTransportHint,
+        arguments queryArguments: [String],
+        timeout: Duration
+    ) async throws -> Data {
         let sanitizedBSDName = try sanitize(physicalDeviceBSDName)
         let process = Process()
         let controller = RunningProcess(process)
@@ -78,7 +118,8 @@ final class SmartctlRunner: SMARTDataRunning, @unchecked Sendable {
 
             process.arguments = arguments(
                 for: sanitizedBSDName,
-                transportHint: transportHint
+                transportHint: transportHint,
+                queryArguments: queryArguments
             )
 
             let stdout = Pipe()
@@ -157,9 +198,10 @@ final class SmartctlRunner: SMARTDataRunning, @unchecked Sendable {
 
     private func arguments(
         for physicalDeviceBSDName: String,
-        transportHint: SmartctlTransportHint
+        transportHint: SmartctlTransportHint,
+        queryArguments: [String]
     ) -> [String] {
-        var arguments = ["-a", "-j", "--nocheck=standby"]
+        var arguments = queryArguments + ["-j", "--nocheck=standby"]
         if let deviceArgument = transportHint.smartctlDeviceArgument {
             arguments.append(contentsOf: ["-d", deviceArgument])
         }
@@ -212,6 +254,43 @@ final class SmartctlRunner: SMARTDataRunning, @unchecked Sendable {
         if stderr.isEmpty == false { sections.append(String(decoding: stderr, as: UTF8.self)) }
         let output = sections.joined(separator: "\n")
         return String(output.prefix(8_192))
+    }
+}
+
+enum SMARTQueryPlanCompiler {
+    static func arguments(
+        for sections: [SMARTQuerySection],
+        deviceProtocol: String?
+    ) -> [String] {
+        let requested = Set(sections)
+        var arguments: [String] = []
+
+        if requested.contains(.capabilityMetadata) {
+            arguments.append("-i")
+            if isSCSI(deviceProtocol) == false {
+                arguments.append("-c")
+            }
+        }
+        if requested.contains(.health) {
+            arguments.append("-H")
+        }
+        if requested.isDisjoint(with: [.health, .thermal, .endurance, .lifetime]) == false {
+            arguments.append("-A")
+        }
+        if requested.contains(.errorHistory) {
+            arguments.append(contentsOf: ["-l", "error"])
+        }
+        if requested.contains(.selfTestHistory) {
+            arguments.append(contentsOf: ["-l", "selftest"])
+        }
+        return arguments
+    }
+
+    private static func isSCSI(_ deviceProtocol: String?) -> Bool {
+        deviceProtocol?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .contains("scsi") == true
     }
 }
 

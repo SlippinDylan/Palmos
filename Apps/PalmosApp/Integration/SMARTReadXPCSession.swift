@@ -13,24 +13,58 @@ protocol SMARTCompletionXPCSession: Sendable {
         eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
     )
 
+    func querySMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    )
+
     func invalidate()
 }
 
 extension SMARTCompletionXPCSession {
     func invalidate() {}
+
+    func querySMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        eventHandler(.failure(SMARTServiceClientError.unsupportedSectionedSMARTEndpoint))
+    }
 }
 
 enum SMARTReadXPCSession {
     static func readSMARTData(
         _ requestData: Data,
-        using session: any SMARTCompletionXPCSession
+        using session: any SMARTCompletionXPCSession,
+        requestTimeout: Duration = .seconds(25)
+    ) async throws -> Data {
+        try await perform(using: session, requestTimeout: requestTimeout) { eventHandler in
+            session.readSMARTData(requestData: requestData, eventHandler: eventHandler)
+        }
+    }
+
+    static func querySMARTData(
+        _ requestData: Data,
+        using session: any SMARTCompletionXPCSession,
+        requestTimeout: Duration = .seconds(25)
+    ) async throws -> Data {
+        try await perform(using: session, requestTimeout: requestTimeout) { eventHandler in
+            session.querySMARTData(requestData: requestData, eventHandler: eventHandler)
+        }
+    }
+
+    private static func perform(
+        using session: any SMARTCompletionXPCSession,
+        requestTimeout: Duration,
+        operation: @escaping (@escaping @Sendable (SMARTXPCSessionEvent) -> Void) -> Void
     ) async throws -> Data {
         let cancellation = SMARTCompletionCancellation(session: session)
+        let deadline = ContinuousClock.now.advanced(by: requestTimeout)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let gate = XPCReplyGate(continuation: continuation)
                 guard cancellation.start(gate: gate, operation: {
-                    session.readSMARTData(requestData: requestData) { event in
+                    operation { event in
                         switch event {
                         case let .reply(data):
                             gate.resume(returning: data)
@@ -45,6 +79,10 @@ enum SMARTReadXPCSession {
                 }) else {
                     gate.resume(throwing: CancellationError())
                     return
+                }
+                Task {
+                    try? await ContinuousClock().sleep(until: deadline)
+                    cancellation.timeout(gate: gate)
                 }
             }
         } onCancel: {
@@ -101,6 +139,21 @@ final class LiveSMARTCompletionXPCSession: SMARTCompletionXPCSession, @unchecked
         }
     }
 
+    func querySMARTData(
+        requestData: Data,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void
+    ) {
+        let requestID = (try? PalmosXPCMessages.decodeSMARTQueryRequest(from: requestData))?.requestID
+        performRequest(requestID: requestID, eventHandler: eventHandler) { proxy, reply in
+            guard proxy.querySMARTData != nil else {
+                eventHandler(.failure(SMARTServiceClientError.unsupportedSectionedSMARTEndpoint))
+                return false
+            }
+            proxy.querySMARTData?(for: requestData, withReply: reply)
+            return true
+        }
+    }
+
     func invalidate() {
         let (connection, requestID) = lock.withLock {
             (self.connection, self.requestID)
@@ -137,6 +190,47 @@ final class LiveSMARTCompletionXPCSession: SMARTCompletionXPCSession, @unchecked
         }
         connection.invalidate()
     }
+
+    private func performRequest(
+        requestID: String?,
+        eventHandler: @escaping @Sendable (SMARTXPCSessionEvent) -> Void,
+        start: (PalmosSMARTXPCProtocol, @escaping (Data?, NSError?) -> Void) -> Bool
+    ) {
+        let connection = NSXPCConnection(
+            machServiceName: helperMachServiceName,
+            options: .privileged
+        )
+        lock.withLock {
+            self.connection = connection
+            self.requestID = requestID
+        }
+        connection.interruptionHandler = { eventHandler(.interrupted) }
+        connection.invalidationHandler = { eventHandler(.invalidated) }
+        connection.remoteObjectInterface = NSXPCInterface(with: PalmosSMARTXPCProtocol.self)
+        connection.resume()
+        let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+            eventHandler(.failure(error))
+            self.finish(connection)
+        }
+        guard let proxy = proxy as? PalmosSMARTXPCProtocol else {
+            eventHandler(.failure(SMARTServiceClientError.invalidRemoteProxy))
+            connection.invalidate()
+            return
+        }
+        let didStart = start(proxy) { data, error in
+            if let error {
+                eventHandler(.failure(error))
+            } else if let data {
+                eventHandler(.reply(data))
+            } else {
+                eventHandler(.failure(SMARTServiceClientError.missingReplyData))
+            }
+            self.finish(connection)
+        }
+        if didStart == false {
+            finish(connection)
+        }
+    }
 }
 
 private final class SMARTCompletionCancellation: @unchecked Sendable {
@@ -164,6 +258,15 @@ private final class SMARTCompletionCancellation: @unchecked Sendable {
             isCancelled = true
             return true
         }
+        // Keep awaiting the Helper's completion envelope: cancellation alone is not
+        // evidence that smartctl exited, and eject must remain fail-closed until it is.
         if shouldInvalidate { session.invalidate() }
+    }
+
+    func timeout(gate: XPCReplyGate) {
+        guard gate.resume(throwing: SMARTServiceClientError.smartRequestTimedOut) else {
+            return
+        }
+        session.invalidate()
     }
 }

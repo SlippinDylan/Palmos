@@ -6,6 +6,7 @@ import PalmosCore
 enum EjectRecoveryAction: Equatable, Sendable {
     case cancel
     case retry
+    case retryFailure
     case requestForce
     case confirmForce
 }
@@ -123,15 +124,19 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         case .failed(let target, let failure):
             guard target.deviceID == selectedDeviceID else { return nil }
             let reason = EjectLocalization.failureBody(failure)
+            let guidance = EjectLocalization.failureGuidance(failure)
             self.init(
                 deviceID: target.deviceID,
                 displayName: target.displayName,
                 title: EjectLocalization.failureTitle(target: target),
                 primaryText: reason,
                 reason: reason,
-                guidance: EjectLocalization.failureGuidance(failure),
-                technicalDetail: EjectLocalization.technicalDetail(failure),
-                actions: [],
+                guidance: guidance,
+                technicalDetail: EjectLocalization.technicalDetail(
+                    failure,
+                    excluding: [reason, guidance].compactMap { $0 }
+                ),
+                actions: failure.category == .io ? [.cancel, .retryFailure] : [],
                 isOperationActive: false,
                 operationStatus: nil
             )
@@ -160,12 +165,24 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         isOperationActive: Bool,
         operationStatus: String? = nil
     ) -> Self {
-        let holders = recovery.holders.map(\.preferredName)
-        let reason = holders.isEmpty
-            ? EjectLocalization.unknownHolderReason
-            : EjectLocalization.knownHolderReason(
-                ListFormatter.localizedString(byJoining: holders)
+        let reason: String
+        let diagnosisStatus: String?
+        switch recovery.diagnosis {
+        case .pending:
+            reason = EjectLocalization.busyReason
+            diagnosisStatus = EjectLocalization.diagnosingOccupancy
+        case .known(let holders):
+            reason = EjectLocalization.knownHolderReason(
+                ListFormatter.localizedString(byJoining: holders.map(\.preferredName))
             )
+            diagnosisStatus = nil
+        case .unknown:
+            reason = EjectLocalization.unknownHolderReason
+            diagnosisStatus = nil
+        case .unavailable:
+            reason = EjectLocalization.unavailableDiagnosisReason
+            diagnosisStatus = nil
+        }
         return Self(
             deviceID: recovery.target.deviceID,
             displayName: recovery.target.displayName,
@@ -173,10 +190,13 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
             primaryText: reason,
             reason: reason,
             guidance: EjectLocalization.recoveryGuidance,
-            technicalDetail: EjectLocalization.technicalDetail(recovery.failure),
+            technicalDetail: EjectLocalization.technicalDetail(
+                recovery.failure,
+                excluding: [reason, EjectLocalization.recoveryGuidance]
+            ),
             actions: [.cancel, .retry, .requestForce],
             isOperationActive: isOperationActive,
-            operationStatus: operationStatus
+            operationStatus: operationStatus ?? diagnosisStatus
         )
     }
 }
@@ -196,6 +216,18 @@ enum EjectLocalization {
 
     static var unknownHolderReason: String {
         String(localized: "eject.recovery.unknownHolder")
+    }
+
+    static var busyReason: String {
+        String(localized: "eject.recovery.busy")
+    }
+
+    static var diagnosingOccupancy: String {
+        String(localized: "eject.recovery.diagnosing")
+    }
+
+    static var unavailableDiagnosisReason: String {
+        String(localized: "eject.recovery.diagnosisUnavailable")
     }
 
     static var recoveryGuidance: String {
@@ -226,6 +258,7 @@ enum EjectLocalization {
         switch action {
         case .cancel: String(localized: "eject.action.cancel")
         case .retry: String(localized: "eject.action.retry")
+        case .retryFailure: String(localized: "eject.action.retryFailure")
         case .requestForce: String(localized: "eject.action.requestForce")
         case .confirmForce: String(localized: "eject.action.confirmForce")
         }
@@ -234,7 +267,7 @@ enum EjectLocalization {
     static func accessibilityLabel(for action: EjectRecoveryAction) -> String {
         switch action {
         case .cancel: String(localized: "eject.accessibility.cancel")
-        case .retry: String(localized: "eject.accessibility.retry")
+        case .retry, .retryFailure: String(localized: "eject.accessibility.retry")
         case .requestForce: String(localized: "eject.accessibility.requestForce")
         case .confirmForce: String(localized: "eject.accessibility.confirmForce")
         }
@@ -263,7 +296,7 @@ enum EjectLocalization {
 
     static func failureBody(_ failure: EjectFailure) -> String {
         let reason = categoryName(failure.category)
-        if failure.category == .smartCompletionUnobservable {
+        if failure.category == .smartCompletionUnobservable || failure.category == .io {
             return reason
         }
         let primaryText = failurePrimaryText(failure)
@@ -284,18 +317,55 @@ enum EjectLocalization {
     }
 
     static func failureGuidance(_ failure: EjectFailure) -> String? {
-        failure.category == .smartCompletionUnobservable
-            ? smartCompletionUnobservableGuidance
-            : nil
+        switch failure.category {
+        case .io:
+            ioFailureGuidance
+        case .smartCompletionUnobservable:
+            smartCompletionUnobservableGuidance
+        default:
+            nil
+        }
     }
 
-    static func technicalDetail(_ failure: EjectFailure) -> String? {
-        guard let rawStatus = failure.rawStatus else { return nil }
-        return format(
-            String(localized: "eject.error.technicalDetail"),
-            UInt32(bitPattern: rawStatus),
-            failure.physicalBSDName
-        )
+    static var ioFailureGuidance: String {
+        String(localized: "eject.error.ioGuidance")
+    }
+
+    static func technicalDetail(
+        _ failure: EjectFailure,
+        excluding visibleCopy: [String]
+    ) -> String? {
+        let systemDetail = technicalSystemMessage(failure, excluding: visibleCopy).map {
+            format(String(localized: "eject.error.systemMessageDetail"), $0)
+        }
+        let statusDetail = failure.rawStatus.map {
+            format(
+                String(localized: "eject.error.technicalDetail"),
+                UInt32(bitPattern: $0),
+                failure.physicalBSDName
+            )
+        }
+        return [systemDetail, statusDetail]
+            .compactMap { $0 }
+            .joined(separator: "\n")
+            .nilIfEmpty
+    }
+
+    private static func technicalSystemMessage(
+        _ failure: EjectFailure,
+        excluding visibleCopy: [String]
+    ) -> String? {
+        guard let systemMessage = failure.systemMessage.map(singleLineMessage)?.nilIfEmpty else {
+            return nil
+        }
+        let normalizedSystemMessage = normalizedMessage(systemMessage)
+        guard normalizedSystemMessage.isEmpty == false else { return nil }
+
+        let normalizedVisibleCopy = visibleCopy.map(normalizedMessage)
+        guard normalizedVisibleCopy.contains(where: { $0.contains(normalizedSystemMessage) }) == false else {
+            return nil
+        }
+        return systemMessage
     }
 
     static func occupancyDescription(_ type: OccupancyType) -> String {

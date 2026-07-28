@@ -15,15 +15,18 @@ struct OccupancyXPCClient: Sendable {
     private let handshakeClient: SMARTHandshakeClient
     private let scanDiskOccupancy: (@Sendable (Data) async throws -> Data)?
     private let sessionFactory: (@Sendable () -> any OccupancyXPCSession)?
+    private let requestTimeout: Duration
 
     init(
         handshakeClient: SMARTHandshakeClient,
         scanDiskOccupancy: (@Sendable (Data) async throws -> Data)?,
-        sessionFactory: (@Sendable () -> any OccupancyXPCSession)?
+        sessionFactory: (@Sendable () -> any OccupancyXPCSession)?,
+        requestTimeout: Duration = .seconds(7)
     ) {
         self.handshakeClient = handshakeClient
         self.scanDiskOccupancy = scanDiskOccupancy
         self.sessionFactory = sessionFactory
+        self.requestTimeout = requestTimeout
     }
 
     func scan(workflowID: UUID, physicalBSDName: String) async throws -> OccupancyScanResult {
@@ -61,9 +64,13 @@ struct OccupancyXPCClient: Sendable {
         using session: any OccupancyXPCSession
     ) async throws -> OccupancyScanResult {
         let cancellation = OccupancyXPCSessionCancellation(session: session)
+        let deadline = ContinuousClock.now.advanced(by: requestTimeout)
         return try await withTaskCancellationHandler {
             do {
-                let handshakeData = try await Self.receive(using: cancellation) { eventHandler in
+                let handshakeData = try await Self.receive(
+                    using: cancellation,
+                    deadline: deadline
+                ) { eventHandler in
                     session.fetchHelperHandshake(eventHandler: eventHandler)
                 }
                 try Task.checkCancellation()
@@ -80,7 +87,10 @@ struct OccupancyXPCClient: Sendable {
                     physicalDeviceBSDName: physicalBSDName
                 ))
                 try Task.checkCancellation()
-                let responseData = try await Self.receive(using: cancellation) { eventHandler in
+                let responseData = try await Self.receive(
+                    using: cancellation,
+                    deadline: deadline
+                ) { eventHandler in
                     session.scanDiskOccupancy(requestData: requestData, eventHandler: eventHandler)
                 }
                 try Task.checkCancellation()
@@ -117,6 +127,7 @@ struct OccupancyXPCClient: Sendable {
 
     private static func receive(
         using cancellation: OccupancyXPCSessionCancellation,
+        deadline: ContinuousClock.Instant,
         operation: (@escaping @Sendable (SMARTXPCSessionEvent) -> Void) -> Void
     ) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
@@ -136,6 +147,10 @@ struct OccupancyXPCClient: Sendable {
                 }
             }
             if didStart == false { gate.resume(throwing: CancellationError()) }
+            Task {
+                try? await ContinuousClock().sleep(until: deadline)
+                cancellation.timeout(gate: gate)
+            }
         }
     }
 }
@@ -270,5 +285,9 @@ private final class OccupancyXPCSessionCancellation: @unchecked Sendable {
         guard shouldCancel else { return }
         gate?.resume(throwing: CancellationError())
         session.invalidate()
+    }
+
+    func timeout(gate: XPCReplyGate) {
+        gate.resume(throwing: SMARTServiceClientError.occupancyRequestTimedOut)
     }
 }

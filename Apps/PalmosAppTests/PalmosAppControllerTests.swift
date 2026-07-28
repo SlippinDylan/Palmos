@@ -8,6 +8,54 @@ import PalmosCore
 
 @MainActor
 final class PalmosAppControllerTests: XCTestCase {
+    func testEjectCancellationMarksOnlyAutomaticThermalSectionFailed() async throws {
+        var device = makeDevice(id: "disk4", volumes: ["disk4s1"])
+        device.smartSnapshot = .available(SmartData(report: SmartReport(
+            health: .available(.init(overallHealth: .passed)),
+            thermal: .available(.init(primaryTemperature: 34)),
+            endurance: .available(.init(percentageUsed: 2)),
+            lifetime: .available(.init(powerOnHours: 100)),
+            capabilityMetadata: .available(.init(modelName: "Stable Model")),
+            errorHistory: .available(.init(loggedErrorCount: 0)),
+            selfTestHistory: .available(.init(recordedTestCount: 1))
+        )))
+        let smartService = EjectCancellationSMARTService()
+        let ejecter = BlockingDiskEjecter()
+        let controller = PalmosAppController(
+            state: PalmosAppState(devices: [device], selectedDeviceID: device.id),
+            smartService: smartService,
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            systemProfilerProvider: StubSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider(),
+            ejectCoordinator: makeEjectCoordinator(
+                resolver: RecordingEjectTargetResolver(device: device),
+                ejecter: ejecter
+            ),
+            discoveryObservationDebounce: .zero
+        )
+
+        await smartService.waitUntilQueryStarts()
+        let action = try XCTUnwrap(controller.selectedFooterActions.first { $0.kind == .eject })
+        controller.perform(action)
+
+        guard let details = controller.state.smartDetails(for: device.id) else {
+            return XCTFail("Expected SMART presentation details")
+        }
+        guard case .failed = details.reportState.thermal else {
+            return XCTFail("Expected the in-flight thermal section to be cancelled")
+        }
+        XCTAssertEqual(
+            details.reportState.capabilityMetadata.previousValue?.value?.modelName,
+            "Stable Model"
+        )
+        XCTAssertEqual(details.reportState.health.previousValue?.value?.overallHealth, .passed)
+        XCTAssertEqual(details.reportState.errorHistory.previousValue?.value?.loggedErrorCount, 0)
+        XCTAssertEqual(details.reportState.selfTestHistory.previousValue?.value?.recordedTestCount, 1)
+
+        await ejecter.waitUntilNormalEjectStarts()
+        await ejecter.finishNormalEject()
+    }
+
     func testObservedTopologyGenerationIsDynamicallyDispatchedToSMARTService() async {
         let device = makeDevice(
             id: "disk4",
@@ -30,6 +78,9 @@ final class PalmosAppControllerTests: XCTestCase {
         await smartService.waitUntilRefreshStarts()
         let topologyGenerations = await smartService.recordedTopologyGenerations()
         XCTAssertEqual(topologyGenerations, [1])
+        let queries = await smartService.recordedQueries()
+        XCTAssertEqual(queries.map(\.sections), [Set([SMARTQuerySection.thermal])])
+        XCTAssertEqual(queries.map(\.allowsLegacyFullRead), [false])
         XCTAssertEqual(controller.state.selectedDeviceID, device.id)
     }
 
@@ -1010,6 +1061,57 @@ final class PalmosAppControllerTests: XCTestCase {
         await ejecter.finishNormalEject()
     }
 
+    func testTerminalIORetryUsesLatestTopologyAndStartsOneFreshNormalWorkflow() async throws {
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let updatedDevice = makeDevice(id: "disk21", volumes: ["disk21s2"])
+        let discovery = StubExternalDeviceDiscovery(results: [[device]])
+        let resolver = RecordingEjectTargetResolver(device: device)
+        let failure = EjectFailure(
+            stage: .ejecting,
+            category: .io,
+            rawStatus: EIO,
+            systemMessage: "I/O error",
+            physicalBSDName: device.physicalStoreBSDName,
+            holders: []
+        )
+        let ejecter = BusyThenBlockingDiskEjecter(busyFailure: failure)
+        let coordinator = makeEjectCoordinator(resolver: resolver, ejecter: ejecter)
+        let controller = PalmosAppController(
+            state: PalmosAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: discovery,
+            ejectCoordinator: coordinator,
+            discoveryObservationDebounce: .zero
+        )
+        let action = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+
+        controller.perform(action)
+        await waitUntil {
+            guard case .failed(_, let failure) = coordinator.state else { return false }
+            return failure.category == .io
+        }
+        discovery.emit([updatedDevice])
+        await waitUntil { controller.state.selectedDevice?.volumes == updatedDevice.volumes }
+
+        controller.retryEject()
+        controller.retryEject()
+        await ejecter.waitUntilRetryStarts()
+
+        let requests = await resolver.resolveRequestsSnapshot()
+        let normalCallCount = await ejecter.normalCallCount()
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests.map(\.deviceID), [device.id, device.id])
+        XCTAssertGreaterThan(requests[1].topologyGeneration, requests[0].topologyGeneration)
+        XCTAssertEqual(normalCallCount, 2)
+
+        await ejecter.finishRetry()
+        await waitUntil {
+            if case .succeeded = coordinator.state { return true }
+            return false
+        }
+    }
+
     func testObservedTopologyChangesAreForwardedDuringActiveEjectWorkflow() async throws {
         let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
         let discovery = StubExternalDeviceDiscovery(results: [[device]])
@@ -1687,6 +1789,21 @@ final class PalmosAppControllerTests: XCTestCase {
 
         controller.perform(action)
         await ejecter.waitUntilNormalEjectStarts()
+
+        let activeActions = controller.selectedFooterActions
+        XCTAssertFalse(controller.isFooterActionEnabled(
+            try XCTUnwrap(activeActions.first(where: { $0.kind == .openInFinder }))
+        ))
+        XCTAssertFalse(controller.isFooterActionEnabled(
+            try XCTUnwrap(activeActions.first(where: { $0.kind == .eject }))
+        ))
+        XCTAssertFalse(controller.isFooterActionEnabled(
+            try XCTUnwrap(activeActions.first(where: { $0.kind == .openDiskUtility }))
+        ))
+        XCTAssertTrue(controller.isFooterActionEnabled(
+            try XCTUnwrap(activeActions.first(where: { $0.kind == .quit }))
+        ))
+
         controller.selectDevice(secondDevice.id)
 
         XCTAssertTrue(controller.isPerformingSystemAction)
@@ -2221,6 +2338,42 @@ final class PalmosAppControllerTests: XCTestCase {
 
         controller.quit()
 
+        XCTAssertEqual(quitRecorder.invocationCount, 1)
+    }
+
+    func testFooterQuitWaitsForSubmittedEjectBeforeInvokingQuitHandler() async throws {
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let ejecter = BlockingDiskEjecter()
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: device),
+            ejecter: ejecter
+        )
+        let quitRecorder = MainActorQuitRecorder()
+        let controller = PalmosAppController(
+            state: PalmosAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            ejectCoordinator: coordinator,
+            quitFeedbackDuration: 0,
+            quitHandler: {
+                quitRecorder.recordInvocation()
+            }
+        )
+        let ejectAction = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+        controller.perform(ejectAction)
+        await ejecter.waitUntilNormalEjectStarts()
+
+        controller.perform(SystemAction(kind: .quit, intent: .quit))
+        try await Task.sleep(for: .milliseconds(20))
+
+        XCTAssertEqual(quitRecorder.invocationCount, 0)
+        guard case .working(_, .unmounting) = coordinator.state else {
+            return XCTFail("Quit must wait while the submitted disk operation is in flight")
+        }
+
+        await ejecter.finishNormalEject()
+        await waitUntilEventually { quitRecorder.invocationCount == 1 }
         XCTAssertEqual(quitRecorder.invocationCount, 1)
     }
 
@@ -3525,7 +3678,13 @@ private extension Duration {
 }
 
 private actor TopologyRecordingSMARTService: SMARTServiceProviding {
+    struct Query: Sendable {
+        let sections: Set<SMARTQuerySection>
+        let allowsLegacyFullRead: Bool
+    }
+
     private var topologyGenerations: [Int] = []
+    private var queries: [Query] = []
 
     func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
         .failed("Legacy SMART refresh overload was called.")
@@ -3539,6 +3698,20 @@ private actor TopologyRecordingSMARTService: SMARTServiceProviding {
         return .helperNotInstalled
     }
 
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        topologyGenerations.append(topologyGeneration)
+        queries.append(Query(
+            sections: sections,
+            allowsLegacyFullRead: allowsLegacyFullRead
+        ))
+        return .helperNotInstalled
+    }
+
     func waitUntilRefreshStarts() async {
         while topologyGenerations.isEmpty {
             await Task.yield()
@@ -3547,6 +3720,44 @@ private actor TopologyRecordingSMARTService: SMARTServiceProviding {
 
     func recordedTopologyGenerations() -> [Int] {
         topologyGenerations
+    }
+
+    func recordedQueries() -> [Query] {
+        queries
+    }
+}
+
+private actor EjectCancellationSMARTService: SMARTServiceProviding {
+    private var didStartQuery = false
+
+    func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
+        _ = device
+        return .failed("Legacy SMART refresh overload was called.")
+    }
+
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        _ = device
+        _ = sections
+        _ = topologyGeneration
+        _ = allowsLegacyFullRead
+        didStartQuery = true
+        do {
+            try await Task.sleep(for: .seconds(60))
+        } catch {
+            return .failed("Cancelled")
+        }
+        return .failed("Unexpected completion")
+    }
+
+    func waitUntilQueryStarts() async {
+        while didStartQuery == false {
+            await Task.yield()
+        }
     }
 }
 

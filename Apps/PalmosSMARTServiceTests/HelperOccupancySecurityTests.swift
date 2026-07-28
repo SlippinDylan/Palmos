@@ -18,6 +18,10 @@ final class HelperOccupancySecurityTests: XCTestCase {
             "readSMARTDataWithCompletionFor:withReply:"
         )
         XCTAssertEqual(
+            NSStringFromSelector(#selector(PalmosSMARTXPCProtocol.querySMARTData(for:withReply:))),
+            "querySMARTDataFor:withReply:"
+        )
+        XCTAssertEqual(
             NSStringFromSelector(#selector(PalmosSMARTXPCProtocol.cancelSMARTData(for:))),
             "cancelSMARTDataFor:"
         )
@@ -41,6 +45,216 @@ final class HelperOccupancySecurityTests: XCTestCase {
         )
         XCTAssertTrue(
             XPCFeatureCapabilities.negotiated(helperContractMinor: 6).observableSMARTFailures
+        )
+    }
+
+    func testMinorEightNegotiatesSectionedSMARTQueries() {
+        XCTAssertFalse(
+            XPCFeatureCapabilities.negotiated(helperContractMinor: 7).sectionedSMARTQueries
+        )
+        XCTAssertTrue(
+            XPCFeatureCapabilities.negotiated(helperContractMinor: 8).sectionedSMARTQueries
+        )
+    }
+
+    func testMinorNineNegotiatesTypedSMARTSectionsWithoutChangingMinorEightCapability() {
+        let minorEight = XPCFeatureCapabilities.negotiated(helperContractMinor: 8)
+        XCTAssertTrue(minorEight.sectionedSMARTQueries)
+        XCTAssertFalse(minorEight.typedSMARTSections)
+        XCTAssertTrue(XPCFeatureCapabilities.negotiated(helperContractMinor: 9).typedSMARTSections)
+    }
+
+    func testSMARTQueryMessageValidationRejectsUnboundedOrAmbiguousRequests() throws {
+        let valid = SMARTQueryRequest(
+            physicalDeviceBSDName: "disk4",
+            deviceProtocol: "NVMe",
+            deviceModel: "Example",
+            requestID: UUID().uuidString,
+            sections: [.health, .thermal, .capabilityMetadata]
+        )
+        XCTAssertEqual(
+            try PalmosXPCMessages.decodeSMARTQueryRequest(
+                from: PalmosXPCMessages.encodeSMARTQueryRequest(valid)
+            ),
+            valid
+        )
+
+        let invalidRequests = [
+            SMARTQueryRequest(
+                physicalDeviceBSDName: "disk4s1",
+                deviceProtocol: nil,
+                deviceModel: nil,
+                requestID: valid.requestID,
+                sections: [.thermal]
+            ),
+            SMARTQueryRequest(
+                physicalDeviceBSDName: "disk4",
+                deviceProtocol: nil,
+                deviceModel: nil,
+                requestID: "not-a-uuid",
+                sections: [.thermal]
+            ),
+            SMARTQueryRequest(
+                physicalDeviceBSDName: "disk4",
+                deviceProtocol: nil,
+                deviceModel: nil,
+                requestID: valid.requestID,
+                sections: []
+            ),
+            SMARTQueryRequest(
+                physicalDeviceBSDName: "disk4",
+                deviceProtocol: nil,
+                deviceModel: nil,
+                requestID: valid.requestID,
+                sections: [.thermal, .thermal]
+            ),
+            SMARTQueryRequest(
+                schemaVersion: 3,
+                physicalDeviceBSDName: "disk4",
+                deviceProtocol: nil,
+                deviceModel: nil,
+                requestID: valid.requestID,
+                sections: [.thermal]
+            ),
+        ]
+        for request in invalidRequests {
+            XCTAssertThrowsError(try PalmosXPCMessages.encodeSMARTQueryRequest(request))
+        }
+
+        let unknownSection = Data(
+            """
+            {"schemaVersion":1,"physicalDeviceBSDName":"disk4","requestID":"\(valid.requestID)","sections":["all"]}
+            """.utf8
+        )
+        XCTAssertThrowsError(try PalmosXPCMessages.decodeSMARTQueryRequest(from: unknownSection))
+    }
+
+    func testSchemaOneLiveTelemetryRequestMigratesForOlderAppCompatibility() throws {
+        let requestID = UUID().uuidString
+        let legacy = Data(
+            """
+            {"schemaVersion":1,"physicalDeviceBSDName":"disk4","deviceProtocol":"NVMe","requestID":"\(requestID)","sections":["liveTelemetry","capabilityMetadata"]}
+            """.utf8
+        )
+
+        let migrated = try PalmosXPCMessages.decodeSMARTQueryRequest(from: legacy)
+
+        XCTAssertEqual(migrated.schemaVersion, SMARTQueryRequest.currentSchemaVersion)
+        XCTAssertEqual(
+            migrated.sections,
+            [.health, .thermal, .endurance, .lifetime, .capabilityMetadata]
+        )
+    }
+
+    func testSchemaOneMigrationRejectsAmbiguousSectionLists() {
+        let requestID = UUID().uuidString
+        let invalidSectionLists = [
+            "[]",
+            "[\"liveTelemetry\",\"liveTelemetry\"]",
+            "[\"liveTelemetry\",\"capabilityMetadata\",\"errorHistory\",\"selfTestHistory\",\"liveTelemetry\",\"capabilityMetadata\",\"errorHistory\",\"selfTestHistory\"]",
+        ]
+
+        for sections in invalidSectionLists {
+            let request = Data(
+                """
+                {"schemaVersion":1,"physicalDeviceBSDName":"disk4","requestID":"\(requestID)","sections":\(sections)}
+                """.utf8
+            )
+            XCTAssertThrowsError(try PalmosXPCMessages.decodeSMARTQueryRequest(from: request))
+        }
+    }
+
+    func testSMARTQueryPlanUsesFixedMergedAllowlist() {
+        XCTAssertEqual(
+            SMARTQueryPlanCompiler.arguments(
+                for: [
+                    .selfTestHistory, .health, .thermal, .endurance, .lifetime,
+                    .errorHistory, .capabilityMetadata,
+                ],
+                deviceProtocol: "NVMe"
+            ),
+            ["-i", "-c", "-H", "-A", "-l", "error", "-l", "selftest"]
+        )
+        XCTAssertEqual(
+            SMARTQueryPlanCompiler.arguments(
+                for: [.capabilityMetadata, .health, .thermal],
+                deviceProtocol: "SCSI"
+            ),
+            ["-i", "-H", "-A"]
+        )
+        XCTAssertEqual(
+            SMARTQueryPlanCompiler.arguments(
+                for: [.health, .thermal, .endurance, .lifetime],
+                deviceProtocol: nil
+            ),
+            ["-H", "-A"]
+        )
+        XCTAssertEqual(
+            SMARTQueryPlanCompiler.arguments(for: [.health], deviceProtocol: "NVMe"),
+            ["-H", "-A"]
+        )
+    }
+
+    func testSmartctlRunnerExecutesOneMergedSectionedCommand() async throws {
+        let fixture = try makeExecutableFixture { pidFile in
+            """
+            printf '%s\\n' "$@" > '\(pidFile.path)'
+            printf '{"smart_status":{"passed":true}}\\n'
+            """
+        }
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let runner = SmartctlRunner(executableLocator: { fixture.executable })
+
+        _ = try await runner.querySMARTData(
+            for: "disk4",
+            deviceProtocol: "NVMe",
+            transportHint: .autoPassthrough,
+            sections: [
+                .selfTestHistory, .health, .thermal, .endurance, .lifetime,
+                .errorHistory, .capabilityMetadata,
+            ]
+        )
+
+        let arguments = try String(contentsOf: fixture.pidFile, encoding: .utf8)
+            .split(separator: "\n")
+            .map(String.init)
+        XCTAssertEqual(
+            arguments,
+            [
+                "-i", "-c", "-H", "-A", "-l", "error", "-l", "selftest",
+                "-j", "--nocheck=standby", "-d", "nvme", "/dev/disk4",
+            ]
+        )
+    }
+
+    func testSectionedSMARTEndpointReturnsRawMergedPayloadAndForwardsTypedRequest() async throws {
+        let payload = Data(#"{"temperature":{"current":42}}"#.utf8)
+        let runner = SMARTQueryRecordingRunner(payload: payload)
+        let service = PalmosSMARTService(runner: runner)
+        let request = SMARTQueryRequest(
+            physicalDeviceBSDName: "disk7",
+            deviceProtocol: "Thunderbolt NVMe",
+            deviceModel: "TB406Pro",
+            requestID: UUID().uuidString,
+            sections: [.thermal, .capabilityMetadata]
+        )
+
+        let response = try completionResponse(
+            await Self.queryReply(from: service, request: request)
+        )
+        XCTAssertEqual(response.payload, payload)
+        XCTAssertEqual(response.requestID, request.requestID)
+        XCTAssertEqual(response.deviceSMARTIOQuiesced, true)
+        XCTAssertEqual(response.completedSections, request.sections)
+        let observation = await runner.observation()
+        XCTAssertEqual(
+            observation,
+            .init(
+                physicalDeviceBSDName: "disk7",
+                deviceProtocol: "Thunderbolt NVMe",
+                transportHint: .autoPassthrough,
+                sections: [.thermal, .capabilityMetadata]
+            )
         )
     }
 
@@ -333,6 +547,36 @@ final class HelperOccupancySecurityTests: XCTestCase {
             followupReply.data,
             Data(#"{"smart_status":{"passed":true}}"#.utf8)
         )
+    }
+
+    func testSectionedSMARTUsesSharedCancellationAndProcessExitSemantics() async throws {
+        let runner = BlockingSMARTDataRunner()
+        let service = PalmosSMARTService(runner: runner)
+        let requestID = UUID()
+        let request = SMARTQueryRequest(
+            physicalDeviceBSDName: "disk4",
+            deviceProtocol: nil,
+            deviceModel: nil,
+            requestID: requestID.uuidString,
+            sections: [.thermal]
+        )
+        let completion = SMARTReplyProbe()
+        completion.startQuery(service: service, request: request)
+        await runner.waitUntilStarted(count: 1)
+
+        let cancelData = try PalmosXPCMessages.encodeSMARTCancelRequest(
+            SMARTCancelRequest(requestID: requestID.uuidString)
+        )
+        let acknowledgement = await cancelReply(from: service, requestData: cancelData)
+        let decodedAcknowledgement = try PalmosXPCMessages.decodeSMARTCancelAcknowledgement(
+            from: try XCTUnwrap(acknowledgement.data)
+        )
+        XCTAssertEqual(decodedAcknowledgement.result, .accepted)
+
+        let response = try completionResponse(await completion.value())
+        XCTAssertEqual(response.error?.code, .cancelled)
+        XCTAssertTrue(response.processDidExit)
+        XCTAssertEqual(response.deviceSMARTIOQuiesced, true)
     }
 
     func testLegacySMARTReadUsesRawReplyAndBoundedAdmission() async throws {
@@ -783,6 +1027,18 @@ final class HelperOccupancySecurityTests: XCTestCase {
         let requestData = try! PalmosXPCMessages.encodeSMARTReadRequest(request)
         return await withCheckedContinuation { continuation in
             service.readSMARTDataWithCompletion(for: requestData) { data, error in
+                continuation.resume(returning: (data, error))
+            }
+        }
+    }
+
+    private static func queryReply(
+        from service: PalmosSMARTService,
+        request: SMARTQueryRequest
+    ) async -> (data: Data?, error: NSError?) {
+        let requestData = try! PalmosXPCMessages.encodeSMARTQueryRequest(request)
+        return await withCheckedContinuation { continuation in
+            service.querySMARTData(for: requestData) { data, error in
                 continuation.resume(returning: (data, error))
             }
         }
@@ -1506,7 +1762,61 @@ private struct FixtureSMARTDataRunner: SMARTDataRunning {
         try result.get()
     }
 
+    func querySMARTData(
+        for physicalDeviceBSDName: String,
+        deviceProtocol: String?,
+        transportHint: SmartctlTransportHint,
+        sections: [SMARTQuerySection],
+        timeout: Duration
+    ) async throws -> Data {
+        try result.get()
+    }
+
     func isCompanionAvailable() -> Bool { companionAvailable }
+}
+
+private actor SMARTQueryRecordingRunner: SMARTDataRunning {
+    struct Observation: Equatable, Sendable {
+        let physicalDeviceBSDName: String
+        let deviceProtocol: String?
+        let transportHint: SmartctlTransportHint
+        let sections: [SMARTQuerySection]
+    }
+
+    private let payload: Data
+    private var recordedObservation: Observation?
+
+    init(payload: Data) {
+        self.payload = payload
+    }
+
+    func readSMARTData(
+        for physicalDeviceBSDName: String,
+        transportHint: SmartctlTransportHint,
+        timeout: Duration
+    ) async throws -> Data {
+        payload
+    }
+
+    func querySMARTData(
+        for physicalDeviceBSDName: String,
+        deviceProtocol: String?,
+        transportHint: SmartctlTransportHint,
+        sections: [SMARTQuerySection],
+        timeout: Duration
+    ) async throws -> Data {
+        recordedObservation = Observation(
+            physicalDeviceBSDName: physicalDeviceBSDName,
+            deviceProtocol: deviceProtocol,
+            transportHint: transportHint,
+            sections: sections
+        )
+        return payload
+    }
+
+    nonisolated func isCompanionAvailable() -> Bool { true }
+
+    func observation() -> Observation? { recordedObservation }
 }
 
 private final class FixtureCompanionInstaller: SMARTCompanionInstalling, @unchecked Sendable {
@@ -1584,6 +1894,20 @@ private actor BlockingSMARTDataRunner: SMARTDataRunning {
         return Data(#"{"smart_status":{"passed":true}}"#.utf8)
     }
 
+    func querySMARTData(
+        for physicalDeviceBSDName: String,
+        deviceProtocol: String?,
+        transportHint: SmartctlTransportHint,
+        sections: [SMARTQuerySection],
+        timeout: Duration
+    ) async throws -> Data {
+        try await readSMARTData(
+            for: physicalDeviceBSDName,
+            transportHint: transportHint,
+            timeout: timeout
+        )
+    }
+
     nonisolated func isCompanionAvailable() -> Bool { true }
 
     func waitUntilStarted(count: Int) async {
@@ -1612,6 +1936,13 @@ private final class SMARTReplyProbe: @unchecked Sendable {
     func startLegacy(service: PalmosSMARTService, request: SMARTReadRequest) {
         let requestData = try! PalmosXPCMessages.encodeSMARTReadRequest(request)
         service.readSMARTData(for: requestData) { [self] data, error in
+            finish((data, error))
+        }
+    }
+
+    func startQuery(service: PalmosSMARTService, request: SMARTQueryRequest) {
+        let requestData = try! PalmosXPCMessages.encodeSMARTQueryRequest(request)
+        service.querySMARTData(for: requestData) { [self] data, error in
             finish((data, error))
         }
     }

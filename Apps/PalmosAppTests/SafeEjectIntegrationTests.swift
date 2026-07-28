@@ -94,7 +94,7 @@ final class SafeEjectIntegrationTests: XCTestCase {
         coordinator.begin(deviceID: target.deviceID, displayName: target.displayName, topologyGeneration: 9)
         try await waitUntil { if case .working(_, .preparing) = coordinator.state { true } else { false } }
         await tracker.finish(smartToken)
-        try await waitUntil { coordinator.state.recovery != nil }
+        try await waitUntil { coordinator.state.recovery?.holders == [holder] }
 
         let daUnmountCalls = await operations.unmountCallCount()
         XCTAssertEqual(daUnmountCalls, 1)
