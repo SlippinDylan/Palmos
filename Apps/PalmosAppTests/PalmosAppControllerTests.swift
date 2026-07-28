@@ -8,6 +8,54 @@ import PalmosCore
 
 @MainActor
 final class PalmosAppControllerTests: XCTestCase {
+    func testEjectCancellationMarksOnlyAutomaticThermalSectionFailed() async throws {
+        var device = makeDevice(id: "disk4", volumes: ["disk4s1"])
+        device.smartSnapshot = .available(SmartData(report: SmartReport(
+            health: .available(.init(overallHealth: .passed)),
+            thermal: .available(.init(primaryTemperature: 34)),
+            endurance: .available(.init(percentageUsed: 2)),
+            lifetime: .available(.init(powerOnHours: 100)),
+            capabilityMetadata: .available(.init(modelName: "Stable Model")),
+            errorHistory: .available(.init(loggedErrorCount: 0)),
+            selfTestHistory: .available(.init(recordedTestCount: 1))
+        )))
+        let smartService = EjectCancellationSMARTService()
+        let ejecter = BlockingDiskEjecter()
+        let controller = PalmosAppController(
+            state: PalmosAppState(devices: [device], selectedDeviceID: device.id),
+            smartService: smartService,
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            systemProfilerProvider: StubSystemProfilerProvider(),
+            diskUtilAPFSProvider: StubDiskUtilAPFSProvider(),
+            ejectCoordinator: makeEjectCoordinator(
+                resolver: RecordingEjectTargetResolver(device: device),
+                ejecter: ejecter
+            ),
+            discoveryObservationDebounce: .zero
+        )
+
+        await smartService.waitUntilQueryStarts()
+        let action = try XCTUnwrap(controller.selectedFooterActions.first { $0.kind == .eject })
+        controller.perform(action)
+
+        guard let details = controller.state.smartDetails(for: device.id) else {
+            return XCTFail("Expected SMART presentation details")
+        }
+        guard case .failed = details.reportState.thermal else {
+            return XCTFail("Expected the in-flight thermal section to be cancelled")
+        }
+        XCTAssertEqual(
+            details.reportState.capabilityMetadata.previousValue?.value?.modelName,
+            "Stable Model"
+        )
+        XCTAssertEqual(details.reportState.health.previousValue?.value?.overallHealth, .passed)
+        XCTAssertEqual(details.reportState.errorHistory.previousValue?.value?.loggedErrorCount, 0)
+        XCTAssertEqual(details.reportState.selfTestHistory.previousValue?.value?.recordedTestCount, 1)
+
+        await ejecter.waitUntilNormalEjectStarts()
+        await ejecter.finishNormalEject()
+    }
+
     func testObservedTopologyGenerationIsDynamicallyDispatchedToSMARTService() async {
         let device = makeDevice(
             id: "disk4",
@@ -31,7 +79,7 @@ final class PalmosAppControllerTests: XCTestCase {
         let topologyGenerations = await smartService.recordedTopologyGenerations()
         XCTAssertEqual(topologyGenerations, [1])
         let queries = await smartService.recordedQueries()
-        XCTAssertEqual(queries.map(\.sections), [Set([SMARTQuerySection.liveTelemetry])])
+        XCTAssertEqual(queries.map(\.sections), [Set([SMARTQuerySection.thermal])])
         XCTAssertEqual(queries.map(\.allowsLegacyFullRead), [false])
         XCTAssertEqual(controller.state.selectedDeviceID, device.id)
     }
@@ -3640,6 +3688,40 @@ private actor TopologyRecordingSMARTService: SMARTServiceProviding {
 
     func recordedQueries() -> [Query] {
         queries
+    }
+}
+
+private actor EjectCancellationSMARTService: SMARTServiceProviding {
+    private var didStartQuery = false
+
+    func refreshSMART(for device: ExternalDevice) async -> SMARTServiceRefreshResult {
+        _ = device
+        return .failed("Legacy SMART refresh overload was called.")
+    }
+
+    func querySMART(
+        for device: ExternalDevice,
+        sections: Set<SMARTQuerySection>,
+        topologyGeneration: Int,
+        allowsLegacyFullRead: Bool
+    ) async -> SMARTServiceQueryResult {
+        _ = device
+        _ = sections
+        _ = topologyGeneration
+        _ = allowsLegacyFullRead
+        didStartQuery = true
+        do {
+            try await Task.sleep(for: .seconds(60))
+        } catch {
+            return .failed("Cancelled")
+        }
+        return .failed("Unexpected completion")
+    }
+
+    func waitUntilQueryStarts() async {
+        while didStartQuery == false {
+            await Task.yield()
+        }
     }
 }
 

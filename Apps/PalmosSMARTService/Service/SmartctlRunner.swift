@@ -271,8 +271,11 @@ enum SMARTQueryPlanCompiler {
                 arguments.append("-c")
             }
         }
-        if requested.contains(.liveTelemetry) {
-            arguments.append(contentsOf: ["-H", "-A"])
+        if requested.contains(.health) {
+            arguments.append("-H")
+        }
+        if requested.isDisjoint(with: [.health, .thermal, .endurance, .lifetime]) == false {
+            arguments.append("-A")
         }
         if requested.contains(.errorHistory) {
             arguments.append(contentsOf: ["-l", "error"])

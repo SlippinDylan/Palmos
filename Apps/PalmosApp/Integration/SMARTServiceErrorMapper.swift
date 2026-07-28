@@ -83,6 +83,7 @@ enum SMARTServiceClientError: LocalizedError, Equatable {
     case smartRequestTimedOut
     case unsupportedSectionedSMARTEndpoint
     case mismatchedSMARTRequest
+    case invalidSMARTCompletedSections
     case unsupportedCompanionInstallationEndpoint
     case companionInstallationUnconfirmed
 
@@ -108,6 +109,8 @@ enum SMARTServiceClientError: LocalizedError, Equatable {
             return "The installed SMART Helper does not support sectioned SMART queries."
         case .mismatchedSMARTRequest:
             return "The SMART helper returned a completion for another request."
+        case .invalidSMARTCompletedSections:
+            return "The SMART helper returned an invalid set of completed SMART sections."
         case .unsupportedCompanionInstallationEndpoint:
             return "The installed SMART Helper cannot install the bundled smartctl companion."
         case .companionInstallationUnconfirmed:

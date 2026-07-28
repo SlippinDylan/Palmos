@@ -32,12 +32,18 @@ struct SMARTReportPresentationState: Equatable {
     var thermal: SMARTSectionPresentationState<SmartThermalReport>
     var endurance: SMARTSectionPresentationState<SmartEnduranceReport>
     var lifetime: SMARTSectionPresentationState<SmartLifetimeReport>
+    var capabilityMetadata: SMARTSectionPresentationState<SmartCapabilityReport>
+    var errorHistory: SMARTSectionPresentationState<SmartErrorHistoryReport>
+    var selfTestHistory: SMARTSectionPresentationState<SmartSelfTestHistoryReport>
 
     static let notRequested = SMARTReportPresentationState(
         health: .notRequested,
         thermal: .notRequested,
         endurance: .notRequested,
-        lifetime: .notRequested
+        lifetime: .notRequested,
+        capabilityMetadata: .notRequested,
+        errorHistory: .notRequested,
+        selfTestHistory: .notRequested
     )
 
     init(report: SmartReport, sampledAt: Date) {
@@ -45,18 +51,27 @@ struct SMARTReportPresentationState: Equatable {
         thermal = Self.presentationState(for: report.thermal, sampledAt: sampledAt)
         endurance = Self.presentationState(for: report.endurance, sampledAt: sampledAt)
         lifetime = Self.presentationState(for: report.lifetime, sampledAt: sampledAt)
+        capabilityMetadata = Self.presentationState(for: report.capabilityMetadata, sampledAt: sampledAt)
+        errorHistory = Self.presentationState(for: report.errorHistory, sampledAt: sampledAt)
+        selfTestHistory = Self.presentationState(for: report.selfTestHistory, sampledAt: sampledAt)
     }
 
     private init(
         health: SMARTSectionPresentationState<SmartHealthReport>,
         thermal: SMARTSectionPresentationState<SmartThermalReport>,
         endurance: SMARTSectionPresentationState<SmartEnduranceReport>,
-        lifetime: SMARTSectionPresentationState<SmartLifetimeReport>
+        lifetime: SMARTSectionPresentationState<SmartLifetimeReport>,
+        capabilityMetadata: SMARTSectionPresentationState<SmartCapabilityReport>,
+        errorHistory: SMARTSectionPresentationState<SmartErrorHistoryReport>,
+        selfTestHistory: SMARTSectionPresentationState<SmartSelfTestHistoryReport>
     ) {
         self.health = health
         self.thermal = thermal
         self.endurance = endurance
         self.lifetime = lifetime
+        self.capabilityMetadata = capabilityMetadata
+        self.errorHistory = errorHistory
+        self.selfTestHistory = selfTestHistory
     }
 
     mutating func beginRefreshing(
@@ -74,6 +89,15 @@ struct SMARTReportPresentationState: Equatable {
         }
         if sections.contains(.lifetime) {
             lifetime = .refreshing(previous: lifetime.previousValue, startedAt: startedAt)
+        }
+        if sections.contains(.capabilityMetadata) {
+            capabilityMetadata = .refreshing(previous: capabilityMetadata.previousValue, startedAt: startedAt)
+        }
+        if sections.contains(.errorHistory) {
+            errorHistory = .refreshing(previous: errorHistory.previousValue, startedAt: startedAt)
+        }
+        if sections.contains(.selfTestHistory) {
+            selfTestHistory = .refreshing(previous: selfTestHistory.previousValue, startedAt: startedAt)
         }
     }
 
@@ -94,6 +118,15 @@ struct SMARTReportPresentationState: Equatable {
         if sections.contains(.lifetime) {
             lifetime = Self.presentationState(for: report.lifetime, sampledAt: sampledAt)
         }
+        if sections.contains(.capabilityMetadata) {
+            capabilityMetadata = Self.presentationState(for: report.capabilityMetadata, sampledAt: sampledAt)
+        }
+        if sections.contains(.errorHistory) {
+            errorHistory = Self.presentationState(for: report.errorHistory, sampledAt: sampledAt)
+        }
+        if sections.contains(.selfTestHistory) {
+            selfTestHistory = Self.presentationState(for: report.selfTestHistory, sampledAt: sampledAt)
+        }
     }
 
     mutating func fail(
@@ -112,6 +145,23 @@ struct SMARTReportPresentationState: Equatable {
         }
         if sections.contains(.lifetime) {
             lifetime = .failed(previous: lifetime.previousValue, message: message, attemptedAt: attemptedAt)
+        }
+        if sections.contains(.capabilityMetadata) {
+            capabilityMetadata = .failed(
+                previous: capabilityMetadata.previousValue,
+                message: message,
+                attemptedAt: attemptedAt
+            )
+        }
+        if sections.contains(.errorHistory) {
+            errorHistory = .failed(previous: errorHistory.previousValue, message: message, attemptedAt: attemptedAt)
+        }
+        if sections.contains(.selfTestHistory) {
+            selfTestHistory = .failed(
+                previous: selfTestHistory.previousValue,
+                message: message,
+                attemptedAt: attemptedAt
+            )
         }
     }
 

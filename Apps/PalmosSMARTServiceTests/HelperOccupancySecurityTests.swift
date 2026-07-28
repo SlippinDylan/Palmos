@@ -57,13 +57,20 @@ final class HelperOccupancySecurityTests: XCTestCase {
         )
     }
 
+    func testMinorNineNegotiatesTypedSMARTSectionsWithoutChangingMinorEightCapability() {
+        let minorEight = XPCFeatureCapabilities.negotiated(helperContractMinor: 8)
+        XCTAssertTrue(minorEight.sectionedSMARTQueries)
+        XCTAssertFalse(minorEight.typedSMARTSections)
+        XCTAssertTrue(XPCFeatureCapabilities.negotiated(helperContractMinor: 9).typedSMARTSections)
+    }
+
     func testSMARTQueryMessageValidationRejectsUnboundedOrAmbiguousRequests() throws {
         let valid = SMARTQueryRequest(
             physicalDeviceBSDName: "disk4",
             deviceProtocol: "NVMe",
             deviceModel: "Example",
             requestID: UUID().uuidString,
-            sections: [.liveTelemetry, .capabilityMetadata]
+            sections: [.health, .thermal, .capabilityMetadata]
         )
         XCTAssertEqual(
             try PalmosXPCMessages.decodeSMARTQueryRequest(
@@ -78,14 +85,14 @@ final class HelperOccupancySecurityTests: XCTestCase {
                 deviceProtocol: nil,
                 deviceModel: nil,
                 requestID: valid.requestID,
-                sections: [.liveTelemetry]
+                sections: [.thermal]
             ),
             SMARTQueryRequest(
                 physicalDeviceBSDName: "disk4",
                 deviceProtocol: nil,
                 deviceModel: nil,
                 requestID: "not-a-uuid",
-                sections: [.liveTelemetry]
+                sections: [.thermal]
             ),
             SMARTQueryRequest(
                 physicalDeviceBSDName: "disk4",
@@ -99,15 +106,15 @@ final class HelperOccupancySecurityTests: XCTestCase {
                 deviceProtocol: nil,
                 deviceModel: nil,
                 requestID: valid.requestID,
-                sections: [.liveTelemetry, .liveTelemetry]
+                sections: [.thermal, .thermal]
             ),
             SMARTQueryRequest(
-                schemaVersion: 2,
+                schemaVersion: 3,
                 physicalDeviceBSDName: "disk4",
                 deviceProtocol: nil,
                 deviceModel: nil,
                 requestID: valid.requestID,
-                sections: [.liveTelemetry]
+                sections: [.thermal]
             ),
         ]
         for request in invalidRequests {
@@ -122,26 +129,68 @@ final class HelperOccupancySecurityTests: XCTestCase {
         XCTAssertThrowsError(try PalmosXPCMessages.decodeSMARTQueryRequest(from: unknownSection))
     }
 
+    func testSchemaOneLiveTelemetryRequestMigratesForOlderAppCompatibility() throws {
+        let requestID = UUID().uuidString
+        let legacy = Data(
+            """
+            {"schemaVersion":1,"physicalDeviceBSDName":"disk4","deviceProtocol":"NVMe","requestID":"\(requestID)","sections":["liveTelemetry","capabilityMetadata"]}
+            """.utf8
+        )
+
+        let migrated = try PalmosXPCMessages.decodeSMARTQueryRequest(from: legacy)
+
+        XCTAssertEqual(migrated.schemaVersion, SMARTQueryRequest.currentSchemaVersion)
+        XCTAssertEqual(
+            migrated.sections,
+            [.health, .thermal, .endurance, .lifetime, .capabilityMetadata]
+        )
+    }
+
+    func testSchemaOneMigrationRejectsAmbiguousSectionLists() {
+        let requestID = UUID().uuidString
+        let invalidSectionLists = [
+            "[]",
+            "[\"liveTelemetry\",\"liveTelemetry\"]",
+            "[\"liveTelemetry\",\"capabilityMetadata\",\"errorHistory\",\"selfTestHistory\",\"liveTelemetry\",\"capabilityMetadata\",\"errorHistory\",\"selfTestHistory\"]",
+        ]
+
+        for sections in invalidSectionLists {
+            let request = Data(
+                """
+                {"schemaVersion":1,"physicalDeviceBSDName":"disk4","requestID":"\(requestID)","sections":\(sections)}
+                """.utf8
+            )
+            XCTAssertThrowsError(try PalmosXPCMessages.decodeSMARTQueryRequest(from: request))
+        }
+    }
+
     func testSMARTQueryPlanUsesFixedMergedAllowlist() {
         XCTAssertEqual(
             SMARTQueryPlanCompiler.arguments(
-                for: [.selfTestHistory, .liveTelemetry, .errorHistory, .capabilityMetadata],
+                for: [
+                    .selfTestHistory, .health, .thermal, .endurance, .lifetime,
+                    .errorHistory, .capabilityMetadata,
+                ],
                 deviceProtocol: "NVMe"
             ),
             ["-i", "-c", "-H", "-A", "-l", "error", "-l", "selftest"]
         )
         XCTAssertEqual(
             SMARTQueryPlanCompiler.arguments(
-                for: [.capabilityMetadata, .liveTelemetry],
+                for: [.capabilityMetadata, .health, .thermal],
                 deviceProtocol: "SCSI"
             ),
             ["-i", "-H", "-A"]
         )
         XCTAssertEqual(
             SMARTQueryPlanCompiler.arguments(
-                for: [.liveTelemetry, .liveTelemetry],
+                for: [.health, .thermal, .endurance, .lifetime],
                 deviceProtocol: nil
             ),
+            ["-H", "-A"]
+        )
+        XCTAssertEqual(
+            SMARTQueryPlanCompiler.arguments(for: [.health], deviceProtocol: "NVMe"),
             ["-H", "-A"]
         )
     }
@@ -160,7 +209,10 @@ final class HelperOccupancySecurityTests: XCTestCase {
             for: "disk4",
             deviceProtocol: "NVMe",
             transportHint: .autoPassthrough,
-            sections: [.selfTestHistory, .liveTelemetry, .errorHistory, .capabilityMetadata]
+            sections: [
+                .selfTestHistory, .health, .thermal, .endurance, .lifetime,
+                .errorHistory, .capabilityMetadata,
+            ]
         )
 
         let arguments = try String(contentsOf: fixture.pidFile, encoding: .utf8)
@@ -184,7 +236,7 @@ final class HelperOccupancySecurityTests: XCTestCase {
             deviceProtocol: "Thunderbolt NVMe",
             deviceModel: "TB406Pro",
             requestID: UUID().uuidString,
-            sections: [.liveTelemetry, .capabilityMetadata]
+            sections: [.thermal, .capabilityMetadata]
         )
 
         let response = try completionResponse(
@@ -193,6 +245,7 @@ final class HelperOccupancySecurityTests: XCTestCase {
         XCTAssertEqual(response.payload, payload)
         XCTAssertEqual(response.requestID, request.requestID)
         XCTAssertEqual(response.deviceSMARTIOQuiesced, true)
+        XCTAssertEqual(response.completedSections, request.sections)
         let observation = await runner.observation()
         XCTAssertEqual(
             observation,
@@ -200,7 +253,7 @@ final class HelperOccupancySecurityTests: XCTestCase {
                 physicalDeviceBSDName: "disk7",
                 deviceProtocol: "Thunderbolt NVMe",
                 transportHint: .autoPassthrough,
-                sections: [.liveTelemetry, .capabilityMetadata]
+                sections: [.thermal, .capabilityMetadata]
             )
         )
     }
@@ -505,7 +558,7 @@ final class HelperOccupancySecurityTests: XCTestCase {
             deviceProtocol: nil,
             deviceModel: nil,
             requestID: requestID.uuidString,
-            sections: [.liveTelemetry]
+            sections: [.thermal]
         )
         let completion = SMARTReplyProbe()
         completion.startQuery(service: service, request: request)

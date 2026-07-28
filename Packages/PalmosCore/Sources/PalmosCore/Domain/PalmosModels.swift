@@ -155,6 +155,9 @@ public enum SmartReportSectionKind: String, CaseIterable, Equatable, Hashable, S
     case thermal
     case endurance
     case lifetime
+    case capabilityMetadata
+    case errorHistory
+    case selfTestHistory
 }
 
 public struct SmartHealthReport: Equatable, Sendable {
@@ -251,27 +254,94 @@ public struct SmartLifetimeReport: Equatable, Sendable {
     }
 }
 
+public struct SmartCapabilityReport: Equatable, Sendable {
+    public var modelFamily: String?
+    public var modelName: String?
+    public var serialNumber: String?
+    public var firmwareVersion: String?
+    public var smartAvailable: Bool?
+    public var smartEnabled: Bool?
+    /// Canonical JSON for capability fields not yet promoted to stable domain properties.
+    public var detailsJSON: Data?
+
+    public init(
+        modelFamily: String? = nil,
+        modelName: String? = nil,
+        serialNumber: String? = nil,
+        firmwareVersion: String? = nil,
+        smartAvailable: Bool? = nil,
+        smartEnabled: Bool? = nil,
+        detailsJSON: Data? = nil
+    ) {
+        self.modelFamily = modelFamily
+        self.modelName = modelName
+        self.serialNumber = serialNumber
+        self.firmwareVersion = firmwareVersion
+        self.smartAvailable = smartAvailable
+        self.smartEnabled = smartEnabled
+        self.detailsJSON = detailsJSON
+    }
+}
+
+public struct SmartErrorHistoryReport: Equatable, Sendable {
+    public var loggedErrorCount: UInt64?
+    /// Canonical JSON preserves protocol-specific error records without flattening them.
+    public var detailsJSON: Data?
+
+    public init(loggedErrorCount: UInt64? = nil, detailsJSON: Data? = nil) {
+        self.loggedErrorCount = loggedErrorCount
+        self.detailsJSON = detailsJSON
+    }
+}
+
+public struct SmartSelfTestHistoryReport: Equatable, Sendable {
+    public var recordedTestCount: Int?
+    public var latestStatus: String?
+    /// Canonical JSON preserves ATA, NVMe, and SCSI self-test records.
+    public var detailsJSON: Data?
+
+    public init(
+        recordedTestCount: Int? = nil,
+        latestStatus: String? = nil,
+        detailsJSON: Data? = nil
+    ) {
+        self.recordedTestCount = recordedTestCount
+        self.latestStatus = latestStatus
+        self.detailsJSON = detailsJSON
+    }
+}
+
 public struct SmartReport: Equatable, Sendable {
     public var health: SmartReportSection<SmartHealthReport>
     public var thermal: SmartReportSection<SmartThermalReport>
     public var endurance: SmartReportSection<SmartEnduranceReport>
     public var lifetime: SmartReportSection<SmartLifetimeReport>
+    public var capabilityMetadata: SmartReportSection<SmartCapabilityReport>
+    public var errorHistory: SmartReportSection<SmartErrorHistoryReport>
+    public var selfTestHistory: SmartReportSection<SmartSelfTestHistoryReport>
 
     public init(
         health: SmartReportSection<SmartHealthReport> = .unsupported,
         thermal: SmartReportSection<SmartThermalReport> = .unsupported,
         endurance: SmartReportSection<SmartEnduranceReport> = .unsupported,
-        lifetime: SmartReportSection<SmartLifetimeReport> = .unsupported
+        lifetime: SmartReportSection<SmartLifetimeReport> = .unsupported,
+        capabilityMetadata: SmartReportSection<SmartCapabilityReport> = .unsupported,
+        errorHistory: SmartReportSection<SmartErrorHistoryReport> = .unsupported,
+        selfTestHistory: SmartReportSection<SmartSelfTestHistoryReport> = .unsupported
     ) {
         self.health = health
         self.thermal = thermal
         self.endurance = endurance
         self.lifetime = lifetime
+        self.capabilityMetadata = capabilityMetadata
+        self.errorHistory = errorHistory
+        self.selfTestHistory = selfTestHistory
     }
 
     public var parsingQuality: SmartDataParsingQuality {
         var issues: [SmartDataParseIssue] = []
-        for issue in health.issues + thermal.issues + endurance.issues + lifetime.issues
+        for issue in health.issues + thermal.issues + endurance.issues + lifetime.issues +
+            capabilityMetadata.issues + errorHistory.issues + selfTestHistory.issues
         where issues.contains(issue) == false {
             issues.append(issue)
         }
@@ -287,7 +357,11 @@ public struct SmartReport: Equatable, Sendable {
             health: sections.contains(.health) ? patch.health : health,
             thermal: sections.contains(.thermal) ? patch.thermal : thermal,
             endurance: sections.contains(.endurance) ? patch.endurance : endurance,
-            lifetime: sections.contains(.lifetime) ? patch.lifetime : lifetime
+            lifetime: sections.contains(.lifetime) ? patch.lifetime : lifetime,
+            capabilityMetadata: sections.contains(.capabilityMetadata)
+                ? patch.capabilityMetadata : capabilityMetadata,
+            errorHistory: sections.contains(.errorHistory) ? patch.errorHistory : errorHistory,
+            selfTestHistory: sections.contains(.selfTestHistory) ? patch.selfTestHistory : selfTestHistory
         )
     }
 }
@@ -540,7 +614,10 @@ public struct SmartData: Equatable, Sendable {
                     hostReadCommands != nil || hostWriteCommands != nil ||
                     controllerBusyTime != nil || powerCycles != nil ||
                     powerOnHours != nil || unsafeShutdowns != nil
-            )
+            ),
+            capabilityMetadata: .unsupported,
+            errorHistory: .unsupported,
+            selfTestHistory: .unsupported
         )
     }
 }

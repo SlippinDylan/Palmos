@@ -59,7 +59,10 @@ final class SmartDataParserTests: XCTestCase {
             health: .available(.init(overallHealth: .passed)),
             thermal: .available(.init(primaryTemperature: 35)),
             endurance: .available(.init(percentageUsed: 4)),
-            lifetime: .available(.init(powerOnHours: 200))
+            lifetime: .available(.init(powerOnHours: 200)),
+            capabilityMetadata: .available(.init(modelName: "Stable Model")),
+            errorHistory: .available(.init(loggedErrorCount: 3)),
+            selfTestHistory: .available(.init(recordedTestCount: 2))
         ))
         let patch = SmartReport(
             thermal: .available(.init(primaryTemperature: 42))
@@ -71,6 +74,40 @@ final class SmartDataParserTests: XCTestCase {
         XCTAssertEqual(merged.primaryTemperature, 42)
         XCTAssertEqual(merged.percentageUsed, 4)
         XCTAssertEqual(merged.powerOnHours, 200)
+        XCTAssertEqual(merged.report.capabilityMetadata.value?.modelName, "Stable Model")
+        XCTAssertEqual(merged.report.errorHistory.value?.loggedErrorCount, 3)
+        XCTAssertEqual(merged.report.selfTestHistory.value?.recordedTestCount, 2)
+    }
+
+    func testParserPreservesCapabilityErrorAndSelfTestSections() throws {
+        let report = try SmartDataParser.parseReport(jsonData: Data(
+            """
+            {
+              "model_family": "Example Family",
+              "model_name": "Example NVMe",
+              "serial_number": "SERIAL",
+              "firmware_version": "1.2.3",
+              "smart_support": { "available": true, "enabled": true },
+              "ata_smart_data": { "capabilities": { "values": [1, 2] } },
+              "ata_smart_error_log": { "summary": { "count": 4, "table": [{ "error_number": 4 }] } },
+              "ata_smart_self_test_log": {
+                "standard": {
+                  "table": [{ "status": { "string": "Completed without error" } }]
+                }
+              }
+            }
+            """.utf8
+        ))
+
+        XCTAssertEqual(report.capabilityMetadata.value?.modelFamily, "Example Family")
+        XCTAssertEqual(report.capabilityMetadata.value?.modelName, "Example NVMe")
+        XCTAssertEqual(report.capabilityMetadata.value?.smartAvailable, true)
+        XCTAssertNotNil(report.capabilityMetadata.value?.detailsJSON)
+        XCTAssertEqual(report.errorHistory.value?.loggedErrorCount, 4)
+        XCTAssertNotNil(report.errorHistory.value?.detailsJSON)
+        XCTAssertEqual(report.selfTestHistory.value?.recordedTestCount, 1)
+        XCTAssertEqual(report.selfTestHistory.value?.latestStatus, "Completed without error")
+        XCTAssertNotNil(report.selfTestHistory.value?.detailsJSON)
     }
 
     func testParserExtractsHighestAndPrimaryTemperatures() throws {

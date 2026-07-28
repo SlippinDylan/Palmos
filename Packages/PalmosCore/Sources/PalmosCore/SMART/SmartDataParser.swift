@@ -54,10 +54,20 @@ public enum TransportHintResolver {
 
 public enum SmartDataParser {
     public static func parseReport(jsonData: Data) throws -> SmartReport {
-        try parse(jsonData: jsonData).report
+        let base = try parseBase(jsonData: jsonData)
+        let supplemental = try SupplementalSMARTParser.parse(jsonData: jsonData)
+        var report = base.report
+        report.capabilityMetadata = supplemental.capabilityMetadata
+        report.errorHistory = supplemental.errorHistory
+        report.selfTestHistory = supplemental.selfTestHistory
+        return report
     }
 
     public static func parse(jsonData: Data) throws -> SmartData {
+        SmartData(report: try parseReport(jsonData: jsonData))
+    }
+
+    private static func parseBase(jsonData: Data) throws -> SmartData {
         let payload = try JSONDecoder().decode(SmartctlPayload.self, from: jsonData)
 
         let primaryTemperature = payload.temperature?.current
@@ -98,6 +108,125 @@ public enum SmartDataParser {
             warningTempThreshold: payload.wctemp,
             criticalTempThreshold: payload.cctemp
         )
+    }
+}
+
+private enum SupplementalSMARTParser {
+    struct Result {
+        let capabilityMetadata: SmartReportSection<SmartCapabilityReport>
+        let errorHistory: SmartReportSection<SmartErrorHistoryReport>
+        let selfTestHistory: SmartReportSection<SmartSelfTestHistoryReport>
+    }
+
+    static func parse(jsonData: Data) throws -> Result {
+        let object = try JSONSerialization.jsonObject(with: jsonData)
+        guard let root = object as? [String: Any] else {
+            return Result(
+                capabilityMetadata: .unsupported,
+                errorHistory: .unsupported,
+                selfTestHistory: .unsupported
+            )
+        }
+
+        let capabilityJSON = canonicalJSON(from: root, keys: capabilityKeys)
+        let smartSupport = root["smart_support"] as? [String: Any]
+        let capability = SmartCapabilityReport(
+            modelFamily: root["model_family"] as? String,
+            modelName: root["model_name"] as? String,
+            serialNumber: root["serial_number"] as? String,
+            firmwareVersion: root["firmware_version"] as? String,
+            smartAvailable: smartSupport?["available"] as? Bool,
+            smartEnabled: smartSupport?["enabled"] as? Bool,
+            detailsJSON: capabilityJSON
+        )
+
+        let errorJSON = canonicalJSON(from: root, keys: errorHistoryKeys)
+        let errorHistory = SmartErrorHistoryReport(
+            loggedErrorCount: errorCount(in: root),
+            detailsJSON: errorJSON
+        )
+
+        let selfTestJSON = canonicalJSON(from: root, keys: selfTestHistoryKeys)
+        let selfTestEntries = selfTestRecords(in: root)
+        let selfTestHistory = SmartSelfTestHistoryReport(
+            recordedTestCount: selfTestEntries?.count,
+            latestStatus: selfTestEntries.flatMap(latestSelfTestStatus),
+            detailsJSON: selfTestJSON
+        )
+
+        return Result(
+            capabilityMetadata: capabilityJSON == nil ? .unsupported : .available(capability),
+            errorHistory: errorJSON == nil ? .unsupported : .available(errorHistory),
+            selfTestHistory: selfTestJSON == nil ? .unsupported : .available(selfTestHistory)
+        )
+    }
+
+    private static let capabilityKeys = [
+        "device", "model_family", "model_name", "serial_number", "firmware_version",
+        "rotation_rate", "form_factor", "smart_support", "ata_smart_data",
+    ]
+    private static let errorHistoryKeys = [
+        "ata_smart_error_log", "nvme_error_information_log", "scsi_error_counter_log",
+        "scsi_grown_defect_list",
+    ]
+    private static let selfTestHistoryKeys = [
+        "ata_smart_self_test_log", "nvme_self_test_log", "scsi_self_test_log",
+    ]
+
+    private static func canonicalJSON(from root: [String: Any], keys: [String]) -> Data? {
+        let selected = Dictionary(uniqueKeysWithValues: keys.compactMap { key in
+            root[key].map { (key, $0) }
+        })
+        guard selected.isEmpty == false else { return nil }
+        return try? JSONSerialization.data(withJSONObject: selected, options: [.sortedKeys])
+    }
+
+    private static func errorCount(in root: [String: Any]) -> UInt64? {
+        if let entries = root["nvme_error_information_log"] as? [Any] {
+            return UInt64(entries.count)
+        }
+        guard let log = root["ata_smart_error_log"] as? [String: Any],
+              let summary = log["summary"] as? [String: Any] else {
+            return nil
+        }
+        return unsignedInteger(summary["count"])
+    }
+
+    private static func selfTestRecords(in root: [String: Any]) -> [[String: Any]]? {
+        if let nvme = root["nvme_self_test_log"] as? [String: Any],
+           let table = nvme["table"] as? [[String: Any]] {
+            return table
+        }
+        if let ata = root["ata_smart_self_test_log"] as? [String: Any] {
+            for name in ["standard", "extended"] {
+                if let log = ata[name] as? [String: Any],
+                   let table = log["table"] as? [[String: Any]] {
+                    return table
+                }
+            }
+        }
+        if let scsi = root["scsi_self_test_log"] as? [[String: Any]] {
+            return scsi
+        }
+        return nil
+    }
+
+    private static func latestSelfTestStatus(from entries: [[String: Any]]) -> String? {
+        guard let first = entries.first else { return nil }
+        if let status = first["status"] as? [String: Any] {
+            return status["string"] as? String
+        }
+        return first["status"] as? String
+    }
+
+    private static func unsignedInteger(_ value: Any?) -> UInt64? {
+        if let number = value as? NSNumber {
+            return number.uint64Value
+        }
+        if let string = value as? String {
+            return UInt64(string.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
     }
 }
 

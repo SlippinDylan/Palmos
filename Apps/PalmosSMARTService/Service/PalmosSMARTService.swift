@@ -458,6 +458,7 @@ private final class SMARTQueryOperation: @unchecked Sendable {
                 processDidExit: true,
                 deviceSMARTIOQuiesced: true,
                 requestID: request.requestID,
+                completedSections: request.sections,
                 error: nil
             )
             replyBox.call(

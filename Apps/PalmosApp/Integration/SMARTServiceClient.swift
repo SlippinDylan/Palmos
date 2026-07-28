@@ -208,7 +208,7 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting,
     ) async -> SMARTServiceRefreshResult {
         let result = await querySMART(
             for: device,
-            sections: [.liveTelemetry],
+            sections: Set(SMARTQuerySection.allCases),
             topologyGeneration: topologyGeneration,
             allowsLegacyFullRead: true
         )
@@ -236,7 +236,7 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting,
             guard capabilities.observableSMARTFailures else {
                 return .updateRequired
             }
-            guard capabilities.sectionedSMARTQueries else {
+            guard capabilities.typedSMARTSections else {
                 guard allowsLegacyFullRead else {
                     return .updateRequired
                 }
@@ -303,10 +303,17 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting,
             if let completionError = response.error {
                 return Self.queryResult(from: errorMapper.mapCompletionError(completionError))
             }
+            guard let completedSections = response.completedSections else {
+                throw SMARTServiceClientError.invalidSMARTCompletedSections
+            }
+            let completed = Set(completedSections)
+            guard completed.isEmpty == false, completed.isSubset(of: sections) else {
+                throw SMARTServiceClientError.invalidSMARTCompletedSections
+            }
             let report = try SmartDataParser.parseReport(jsonData: response.payload)
             return .available(
                 report,
-                refreshedSections: Self.reportSections(for: sections),
+                refreshedSections: Self.reportSections(for: completed),
                 compatibility: compatibility
             )
         } catch {
@@ -394,10 +401,17 @@ final class SMARTServiceClient: SMARTServiceProviding, SMARTHelperInspecting,
     private static func reportSections(
         for querySections: Set<SMARTQuerySection>
     ) -> Set<SmartReportSectionKind> {
-        guard querySections.contains(.liveTelemetry) else {
-            return []
-        }
-        return Set(SmartReportSectionKind.allCases)
+        Set(querySections.map { section in
+            switch section {
+            case .health: .health
+            case .thermal: .thermal
+            case .endurance: .endurance
+            case .lifetime: .lifetime
+            case .capabilityMetadata: .capabilityMetadata
+            case .errorHistory: .errorHistory
+            case .selfTestHistory: .selfTestHistory
+            }
+        })
     }
 
     private static func legacyRefreshResult(

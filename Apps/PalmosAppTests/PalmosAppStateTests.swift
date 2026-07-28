@@ -9,7 +9,8 @@ final class PalmosAppStateTests: XCTestCase {
             health: .available(.init(overallHealth: .passed)),
             thermal: .available(.init(primaryTemperature: 34)),
             endurance: .available(.init(percentageUsed: 2)),
-            lifetime: .available(.init(powerOnHours: 100))
+            lifetime: .available(.init(powerOnHours: 100)),
+            capabilityMetadata: .available(.init(modelName: "Stable Model"))
         ))
         var device = ExternalDevice.preview(id: "disk4")
         device.smartSnapshot = .available(cached)
@@ -38,7 +39,8 @@ final class PalmosAppStateTests: XCTestCase {
             health: .available(.init(overallHealth: .passed)),
             thermal: .available(.init(primaryTemperature: 34)),
             endurance: .available(.init(percentageUsed: 2)),
-            lifetime: .available(.init(powerOnHours: 100))
+            lifetime: .available(.init(powerOnHours: 100)),
+            capabilityMetadata: .available(.init(modelName: "Stable Model"))
         ))
         var device = ExternalDevice.preview(id: "disk4")
         device.smartSnapshot = .available(cached)
@@ -63,6 +65,7 @@ final class PalmosAppStateTests: XCTestCase {
         XCTAssertEqual(result.primaryTemperature, 43)
         XCTAssertEqual(result.percentageUsed, 2)
         XCTAssertEqual(result.powerOnHours, 100)
+        XCTAssertEqual(result.report.capabilityMetadata.value?.modelName, "Stable Model")
         XCTAssertEqual(
             state.smartDetails(for: device.id)?.reportState.thermal,
             SMARTSectionPresentationState<SmartThermalReport>.available(

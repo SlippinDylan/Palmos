@@ -619,7 +619,8 @@ final class DeviceIOQuiescerTests: XCTestCase {
             schemaVersion: 1,
             payload: Data("{}".utf8),
             processDidExit: true,
-            requestID: try XCTUnwrap(sessionB.currentRequestID)
+            requestID: try XCTUnwrap(sessionB.currentRequestID),
+            completedSections: SMARTQuerySection.allCases
         ))
         sessionB.emit(.reply(response))
         guard case .available = await refreshB.value else {

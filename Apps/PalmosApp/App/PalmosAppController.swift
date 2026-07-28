@@ -72,6 +72,7 @@ final class PalmosAppController: ObservableObject {
     private var actionFeedbackClearTask: Task<Void, Never>?
     private var quitTask: Task<Void, Never>?
     private var smartRefreshTasksByDeviceID: [DeviceID: Task<Void, Never>] = [:]
+    private var smartRefreshSectionsByDeviceID: [DeviceID: Set<SmartReportSectionKind>] = [:]
     private var smartRefreshGenerationsByDeviceID: [DeviceID: Int] = [:]
     private var smartTelemetryScheduleTask: Task<Void, Never>?
     private var smartTelemetryLastActivityByDeviceID: [DeviceID: ContinuousClock.Instant] = [:]
@@ -225,6 +226,7 @@ final class PalmosAppController: ObservableObject {
         actionFeedbackClearTask?.cancel()
         quitTask?.cancel()
         smartRefreshTasksByDeviceID.values.forEach { $0.cancel() }
+        smartRefreshSectionsByDeviceID.removeAll()
         smartTelemetryScheduleTask?.cancel()
         externalEjectIntentExpiryTasks.values.forEach { $0.cancel() }
         volumeCapacityRefresher.stop()
@@ -985,6 +987,7 @@ final class PalmosAppController: ObservableObject {
         let topologyGeneration = discoveryWriteGeneration
         let refreshedSections = Set(SmartReportSectionKind.allCases)
         smartRefreshGenerationsByDeviceID[deviceID] = generation
+        smartRefreshSectionsByDeviceID[deviceID] = refreshedSections
         smartTelemetryLastActivityByDeviceID[deviceID] = .now
 
         state.setSMARTRefreshing(
@@ -1003,7 +1006,7 @@ final class PalmosAppController: ObservableObject {
             }
             let result = await smartService.querySMART(
                 for: device,
-                sections: [.liveTelemetry],
+                sections: Set(SMARTQuerySection.allCases),
                 topologyGeneration: topologyGeneration,
                 allowsLegacyFullRead: true
             )
@@ -1013,10 +1016,12 @@ final class PalmosAppController: ObservableObject {
                   state.device(id: deviceID)?.physicalStoreBSDName == device.physicalStoreBSDName else {
                 if smartRefreshGenerationsByDeviceID[deviceID] == generation {
                     smartRefreshTasksByDeviceID[deviceID] = nil
+                    smartRefreshSectionsByDeviceID[deviceID] = nil
                 }
                 return
             }
             smartRefreshTasksByDeviceID[deviceID] = nil
+            smartRefreshSectionsByDeviceID[deviceID] = nil
             applySMARTQueryResult(
                 result,
                 for: deviceID,
@@ -1089,8 +1094,9 @@ final class PalmosAppController: ObservableObject {
 
         let generation = smartRefreshGenerationsByDeviceID[deviceID, default: 0] + 1
         let topologyGeneration = discoveryWriteGeneration
-        let refreshedSections = Set(SmartReportSectionKind.allCases)
+        let refreshedSections: Set<SmartReportSectionKind> = [.thermal]
         smartRefreshGenerationsByDeviceID[deviceID] = generation
+        smartRefreshSectionsByDeviceID[deviceID] = refreshedSections
         smartTelemetryLastActivityByDeviceID[deviceID] = .now
         state.setSMARTRefreshing(
             for: deviceID,
@@ -1102,7 +1108,7 @@ final class PalmosAppController: ObservableObject {
             guard let self else { return }
             let result = await smartService.querySMART(
                 for: device,
-                sections: [.liveTelemetry],
+                sections: [.thermal],
                 topologyGeneration: topologyGeneration,
                 allowsLegacyFullRead: false
             )
@@ -1112,10 +1118,12 @@ final class PalmosAppController: ObservableObject {
                   state.device(id: deviceID)?.physicalStoreBSDName == device.physicalStoreBSDName else {
                 if smartRefreshGenerationsByDeviceID[deviceID] == generation {
                     smartRefreshTasksByDeviceID[deviceID] = nil
+                    smartRefreshSectionsByDeviceID[deviceID] = nil
                 }
                 return
             }
             smartRefreshTasksByDeviceID[deviceID] = nil
+            smartRefreshSectionsByDeviceID[deviceID] = nil
             applySMARTQueryResult(
                 result,
                 for: deviceID,
@@ -1307,11 +1315,12 @@ final class PalmosAppController: ObservableObject {
         guard let task = smartRefreshTasksByDeviceID.removeValue(forKey: deviceID) else {
             return
         }
+        let attemptedSections = smartRefreshSectionsByDeviceID.removeValue(forKey: deviceID) ?? []
         smartRefreshGenerationsByDeviceID[deviceID, default: 0] += 1
         task.cancel()
         state.failSMARTReportSections(
             for: deviceID,
-            sections: Set(SmartReportSectionKind.allCases),
+            sections: attemptedSections,
             message: "SMART refresh was cancelled for safe eject.",
             attemptedAt: Date()
         )
@@ -1417,6 +1426,7 @@ final class PalmosAppController: ObservableObject {
         let removedSMARTDeviceIDs = trackedSMARTDeviceIDs.subtracting(liveDeviceIDs)
         removedSMARTDeviceIDs.forEach { deviceID in
             smartRefreshTasksByDeviceID.removeValue(forKey: deviceID)?.cancel()
+            smartRefreshSectionsByDeviceID.removeValue(forKey: deviceID)
             smartRefreshGenerationsByDeviceID.removeValue(forKey: deviceID)
             smartTelemetryLastActivityByDeviceID.removeValue(forKey: deviceID)
             smartTelemetryFailureCountByDeviceID.removeValue(forKey: deviceID)
