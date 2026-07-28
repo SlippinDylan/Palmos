@@ -79,6 +79,7 @@ struct EjectRecoveryView: View {
             Spacer(minLength: 12)
             if presentation.actions.contains(.cancel) {
                 recoveryButton(.cancel, action: onCancel)
+                    .disabled(presentation.isOperationActive)
             }
             if presentation.actions.contains(.retry) {
                 recoveryButton(.retry, action: onRetry)
@@ -290,6 +291,8 @@ final class EjectRecoveryWindowPresenter: NSObject, ObservableObject, NSWindowDe
         switch coordinator.state {
         case .failed, .resolutionFailed:
             coordinator.dismissTerminalFailure()
+        case .working:
+            break
         default:
             coordinator.cancel()
         }

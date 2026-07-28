@@ -124,14 +124,18 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
         case .failed(let target, let failure):
             guard target.deviceID == selectedDeviceID else { return nil }
             let reason = EjectLocalization.failureBody(failure)
+            let guidance = EjectLocalization.failureGuidance(failure)
             self.init(
                 deviceID: target.deviceID,
                 displayName: target.displayName,
                 title: EjectLocalization.failureTitle(target: target),
                 primaryText: reason,
                 reason: reason,
-                guidance: EjectLocalization.failureGuidance(failure),
-                technicalDetail: EjectLocalization.technicalDetail(failure),
+                guidance: guidance,
+                technicalDetail: EjectLocalization.technicalDetail(
+                    failure,
+                    excluding: [reason, guidance].compactMap { $0 }
+                ),
                 actions: failure.category == .io ? [.cancel, .retryFailure] : [],
                 isOperationActive: false,
                 operationStatus: nil
@@ -186,7 +190,10 @@ struct EjectRecoveryPresentation: Equatable, Sendable {
             primaryText: reason,
             reason: reason,
             guidance: EjectLocalization.recoveryGuidance,
-            technicalDetail: EjectLocalization.technicalDetail(recovery.failure),
+            technicalDetail: EjectLocalization.technicalDetail(
+                recovery.failure,
+                excluding: [reason, EjectLocalization.recoveryGuidance]
+            ),
             actions: [.cancel, .retry, .requestForce],
             isOperationActive: isOperationActive,
             operationStatus: operationStatus ?? diagnosisStatus
@@ -324,13 +331,41 @@ enum EjectLocalization {
         String(localized: "eject.error.ioGuidance")
     }
 
-    static func technicalDetail(_ failure: EjectFailure) -> String? {
-        guard let rawStatus = failure.rawStatus else { return nil }
-        return format(
-            String(localized: "eject.error.technicalDetail"),
-            UInt32(bitPattern: rawStatus),
-            failure.physicalBSDName
-        )
+    static func technicalDetail(
+        _ failure: EjectFailure,
+        excluding visibleCopy: [String]
+    ) -> String? {
+        let systemDetail = technicalSystemMessage(failure, excluding: visibleCopy).map {
+            format(String(localized: "eject.error.systemMessageDetail"), $0)
+        }
+        let statusDetail = failure.rawStatus.map {
+            format(
+                String(localized: "eject.error.technicalDetail"),
+                UInt32(bitPattern: $0),
+                failure.physicalBSDName
+            )
+        }
+        return [systemDetail, statusDetail]
+            .compactMap { $0 }
+            .joined(separator: "\n")
+            .nilIfEmpty
+    }
+
+    private static func technicalSystemMessage(
+        _ failure: EjectFailure,
+        excluding visibleCopy: [String]
+    ) -> String? {
+        guard let systemMessage = failure.systemMessage.map(singleLineMessage)?.nilIfEmpty else {
+            return nil
+        }
+        let normalizedSystemMessage = normalizedMessage(systemMessage)
+        guard normalizedSystemMessage.isEmpty == false else { return nil }
+
+        let normalizedVisibleCopy = visibleCopy.map(normalizedMessage)
+        guard normalizedVisibleCopy.contains(where: { $0.contains(normalizedSystemMessage) }) == false else {
+            return nil
+        }
+        return systemMessage
     }
 
     static func occupancyDescription(_ type: OccupancyType) -> String {

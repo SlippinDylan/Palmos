@@ -173,7 +173,7 @@ final class EjectRecoveryViewTests: XCTestCase {
             stage: .ejecting,
             category: .io,
             rawStatus: Int32(bitPattern: 0xFEDC_BA98),
-            systemMessage: "I/O error",
+            systemMessage: "I/O error\nfrom Disk Arbitration",
             physicalBSDName: "disk4",
             holders: []
         )
@@ -186,8 +186,35 @@ final class EjectRecoveryViewTests: XCTestCase {
         XCTAssertEqual(presentation?.primaryText, presentation?.reason)
         XCTAssertEqual(presentation?.primaryText, String(localized: "eject.error.io"))
         XCTAssertEqual(presentation?.guidance, EjectLocalization.ioFailureGuidance)
-        XCTAssertFalse(presentation?.reason.contains(failure.systemMessage ?? "") == true)
-        XCTAssertTrue(presentation?.technicalDetail?.contains("0xFEDCBA98") == true)
+        XCTAssertFalse(presentation?.reason.contains("I/O error") == true)
+        guard let detail = presentation?.technicalDetail else {
+            return XCTFail("Expected technical details")
+        }
+        XCTAssertEqual(detail.components(separatedBy: "\n").count, 2)
+        XCTAssertTrue(detail.contains("I/O error from Disk Arbitration"))
+        XCTAssertFalse(detail.contains("\r"))
+        XCTAssertTrue(detail.contains("0xFEDCBA98"))
+        XCTAssertTrue(detail.contains("disk4"))
+    }
+
+    func testTechnicalDetailsDoNotRepeatSystemMessageAlreadyVisibleInBody() {
+        let failure = EjectFailure(
+            stage: .ejecting,
+            category: .unknown,
+            rawStatus: EIO,
+            systemMessage: "Disk Arbitration rejected the request.",
+            physicalBSDName: "disk4",
+            holders: []
+        )
+        let presentation = EjectRecoveryPresentation(
+            state: .failed(target: target, failure: failure),
+            selectedDeviceID: target.deviceID
+        )
+
+        XCTAssertTrue(presentation?.primaryText.contains("Disk Arbitration rejected the request.") == true)
+        XCTAssertFalse(presentation?.technicalDetail?.contains("Disk Arbitration rejected the request.") == true)
+        XCTAssertTrue(presentation?.technicalDetail?.contains("0x00000005") == true)
+        XCTAssertTrue(presentation?.technicalDetail?.contains("disk4") == true)
     }
 
     func testBusyTerminalFailureUsesSingleBodyWhenSystemMessageRepeatsReason() {

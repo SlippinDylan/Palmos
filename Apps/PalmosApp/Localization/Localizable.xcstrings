@@ -1539,6 +1539,28 @@
         }
       }
     },
+    "eject.error.systemMessageDetail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS message: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 信息：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 訊息：%@"
+          }
+        }
+      }
+    },
     "eject.error.technicalDetail" : {
       "localizations" : {
         "en" : {

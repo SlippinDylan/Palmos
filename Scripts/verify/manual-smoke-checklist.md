@@ -53,6 +53,10 @@ Run this checklist after each significant change to the app or helper. Every ite
 - [ ] Working-directory holder is identified after running `working-directory-holder`
 - [ ] Device-node holder is identified when current permissions allow `device-node-holder`
 - [ ] When holder inspection is unavailable or empty, UI honestly says macOS reports the disk in use but the process could not be identified
+- [ ] Busy and terminal I/O failures open in a separate non-modal recovery window; the menu bar panel remains responsive while the window is visible
+- [ ] The recovery window keeps the standard traffic-light controls, has no title-bar text or separator, and uses the native window background without an inset card
+- [ ] After the recovery window or menu bar panel loses focus, each can be brought forward and its available actions respond on the first click
+- [ ] The terminal I/O window keeps the prescribed reason and guidance copy; expanded technical details show a single-line macOS message plus the status code and whole-disk BSD name without duplicating visible copy
 - [ ] Busy recovery remains visible until Cancel, Retry Eject, or Force Eject… is selected
 - [ ] Retry keeps the recovery explanation visible while the normal eject operation is running
 - [ ] Force Eject… opens a second confirmation; Cancel is the safe/default action and Force Eject is destructive
@@ -65,7 +69,8 @@ Run this checklist after each significant change to the app or helper. Every ite
 - [ ] Removing/reassigning the target during recovery prevents Retry or Force from acting on the replacement disk
 - [ ] Validate on both Apple silicon and Intel hardware when preparing a universal release
 - [ ] Validate every supported macOS major version
-- [ ] At the 360-point panel width, verify English, Simplified Chinese, and Traditional Chinese layouts without clipped recovery or confirmation controls
+- [ ] At the 360-point menu panel width, verify English, Simplified Chinese, and Traditional Chinese layouts without clipped footer controls
+- [ ] In English, Simplified Chinese, and Traditional Chinese, verify both recovery-window variants at short and long content heights without clipped buttons, excess blank space, or unintended horizontal resizing
 
 ## Settings
 
