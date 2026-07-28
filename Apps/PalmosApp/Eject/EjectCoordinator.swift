@@ -64,13 +64,17 @@ final class EjectCoordinator: ObservableObject {
         guard let id = workflowID else { return }
         guard cancellationWorkflowID != id else { return }
         cancellationWorkflowID = id
-        operationTask?.cancel()
+        let inFlightOperation = operationTask
+        inFlightOperation?.cancel()
         diagnosisTask?.cancel()
         topologyValidationTask?.cancel()
-        if let target = activeWorkflow?.target {
+        if case .working = state {
+            // Keep the submitted stage visible until its real completion arrives.
+        } else if let target = activeWorkflow?.target {
             state = .working(target: target, stage: .preparing)
         }
         operationTask = Task { [weak self] in
+            await inFlightOperation?.value
             await self?.finishCancellation(workflowID: id)
         }
     }
@@ -249,7 +253,7 @@ final class EjectCoordinator: ObservableObject {
             validatedTopologyGeneration = generation
             workflow.refresh(refreshed, generation: generation)
             if shouldEndRecoveryAfterExternalUnmount(workflow: workflow) {
-                operationTask?.cancel()
+                await cancelActiveOperationBeforeTerminalTransition()
                 await finishExternalUnmount(workflowID: id)
                 return
             }
@@ -257,10 +261,10 @@ final class EjectCoordinator: ObservableObject {
         } catch {
             guard isCurrent(id), latestTopologyGeneration == generation else { return }
             if isDisappearance(error) {
-                operationTask?.cancel()
+                await cancelActiveOperationBeforeTerminalTransition()
                 await finishDisappearance(target: workflow.target, workflowID: id)
             } else {
-                operationTask?.cancel()
+                await cancelActiveOperationBeforeTerminalTransition()
                 await handleRevalidationError(error, target: workflow.target, workflowID: id)
             }
         }
@@ -511,6 +515,17 @@ final class EjectCoordinator: ObservableObject {
     ) {
         operationTask?.cancel()
         operationTask = Task { await operation() }
+    }
+
+    private func cancelActiveOperationBeforeTerminalTransition() async {
+        let inFlightOperation = operationTask
+        inFlightOperation?.cancel()
+        switch state {
+        case .working(_, .unmounting), .working(_, .forceUnmounting), .working(_, .ejecting):
+            await inFlightOperation?.value
+        default:
+            break
+        }
     }
 
     private func clearWorkflow(_ id: UUID) {

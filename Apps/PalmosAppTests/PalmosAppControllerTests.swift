@@ -2341,6 +2341,42 @@ final class PalmosAppControllerTests: XCTestCase {
         XCTAssertEqual(quitRecorder.invocationCount, 1)
     }
 
+    func testFooterQuitWaitsForSubmittedEjectBeforeInvokingQuitHandler() async throws {
+        let device = makeDevice(id: "disk21", volumes: ["disk21s1"])
+        let ejecter = BlockingDiskEjecter()
+        let coordinator = makeEjectCoordinator(
+            resolver: RecordingEjectTargetResolver(device: device),
+            ejecter: ejecter
+        )
+        let quitRecorder = MainActorQuitRecorder()
+        let controller = PalmosAppController(
+            state: PalmosAppState(devices: [device], selectedDeviceID: device.id),
+            deviceDiscovery: StubExternalDeviceDiscovery(results: [[device]]),
+            ejectCoordinator: coordinator,
+            quitFeedbackDuration: 0,
+            quitHandler: {
+                quitRecorder.recordInvocation()
+            }
+        )
+        let ejectAction = try XCTUnwrap(
+            controller.selectedFooterActions.first(where: { $0.kind == .eject })
+        )
+        controller.perform(ejectAction)
+        await ejecter.waitUntilNormalEjectStarts()
+
+        controller.perform(SystemAction(kind: .quit, intent: .quit))
+        try await Task.sleep(for: .milliseconds(20))
+
+        XCTAssertEqual(quitRecorder.invocationCount, 0)
+        guard case .working(_, .unmounting) = coordinator.state else {
+            return XCTFail("Quit must wait while the submitted disk operation is in flight")
+        }
+
+        await ejecter.finishNormalEject()
+        await waitUntilEventually { quitRecorder.invocationCount == 1 }
+        XCTAssertEqual(quitRecorder.invocationCount, 1)
+    }
+
     func testPerformIgnoresSecondActionWhileAnotherActionIsInFlight() async {
         let actionPerformer = StubSystemActionPerformer()
         let controller = PalmosAppController(

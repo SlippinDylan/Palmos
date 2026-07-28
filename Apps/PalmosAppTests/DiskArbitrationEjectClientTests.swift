@@ -702,7 +702,7 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
         XCTAssertEqual(probe.results, [.cancelled])
     }
 
-    func testInstallSubmitRaceNeverSubmitsAfterTerminalCancellation() {
+    func testInstallSubmitRaceEitherCancelsBeforeSubmitOrWaitsForSubmittedCallback() {
         for _ in 0..<100 {
             let probe = CompletionProbe()
             let registry = DiskArbitrationCallbackRegistry()
@@ -729,11 +729,58 @@ final class DiskArbitrationEjectClientTests: XCTestCase {
             contendersQueue.activate()
             finished.wait()
 
-            if probe.results == [.cancelled], probe.submitCount == 1 {
-                XCTAssertEqual(probe.timeline, ["submit", "cancelled"])
+            if probe.submitCount == 0 {
+                XCTAssertEqual(probe.results, [.cancelled])
+            } else {
+                XCTAssertEqual(probe.results, [])
+                registry.resolveCallback(context: context, result: .success)
+                XCTAssertEqual(probe.results, [.success])
             }
             XCTAssertLessThanOrEqual(probe.submitCount, 1)
+            XCTAssertEqual(registry.registeredContextCount, 0)
         }
+    }
+
+    func testCancellationAfterSubmitWaitsForCallbackAndStopsBeforeNextStage() {
+        let probe = CompletionProbe()
+        let registry = DiskArbitrationCallbackRegistry()
+        let cancellation = DiskArbitrationOperationCancellation(registry: registry)
+        let context = registry.register { probe.record($0) }
+        cancellation.install(context)
+        XCTAssertTrue(cancellation.submit { probe.recordSubmit() })
+
+        cancellation.cancel()
+
+        XCTAssertEqual(probe.results, [])
+        XCTAssertEqual(registry.registeredContextCount, 1)
+
+        registry.resolveCallback(context: context, result: .success)
+
+        XCTAssertEqual(probe.results, [.success])
+        XCTAssertEqual(
+            cancellation.terminalResultAfterCurrentOperation(stage: .unmounting),
+            .failure(result: .cancelled, stage: .unmounting)
+        )
+        XCTAssertEqual(registry.registeredContextCount, 0)
+    }
+
+    func testCancellationAfterSubmitWaitsForTimeoutBeforeStoppingSequence() {
+        let probe = CompletionProbe()
+        let registry = DiskArbitrationCallbackRegistry()
+        let cancellation = DiskArbitrationOperationCancellation(registry: registry)
+        let context = registry.register { probe.record($0) }
+        cancellation.install(context)
+        XCTAssertTrue(cancellation.submit { probe.recordSubmit() })
+
+        cancellation.cancel()
+        registry.resolve(context: context, event: .timeout)
+
+        XCTAssertEqual(probe.results, [.timedOut])
+        XCTAssertEqual(
+            cancellation.terminalResultAfterCurrentOperation(stage: .ejecting),
+            .failure(result: .cancelled, stage: .ejecting)
+        )
+        XCTAssertEqual(registry.registeredContextCount, 0)
     }
 
     private func assertRegistryRace(

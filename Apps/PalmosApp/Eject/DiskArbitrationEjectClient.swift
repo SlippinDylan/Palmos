@@ -412,6 +412,10 @@ private final class LiveDiskArbitrationBoundSequence: @unchecked Sendable {
 
     private func handle(_ result: DiskArbitrationOperationResult, phase: BoundDiskArbitrationPhase) {
         let stage = phase.operationStage(force: force)
+        if let cancellationResult = cancellation.terminalResultAfterCurrentOperation(stage: stage) {
+            finish(cancellationResult)
+            return
+        }
         switch phase {
         case .logicalUnmount(let index):
             guard unmountSucceeded(result) else {
@@ -567,7 +571,7 @@ final class DiskArbitrationOperationCancellation: @unchecked Sendable {
     func install(_ callbackToken: DiskArbitrationCallbackToken) {
         let shouldCancel = lock.withLock {
             self.callbackToken = callbackToken
-            return isCancelled
+            return isCancelled && isSubmitted == false
         }
         if shouldCancel {
             registry.resolve(context: callbackToken, event: .cancelled)
@@ -577,10 +581,20 @@ final class DiskArbitrationOperationCancellation: @unchecked Sendable {
     func cancel() {
         let installedToken = lock.withLock {
             isCancelled = true
-            return callbackToken
+            // Disk Arbitration cannot retract a submitted request. Its callback
+            // must remain registered so the workflow barrier outlives the request.
+            return isSubmitted ? nil : callbackToken
         }
         if let installedToken {
             registry.resolve(context: installedToken, event: .cancelled)
+        }
+    }
+
+    func terminalResultAfterCurrentOperation(
+        stage: EjectOperationStage
+    ) -> DiskArbitrationSequenceResult? {
+        lock.withLock {
+            isCancelled ? .failure(result: .cancelled, stage: stage) : nil
         }
     }
 
