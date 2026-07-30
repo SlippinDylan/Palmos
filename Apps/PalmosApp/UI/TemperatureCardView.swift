@@ -50,12 +50,8 @@ struct TemperatureCardView: View {
     @ViewBuilder
     private var refreshStatusView: some View {
         switch refreshStatus {
-        case .none:
+        case .none, .updating:
             EmptyView()
-        case .updating:
-            Text("Updating temperature…")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         case .showingLastReadingAfterFailure:
             Label("Temperature update failed. Showing the last reading.", systemImage: "exclamationmark.triangle")
                 .font(.footnote)

@@ -4980,28 +4980,6 @@
         }
       }
     },
-    "Updating temperature…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Updating temperature…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在更新温度…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在更新溫度…"
-          }
-        }
-      }
-    },
     "Update" : {
       "localizations" : {
         "en" : {
