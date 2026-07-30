@@ -11,7 +11,8 @@ final class LocalizationCatalogTests: XCTestCase {
         "No warnings", "SMART data partially available", "Threshold %@%%",
         "Bus %@", "Receptacle %@", "Duration minutes", "Duration hours", "Rate per second",
         "Critical warning %@ (%@)", "Available spare %@ (threshold %@%%)",
-        "Updating temperature…", "Temperature update failed. Showing the last reading."
+        "Updating temperature…", "Temperature update failed. Showing the last reading.",
+        "Repair"
     ]
 
     func testRequiredPresentationKeysHaveAllTranslatedLocales() throws {

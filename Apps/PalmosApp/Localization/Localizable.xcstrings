@@ -4053,6 +4053,28 @@
         }
       }
     },
+    "Repair" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repair"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修復"
+          }
+        }
+      }
+    },
     "Role" : {
       "localizations" : {
         "en" : {

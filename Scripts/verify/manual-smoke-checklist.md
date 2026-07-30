@@ -105,6 +105,10 @@ Run this checklist after each significant change to the app or helper. Every ite
 
 - [ ] Manually removing the helper binary causes the next refresh to show "Helper required"
 - [ ] Re-installing the helper restores normal SMART operation
+- [ ] With the Helper service disabled and its files removed, reinstalling prompts for administrator authorization once, restores the service, and completes the XPC handshake
+- [ ] Repeat disabled-service recovery after a reboot and after reinstalling the same Palmos version
+- [ ] With Helper files present but the service disabled, installation still repairs the override before verification
+- [ ] Canceling administrator authorization leaves Palmos running and reports the Helper installation failure without retrying indefinitely
 
 ## SMART — Unsupported Paths
 
