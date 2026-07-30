@@ -31,10 +31,10 @@ Palmos 包含三个 target：
 
 ## 安装 GitHub Release
 
-Palmos Release 使用免费的 Apple Development 证书，让 App 和特权 Helper 能够相互验证。Release 未经过 Apple 公证，因此将 `PalmosApp.app` 移到 `/Applications` 后，需要执行一次以下命令来移除下载隔离属性：
+打开下载的 DMG 后，将左侧的 `Palmos` 拖到右侧的 `Applications` 文件夹。Palmos Release 使用免费的 Apple Development 证书，让 App 和特权 Helper 能够相互验证。Release 未经过 Apple 公证，因此安装后需要执行一次以下命令来移除下载隔离属性：
 
 ```sh
-sudo xattr -rd com.apple.quarantine /Applications/PalmosApp.app
+sudo xattr -rd com.apple.quarantine /Applications/Palmos.app
 ```
 
 这个递归命令也会处理 App 包内嵌的 Helper。不要把 Helper 单独复制出来，也不需要再对它执行一次 `xattr`。正常打开 Palmos，需要时再到设置中安装 SMART Helper。
@@ -92,7 +92,7 @@ security find-identity -v -p codesigning
 Scripts/build-local-smart-app.sh --identity APPLE_DEVELOPMENT_SHA1
 ```
 
-脚本每次都会在隔离目录中，从固定版本且经过 SHA 校验的源码归档重新构建 smartctl。它会签名新生成的二进制，将签名后的 SHA-256 传给 Helper，再使用从 companion 签名中提取的 Team ID 构建全部组件并执行完整签名检查。验证通过的 companion 会放到 `DerivedData/LocalSMART` 下不可变的摘要命名路径；只有所有检查都通过后，脚本才会原子替换被 Git 忽略的 `Config/xcconfigs/Local.xcconfig`。之后从 Xcode 执行 **Cmd+R** 会复用这个已经验证的 companion 和 Personal Team；命令行显式禁用签名时则不会嵌入它。脚本最后会输出可以启动的 `.app` 完整路径。
+脚本每次都会在隔离目录中，从固定版本且经过 SHA 校验的源码归档重新构建 smartctl。它会签名新生成的二进制，将签名后的 SHA-256 传给 Helper，再使用从 companion 签名中提取的 Team ID 构建全部组件并执行完整签名检查。验证通过的 companion 和对应源码归档会放到 `DerivedData/LocalSMART` 下不可变的摘要命名路径；只有所有检查都通过后，脚本才会原子替换被 Git 忽略的 `Config/xcconfigs/Local.xcconfig`。之后从 Xcode 执行 **Cmd+R** 会复用这两个已经验证的文件和 Personal Team；命令行显式禁用签名时则不会嵌入它们。脚本最后会输出可以启动的 `.app` 完整路径。
 
 如果所选 Personal Team 与已安装 Helper 的 Team ID 不一致，请先按照[移除 Helper](#移除-helper)中的命令清理旧版本，再从新构建安装。已安装的 Helper 只授权原 Team 的客户端，本地构建脚本不会自动执行破坏性的系统清理。
 
@@ -137,7 +137,7 @@ Palmos 使用 [MenuBarExtraAccess 1.3.0](https://github.com/orchetect/MenuBarExt
 
 Palmos Release 包含一个单独签名的 `smartctl` 可执行文件。它由 smartmontools 7.5 构建，并禁用了外部硬盘数据库，因此 root Helper 不会读取 `/usr/local` 或 Homebrew 路径中的配置和数据库文件。
 
-smartmontools 使用 GNU GPL version 2 or later 发布。完整的上游许可证位于 [`Shared/Licensing/smartmontools-COPYING.txt`](Shared/Licensing/smartmontools-COPYING.txt)，也会随 App 一起打包。每个 GitHub Release 还会附带构建时实际使用、经过 checksum 固定的 `smartmontools-7.5.tar.gz` 对应源码归档。
+smartmontools 使用 GNU GPL version 2 or later 发布。完整的上游许可证位于 [`Shared/Licensing/smartmontools-COPYING.txt`](Shared/Licensing/smartmontools-COPYING.txt)，也会随 App 一起打包。构建时实际使用、经过 checksum 固定的对应源码归档会内嵌在 `Palmos.app/Contents/Resources/ThirdPartySources/smartmontools-7.5.tar.gz`，因此 GitHub Release 只需要提供 DMG，不再单独上传源码附件。
 
 固定的上游归档从 SourceForge 下载，其 SHA-256 必须为：
 

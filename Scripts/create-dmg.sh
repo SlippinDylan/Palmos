@@ -6,6 +6,7 @@ umask 077
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
 unset BASH_ENV ENV CDPATH PLIST_BUDDY
 
+readonly SCRIPT_DIRECTORY="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly APP_PATH="${1:?Usage: create-dmg.sh <app-path> <output-dmg-path> [volume-name]}"
 readonly OUTPUT_DMG="${2:?Usage: create-dmg.sh <app-path> <output-dmg-path> [volume-name]}"
 
@@ -86,18 +87,18 @@ for y in range(H):
     for x in range(W):
         r, g, b, a = BG[0], BG[1], BG[2], 255
 
-        cx, cy = W // 2, H // 2
-        shaft_top = cy - 14
-        shaft_bot = cy + 14
-        shaft_left = cx - 90
-        shaft_right = cx + 60
+        cx, cy = W // 2, 180
+        shaft_top = cy - 12
+        shaft_bot = cy + 12
+        shaft_left = cx - 55
+        shaft_right = cx + 35
 
         if shaft_left <= x <= shaft_right and shaft_top <= y <= shaft_bot:
             r, g, b = ARROW_COLOR
 
-        head_tip_x = cx + 100
-        head_base_x = cx + 55
-        head_half_h = 38
+        head_tip_x = cx + 70
+        head_base_x = cx + 30
+        head_half_h = 34
 
         if head_base_x <= x <= head_tip_x:
             t = (x - head_base_x) / (head_tip_x - head_base_x)
@@ -106,16 +107,6 @@ for y in range(H):
             lower_edge = cy + half_height
             if upper_edge <= y <= lower_edge:
                 r, g, b = ARROW_COLOR
-
-        circle_cx = shaft_left
-        circle_cy = cy
-        circle_r = 18
-        dx_c = x - circle_cx
-        dy_c = y - circle_cy
-        if dx_c * dx_c + dy_c * dy_c <= circle_r * circle_r:
-            r, g, b = ARROW_COLOR
-            if dx_c < 0:
-                r, g, b = max(r - 30, 0), max(g - 30, 0), max(b - 30, 0)
 
         row += make_pixel(r, g, b, a)
     rows.append(bytes(row))
@@ -244,67 +235,15 @@ if [[ -f "$APP_BUNDLE_ICON" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Configure Finder window layout (best-effort in CI)
+# 6. Configure Finder window layout without launching Finder
 # ---------------------------------------------------------------------------
 
-echo "    Configuring Finder window layout"
-
-/usr/bin/osascript - "$actual_mount_point" "$VOLUME_NAME" <<'OSAEOF' 2>/dev/null || \
-  echo "    Note: AppleScript not available (headless env) — DMG is still functional"
-on run argv
-  set mountPoint to item 1 of argv
-  set volumeName to item 2 of argv
-
-  tell application "Finder"
-    set targetVolume to disk volumeName
-    open mountPoint
-    delay 0.5
-
-    set targetWindow to first window whose target is targetVolume
-
-    tell targetWindow
-      set toolbar visible to false
-      set statusbar visible to false
-      set sidebar width to 0
-      set current view to icon view
-      set bounds to {200, 200, 800, 600}
-    end tell
-
-    tell icon view options of targetWindow
-      set arrangement to not arranged
-      set icon size to 96
-      set shows item info to false
-      set shows icon preview to true
-      set background picture to file ".background:background.png" of targetVolume
-    end tell
-
-    set appName to name of (first file of targetVolume whose name ends with ".app")
-    set position of item appName of targetWindow to {160, 180}
-    set position of item "Applications" of targetWindow to {440, 180}
-
-    update targetWindow with reload
-    close targetWindow
-    delay 0.3
-    open mountPoint
-
-    set reopenedWindow to first window whose target is targetVolume
-    tell reopenedWindow
-      set toolbar visible to false
-      set statusbar visible to false
-      set current view to icon view
-    end tell
-    tell icon view options of reopenedWindow
-      set arrangement to not arranged
-      set icon size to 96
-      set background picture to file ".background:background.png" of targetVolume
-    end tell
-    set position of item appName of reopenedWindow to {160, 180}
-    set position of item "Applications" of reopenedWindow to {440, 180}
-    update reopenedWindow with reload
-    close reopenedWindow
-  end tell
-end run
-OSAEOF
+echo "    Writing deterministic Finder window layout"
+PYTHONPATH="$SCRIPT_DIRECTORY/vendor" /usr/bin/python3 \
+  "$SCRIPT_DIRECTORY/generate-dmg-ds-store.py" \
+  "$actual_mount_point" \
+  "$(/usr/bin/basename "$APP_PATH")" \
+  || fail "could not create Finder .DS_Store metadata"
 
 # ---------------------------------------------------------------------------
 # 7. Detach and convert to compressed read-only DMG

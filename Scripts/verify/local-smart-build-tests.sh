@@ -60,6 +60,11 @@ readonly BUILDER_COUNT_PATH="$FIXTURE_ROOT/builder-count"
   "$FIXTURE_ROOT/Shared/Licensing"
 /bin/cp "$REPOSITORY_ROOT/Shared/Licensing/smartmontools-COPYING.txt" \
   "$FIXTURE_ROOT/Shared/Licensing/smartmontools-COPYING.txt"
+readonly MOCK_SOURCE_ARCHIVE_SHA256="$(
+  /usr/bin/printf 'mock smartmontools 7.5 source archive\n' \
+    | /usr/bin/shasum -a 256 \
+    | /usr/bin/awk '{ print $1 }'
+)"
 
 /usr/bin/sed \
   -e "s#/usr/bin/security#\"$MOCK_TOOLS/security\"#g" \
@@ -68,6 +73,7 @@ readonly BUILDER_COUNT_PATH="$FIXTURE_ROOT/builder-count"
   -e "s#/usr/bin/otool#\"$MOCK_TOOLS/otool\"#g" \
   -e "s#/usr/bin/strings#\"$MOCK_TOOLS/strings\"#g" \
   -e "s#/usr/bin/xcodebuild#\"$MOCK_TOOLS/xcodebuild\"#g" \
+  -e "s#690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e#$MOCK_SOURCE_ARCHIVE_SHA256#g" \
   "$REPOSITORY_ROOT/Scripts/build-local-smart-app.sh" > "$SCRIPT_UNDER_TEST"
 
 /bin/cat > "$MOCK_TOOLS/security" <<'EOF'
@@ -119,15 +125,20 @@ EOF
 set -euo pipefail
 [[ "${MOCK_XCODEBUILD_FAIL:-0}" != 1 ]] || exit 51
 derived_data_path=""
+source_archive_path=""
 while (($# > 0)); do
-  if [[ "$1" == "-derivedDataPath" ]]; then
-    derived_data_path="$2"
-    break
-  fi
-  shift
+  case "$1" in
+    -derivedDataPath) derived_data_path="$2"; shift 2 ;;
+    SMARTMONTOOLS_SOURCE_ARCHIVE_PATH=*) source_archive_path="${1#*=}"; shift ;;
+    *) shift ;;
+  esac
 done
 [[ -n "$derived_data_path" ]]
-/bin/mkdir -p "$derived_data_path/Build/Products/Release/PalmosApp.app"
+[[ -f "$source_archive_path" ]]
+app_path="$derived_data_path/Build/Products/Release/Palmos.app"
+/bin/mkdir -p "$app_path/Contents/Resources/ThirdPartySources"
+/bin/cp "$source_archive_path" \
+  "$app_path/Contents/Resources/ThirdPartySources/smartmontools-7.5.tar.gz"
 EOF
 
 /bin/cat > "$FIXTURE_ROOT/Scripts/build-smartctl-companion.sh" <<'EOF'
@@ -154,6 +165,8 @@ SMARTCTL
 /bin/chmod 0755 "$output_directory/smartctl"
 /bin/cp "${MOCK_FIXTURE_ROOT:?}/Shared/Licensing/smartmontools-COPYING.txt" \
   "$output_directory/smartmontools-COPYING.txt"
+/usr/bin/printf 'mock smartmontools 7.5 source archive\n' \
+  > "$output_directory/smartmontools-7.5.tar.gz"
 EOF
 
 /bin/cat > "$FIXTURE_ROOT/Scripts/verify/code-signing.sh" <<'EOF'
@@ -161,6 +174,7 @@ EOF
 [[ "${MOCK_VERIFIER_FAIL:-0}" != 1 ]] || exit 61
 [[ -d "$1" ]]
 [[ "$2" == "${MOCK_TEAM:?}" ]]
+[[ -f "$1/Contents/Resources/ThirdPartySources/smartmontools-7.5.tar.gz" ]]
 EOF
 
 /bin/chmod 0755 \
@@ -222,6 +236,10 @@ configured_companion_path="${configured_relative_path/'$(SRCROOT)'/$FIXTURE_ROOT
 configured_digest="$(/usr/bin/awk -F' = ' '/^SMARTCTL_COMPANION_SHA256 = / { print $2 }' "$CONFIG_PATH")"
 [[ "$(/usr/bin/shasum -a 256 "$configured_companion_path" | /usr/bin/awk '{ print $1 }')" == "$configured_digest" ]] \
   || fail "Local.xcconfig digest does not match its companion"
+configured_source_relative_path="$(/usr/bin/awk -F' = ' '/^SMARTMONTOOLS_SOURCE_ARCHIVE_PATH = / { print $2 }' "$CONFIG_PATH")"
+configured_source_archive_path="${configured_source_relative_path/'$(SRCROOT)'/$FIXTURE_ROOT}"
+[[ -f "$configured_source_archive_path" && ! -L "$configured_source_archive_path" ]] \
+  || fail "Local.xcconfig does not reference an immutable source archive"
 config_sha256="$(/usr/bin/shasum -a 256 "$CONFIG_PATH" | /usr/bin/awk '{ print $1 }')"
 companion_sha256="$(/usr/bin/shasum -a 256 "$configured_companion_path" | /usr/bin/awk '{ print $1 }')"
 

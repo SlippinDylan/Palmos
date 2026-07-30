@@ -31,10 +31,10 @@ The app remains fully functional without the privileged helper. SMART capability
 
 ## Installing a GitHub Release
 
-Palmos releases use a free Apple Development certificate so the app and its privileged helper can authenticate each other. They are not notarized, so after moving `PalmosApp.app` to `/Applications`, remove the downloaded bundle's quarantine attribute once:
+Open the downloaded DMG and drag `Palmos` on the left to the `Applications` folder on the right. Palmos releases use a free Apple Development certificate so the app and its privileged helper can authenticate each other. They are not notarized, so remove the installed bundle's quarantine attribute once:
 
 ```sh
-sudo xattr -rd com.apple.quarantine /Applications/PalmosApp.app
+sudo xattr -rd com.apple.quarantine /Applications/Palmos.app
 ```
 
 The recursive command covers the embedded helper inside the app bundle. Do not copy the helper out or run a separate `xattr` command for it. Open Palmos normally, then install the SMART Helper from Settings when needed.
@@ -99,11 +99,11 @@ Scripts/build-local-smart-app.sh --identity APPLE_DEVELOPMENT_SHA1
 The script rebuilds smartctl from the pinned, SHA-verified source archive in an isolated
 directory on every run. It signs that fresh binary, propagates its post-signing SHA-256 into
 the Helper, builds every component with the Team ID extracted from the signed companion, and
-runs the full signing verifier. A verified companion is then published under an immutable,
-digest-named path in `DerivedData/LocalSMART`; only after every check succeeds does the script
+runs the full signing verifier. A verified companion and its corresponding source archive are
+then published under an immutable, digest-named path in `DerivedData/LocalSMART`; only after every check succeeds does the script
 atomically replace the git-ignored `Config/xcconfigs/Local.xcconfig`. Later Xcode **Cmd+R**
-builds reuse that exact signed companion and Personal Team, while command-line builds that
-explicitly disable signing omit it. The script prints the exact verified `.app` path to launch.
+builds reuse those exact verified files and Personal Team, while command-line builds that
+explicitly disable signing omit them. The script prints the exact verified `.app` path to launch.
 
 If the selected Personal Team differs from the Team ID of an already installed Helper,
 remove the old Helper with the commands in [Removing the Helper](#removing-the-helper)
@@ -157,8 +157,9 @@ configuration or database files from `/usr/local` or Homebrew locations. smartmo
 distributed under GNU GPL version 2 or later. The exact
 upstream license is included at
 [`Shared/Licensing/smartmontools-COPYING.txt`](Shared/Licensing/smartmontools-COPYING.txt)
-and inside the app bundle. Each GitHub release also attaches the exact, checksum-pinned
-`smartmontools-7.5.tar.gz` corresponding source archive used by the build.
+and inside the app bundle. The exact, checksum-pinned corresponding source archive used by the
+build is embedded at `Palmos.app/Contents/Resources/ThirdPartySources/smartmontools-7.5.tar.gz`,
+so the GitHub release only needs the DMG and does not upload a separate source attachment.
 
 The pinned upstream archive is downloaded from SourceForge and must have SHA-256
 `690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e`.

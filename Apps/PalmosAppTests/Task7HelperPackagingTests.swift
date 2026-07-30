@@ -46,6 +46,29 @@ final class Task7HelperPackagingTests: XCTestCase {
         )
     }
 
+    func testSignedSMARTBundleIncludesExactSmartmontoolsSourceArchive() throws {
+        let appBundleURL = try appBundleURL()
+        let companionURL = appBundleURL.appendingPathComponent(
+            "Contents/Library/Helpers/com.palmos.smartservice.smartctl"
+        )
+        guard FileManager.default.fileExists(atPath: companionURL.path) else {
+            throw XCTSkip("Unsigned test builds intentionally omit SMART distribution files")
+        }
+
+        let sourceArchiveURL = appBundleURL.appendingPathComponent(
+            "Contents/Resources/ThirdPartySources/smartmontools-7.5.tar.gz"
+        )
+        let data = try Data(contentsOf: sourceArchiveURL)
+        let digest = SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+
+        XCTAssertEqual(
+            digest,
+            "690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e"
+        )
+    }
+
     func testAppBundleIncludesExactPalmosLicense() throws {
         try assertBundledLicense(
             resource: "LICENSE",
