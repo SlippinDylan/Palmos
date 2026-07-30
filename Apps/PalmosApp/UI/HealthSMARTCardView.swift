@@ -8,13 +8,13 @@ struct HealthSMARTCardView: View {
 
     var body: some View {
         PanelSection("Health & SMART") {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Refresh SMART Data")
+            }
+        } content: {
             VStack(alignment: .leading, spacing: 0) {
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .padding(.bottom, 6)
-                }
-
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                     PanelKeyValueRow("Overall Health", value: healthString)
                     PanelKeyValueRow("Critical Warning", value: criticalWarningString, usesMonospacedDigits: true)
