@@ -25,6 +25,12 @@ struct TemperatureCardView: View {
 
     var body: some View {
         PanelSection("Temperature") {
+            if refreshStatus == .updating {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityHidden(true)
+            }
+        } content: {
             VStack(alignment: .leading, spacing: 6) {
                 refreshStatusView
 
@@ -43,21 +49,22 @@ struct TemperatureCardView: View {
 
     @ViewBuilder
     private var refreshStatusView: some View {
-        switch TemperatureSMARTRefreshStatus(smartDetails?.reportState.thermal) {
+        switch refreshStatus {
         case .none:
             EmptyView()
         case .updating:
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Updating temperature…")
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            Text("Updating temperature…")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         case .showingLastReadingAfterFailure:
             Label("Temperature update failed. Showing the last reading.", systemImage: "exclamationmark.triangle")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var refreshStatus: TemperatureSMARTRefreshStatus {
+        TemperatureSMARTRefreshStatus(smartDetails?.reportState.thermal)
     }
 
     private var smartData: SmartData? {

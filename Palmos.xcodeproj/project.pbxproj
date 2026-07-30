@@ -198,7 +198,7 @@
 		200000000000000000000008 /* VolumesSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumesSectionView.swift; sourceTree = "<group>"; };
 		20000000000000000000000A /* ActionBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionBarView.swift; sourceTree = "<group>"; };
 		20000000000000000000000B /* PalmosAppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosAppStateTests.swift; sourceTree = "<group>"; };
-		20000000000000000000000C /* PalmosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PalmosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000C /* Palmos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Palmos.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000D /* PalmosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PalmosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000E /* App.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xcconfigs/App.xcconfig; sourceTree = "<group>"; };
 		20000000000000000000000F /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xcconfigs/Base.xcconfig; sourceTree = "<group>"; };
@@ -537,7 +537,7 @@
 		30000000000000000000000A /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				20000000000000000000000C /* PalmosApp.app */,
+				20000000000000000000000C /* Palmos.app */,
 				20000000000000000000000D /* PalmosAppTests.xctest */,
 				20000000000000000000001C /* com.palmos.smartservice */,
 				200000000000000000000054 /* PalmosSMARTServiceTests.xctest */,
@@ -675,8 +675,8 @@
 				500000000000000000000001 /* PalmosCore */,
 				322662F17F85D329F8C03472 /* MenuBarExtraAccess */,
 			);
-			productName = PalmosApp;
-			productReference = 20000000000000000000000C /* PalmosApp.app */;
+			productName = Palmos;
+			productReference = 20000000000000000000000C /* Palmos.app */;
 			productType = "com.apple.product-type.application";
 		};
 		400000000000000000000002 /* PalmosAppTests */ = {
@@ -840,10 +840,11 @@
 			);
 			outputPaths = (
 				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/Helpers/com.palmos.smartservice.smartctl",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ThirdPartySources/smartmontools-7.5.tar.gz",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "set -euo pipefail\n\nexport PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\"\nunset BASH_ENV ENV CDPATH\n\ndestination=\"$SCRIPT_OUTPUT_FILE_0\"\nif [[ \"${CODE_SIGNING_ALLOWED:-YES}\" == \"NO\" ]]; then\n  /bin/rm -f \"$destination\"\n  exit 0\nfi\n\nsource_path=\"${SMARTCTL_COMPANION_PATH:-}\"\nif [[ -z \"$source_path\" ]]; then\n  /bin/rm -f \"$destination\"\n  if [[ \"${SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD:-NO}\" == \"YES\" ]]; then\n    echo \"A signed SMART build requires SMARTCTL_COMPANION_PATH.\" >&2\n    exit 1\n  fi\n  exit 0\nfi\n\n[[ -f \"$source_path\" && ! -L \"$source_path\" ]] || {\n  echo \"smartctl companion is not a regular file at $source_path.\" >&2\n  exit 1\n}\nexpected_sha256=\"${SMARTCTL_COMPANION_SHA256:-}\"\n[[ \"$expected_sha256\" =~ ^[[:xdigit:]]{64}$ ]] || {\n  echo \"A signed SMART build requires a valid SMARTCTL_COMPANION_SHA256.\" >&2\n  exit 1\n}\nactual_sha256=\"$(/usr/bin/shasum -a 256 \"$source_path\" | /usr/bin/awk '{ print $1 }')\"\n[[ \"$actual_sha256\" == \"$expected_sha256\" ]] || {\n  echo \"smartctl companion SHA-256 does not match SMARTCTL_COMPANION_SHA256.\" >&2\n  exit 1\n}\n/usr/bin/codesign --verify --strict --all-architectures \"$source_path\"\n/bin/mkdir -p \"${destination%/*}\"\n/usr/bin/ditto \"$source_path\" \"$destination\"\n/bin/chmod 0755 \"$destination\"\n";
+			shellScript = "set -euo pipefail\n\nexport PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\"\nunset BASH_ENV ENV CDPATH\n\ncompanion_destination=\"$SCRIPT_OUTPUT_FILE_0\"\nsource_archive_destination=\"$SCRIPT_OUTPUT_FILE_1\"\nif [[ \"${CODE_SIGNING_ALLOWED:-YES}\" == \"NO\" ]]; then\n  /bin/rm -f \"$companion_destination\" \"$source_archive_destination\"\n  exit 0\nfi\n\nsource_path=\"${SMARTCTL_COMPANION_PATH:-}\"\nif [[ -z \"$source_path\" ]]; then\n  /bin/rm -f \"$companion_destination\" \"$source_archive_destination\"\n  if [[ \"${SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD:-NO}\" == \"YES\" ]]; then\n    echo \"A signed SMART build requires SMARTCTL_COMPANION_PATH.\" >&2\n    exit 1\n  fi\n  exit 0\nfi\n\n[[ -f \"$source_path\" && ! -L \"$source_path\" ]] || {\n  echo \"smartctl companion is not a regular file at $source_path.\" >&2\n  exit 1\n}\nexpected_sha256=\"${SMARTCTL_COMPANION_SHA256:-}\"\n[[ \"$expected_sha256\" =~ ^[[:xdigit:]]{64}$ ]] || {\n  echo \"A signed SMART build requires a valid SMARTCTL_COMPANION_SHA256.\" >&2\n  exit 1\n}\nactual_sha256=\"$(/usr/bin/shasum -a 256 \"$source_path\" | /usr/bin/awk '{ print $1 }')\"\n[[ \"$actual_sha256\" == \"$expected_sha256\" ]] || {\n  echo \"smartctl companion SHA-256 does not match SMARTCTL_COMPANION_SHA256.\" >&2\n  exit 1\n}\nsource_archive_path=\"${SMARTMONTOOLS_SOURCE_ARCHIVE_PATH:-}\"\n[[ -f \"$source_archive_path\" && ! -L \"$source_archive_path\" ]] || {\n  echo \"A signed SMART build requires a regular SMARTMONTOOLS_SOURCE_ARCHIVE_PATH.\" >&2\n  exit 1\n}\nsource_archive_sha256=\"$(/usr/bin/shasum -a 256 \"$source_archive_path\" | /usr/bin/awk '{ print $1 }')\"\n[[ \"$source_archive_sha256\" == \"690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e\" ]] || {\n  echo \"smartmontools source archive SHA-256 is not the pinned 7.5 archive.\" >&2\n  exit 1\n}\n/usr/bin/codesign --verify --strict --all-architectures \"$source_path\"\n/bin/mkdir -p \"${companion_destination%/*}\" \"${source_archive_destination%/*}\"\n/usr/bin/ditto \"$source_path\" \"$companion_destination\"\n/bin/chmod 0755 \"$companion_destination\"\n/usr/bin/ditto \"$source_archive_path\" \"$source_archive_destination\"\n/bin/chmod 0644 \"$source_archive_destination\"\n";
 		};
 		30000000000000000000001A /* Prepare Launchd Plist */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1070,9 +1071,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_TESTABILITY = YES;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = PalmosApp;
+				PRODUCT_NAME = Palmos;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -1083,8 +1085,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CURRENT_PROJECT_VERSION = 1;
-				MARKETING_VERSION = 1.0.2;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MARKETING_VERSION = 1.0.3;
+				PRODUCT_MODULE_NAME = PalmosApp;
+				PRODUCT_NAME = Palmos;
 			};
 			name = Release;
 		};
@@ -1098,12 +1101,12 @@
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.palmos.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PalmosApp.app/Contents/MacOS/PalmosApp";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palmos.app/Contents/MacOS/Palmos";
 			};
 			name = Debug;
 		};
@@ -1116,10 +1119,10 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.palmos.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PalmosApp.app/Contents/MacOS/PalmosApp";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palmos.app/Contents/MacOS/Palmos";
 			};
 			name = Release;
 		};
@@ -1129,7 +1132,7 @@
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_TESTABILITY = YES;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				ONLY_ACTIVE_ARCH = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -1140,7 +1143,7 @@
 			baseConfigurationReference = 200000000000000000000020 /* Helper.xcconfig */;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 1;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 			};
 			name = Release;
 		};

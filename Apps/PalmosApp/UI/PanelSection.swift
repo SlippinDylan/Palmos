@@ -12,19 +12,40 @@ enum PanelDisplayValue {
     }
 }
 
-struct PanelSection<Content: View>: View {
+struct PanelSection<HeaderAccessory: View, Content: View>: View {
     let title: LocalizedStringKey
+    let headerAccessory: HeaderAccessory
     let content: Content
 
-    init(_ title: LocalizedStringKey, @ViewBuilder content: () -> Content) {
+    init(
+        _ title: LocalizedStringKey,
+        @ViewBuilder content: () -> Content
+    ) where HeaderAccessory == EmptyView {
         self.title = title
+        self.headerAccessory = EmptyView()
+        self.content = content()
+    }
+
+    init(
+        _ title: LocalizedStringKey,
+        @ViewBuilder headerAccessory: () -> HeaderAccessory,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.headerAccessory = headerAccessory()
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.headline)
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.headline)
+
+                Spacer(minLength: 0)
+
+                headerAccessory
+            }
 
             content
                 .frame(maxWidth: .infinity, alignment: .leading)

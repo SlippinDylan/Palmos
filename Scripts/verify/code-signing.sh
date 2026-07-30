@@ -10,7 +10,7 @@ readonly APP_PATH="${1:?Usage: code-signing.sh <app-path> [expected-team-id]}"
 readonly EXPECTED_TEAM_ID="${2:-}"
 readonly APP_IDENTIFIER="com.palmos.app"
 readonly HELPER_IDENTIFIER="com.palmos.smartservice"
-readonly APP_EXECUTABLE="$APP_PATH/Contents/MacOS/PalmosApp"
+readonly APP_EXECUTABLE="$APP_PATH/Contents/MacOS/Palmos"
 readonly HELPER_PATH="$APP_PATH/Contents/Library/LaunchServices/$HELPER_IDENTIFIER"
 readonly COMPANION_IDENTIFIER="com.palmos.smartservice.smartctl"
 readonly COMPANION_PATH="$APP_PATH/Contents/Library/Helpers/$COMPANION_IDENTIFIER"
@@ -20,6 +20,8 @@ readonly MENUBAREXTRAACCESS_LICENSE_PATH="$APP_PATH/Contents/Resources/MenuBarEx
 readonly MENUBAREXTRAACCESS_LICENSE_SHA256="c5359afef4354cebfefe6632278be29f6607fb6f4bd35c07028c9a7a639eebf3"
 readonly SMARTMONTOOLS_LICENSE_PATH="$APP_PATH/Contents/Resources/smartmontools-COPYING.txt"
 readonly SMARTMONTOOLS_LICENSE_SHA256="8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+readonly SMARTMONTOOLS_SOURCE_ARCHIVE_PATH="$APP_PATH/Contents/Resources/ThirdPartySources/smartmontools-7.5.tar.gz"
+readonly SMARTMONTOOLS_SOURCE_ARCHIVE_SHA256="690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e"
 readonly APP_INFO_PLIST="$APP_PATH/Contents/Info.plist"
 
 verification_directory=""
@@ -126,6 +128,8 @@ extract_helper_info_plist() {
   || fail "bundled MenuBarExtraAccess license not found at $MENUBAREXTRAACCESS_LICENSE_PATH"
 [[ -f "$SMARTMONTOOLS_LICENSE_PATH" && ! -L "$SMARTMONTOOLS_LICENSE_PATH" ]] \
   || fail "bundled smartmontools license not found at $SMARTMONTOOLS_LICENSE_PATH"
+[[ -f "$SMARTMONTOOLS_SOURCE_ARCHIVE_PATH" && ! -L "$SMARTMONTOOLS_SOURCE_ARCHIVE_PATH" ]] \
+  || fail "bundled smartmontools source archive not found at $SMARTMONTOOLS_SOURCE_ARCHIVE_PATH"
 [[ -f "$APP_INFO_PLIST" && ! -L "$APP_INFO_PLIST" ]] \
   || fail "app Info.plist not found at $APP_INFO_PLIST"
 
@@ -209,6 +213,9 @@ menubarextraaccess_license_sha256="$(sha256 "$MENUBAREXTRAACCESS_LICENSE_PATH")"
 smartmontools_license_sha256="$(sha256 "$SMARTMONTOOLS_LICENSE_PATH")"
 [[ "$smartmontools_license_sha256" == "$SMARTMONTOOLS_LICENSE_SHA256" ]] \
   || fail "bundled smartmontools license SHA-256 is '$smartmontools_license_sha256', expected '$SMARTMONTOOLS_LICENSE_SHA256'"
+smartmontools_source_archive_sha256="$(sha256 "$SMARTMONTOOLS_SOURCE_ARCHIVE_PATH")"
+[[ "$smartmontools_source_archive_sha256" == "$SMARTMONTOOLS_SOURCE_ARCHIVE_SHA256" ]] \
+  || fail "bundled smartmontools source archive SHA-256 is '$smartmontools_source_archive_sha256', expected '$SMARTMONTOOLS_SOURCE_ARCHIVE_SHA256'"
 
 if [[ -n "$EXPECTED_TEAM_ID" && "$app_team_id" != "$EXPECTED_TEAM_ID" ]]; then
   fail "signed TeamIdentifier '$app_team_id' does not match expected Team ID '$EXPECTED_TEAM_ID'"

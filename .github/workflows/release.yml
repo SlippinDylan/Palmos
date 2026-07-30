@@ -189,7 +189,7 @@ jobs:
           {
             echo "SMARTCTL_COMPANION_PATH=$COMPANION_PATH"
             echo "SMARTCTL_COMPANION_SHA256=$COMPANION_SHA256"
-            echo "SMARTMONTOOLS_SOURCE_ARCHIVE=$SOURCE_ARCHIVE"
+            echo "SMARTMONTOOLS_SOURCE_ARCHIVE_PATH=$SOURCE_ARCHIVE"
           } >> "$GITHUB_ENV"
 
       - name: Build Release
@@ -209,12 +209,13 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="" \
             SMARTCTL_COMPANION_PATH="$SMARTCTL_COMPANION_PATH" \
             SMARTCTL_COMPANION_SHA256="$SMARTCTL_COMPANION_SHA256" \
+            SMARTMONTOOLS_SOURCE_ARCHIVE_PATH="$SMARTMONTOOLS_SOURCE_ARCHIVE_PATH" \
             SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD=YES
 
       - name: Verify Release signatures
         if: steps.check.outputs.exists == 'false'
         run: |
-          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/PalmosApp.app"
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/Palmos.app"
           Scripts/verify/code-signing.sh "$APP_PATH" "$SIGNING_TEAM_ID"
 
       # Build drag-to-install DMG with custom background and Finder layout.
@@ -224,7 +225,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/PalmosApp.app"
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/Palmos.app"
           if [[ ! -d "$APP_PATH" ]]; then
             echo "Built app bundle not found at $APP_PATH." >&2
             exit 1
@@ -246,8 +247,7 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             --title "Palmos ${{ steps.version.outputs.tag }}" \
             --generate-notes \
-            "${{ steps.package.outputs.dmg }}#${{ steps.package.outputs.name }}" \
-            "$SMARTMONTOOLS_SOURCE_ARCHIVE#smartmontools-7.5.tar.gz"
+            "${{ steps.package.outputs.dmg }}#${{ steps.package.outputs.name }}"
 
       - name: Remove signing keychain
         if: always()

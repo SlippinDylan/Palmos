@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "400000000000000000000001"
-               BuildableName = "PalmosApp.app"
+               BuildableName = "Palmos.app"
                BlueprintName = "PalmosApp"
                ReferencedContainer = "container:Palmos.xcodeproj">
             </BuildableReference>
@@ -69,7 +69,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "400000000000000000000001"
-            BuildableName = "PalmosApp.app"
+            BuildableName = "Palmos.app"
             BlueprintName = "PalmosApp"
             ReferencedContainer = "container:Palmos.xcodeproj">
          </BuildableReference>
@@ -86,7 +86,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "400000000000000000000001"
-            BuildableName = "PalmosApp.app"
+            BuildableName = "Palmos.app"
             BlueprintName = "PalmosApp"
             ReferencedContainer = "container:Palmos.xcodeproj">
          </BuildableReference>

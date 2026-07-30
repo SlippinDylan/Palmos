@@ -31,10 +31,10 @@ Palmos 包含三個 target：
 
 ## 安裝 GitHub Release
 
-Palmos Release 使用免費的 Apple Development 憑證，讓 App 和特權 Helper 能夠互相驗證。Release 未經 Apple 公證，因此將 `PalmosApp.app` 移到 `/Applications` 後，需要執行一次以下指令來移除下載隔離屬性：
+開啟下載的 DMG 後，將左側的 `Palmos` 拖到右側的 `Applications` 資料夾。Palmos Release 使用免費的 Apple Development 憑證，讓 App 和特權 Helper 能夠互相驗證。Release 未經 Apple 公證，因此安裝後需要執行一次以下指令來移除下載隔離屬性：
 
 ```sh
-sudo xattr -rd com.apple.quarantine /Applications/PalmosApp.app
+sudo xattr -rd com.apple.quarantine /Applications/Palmos.app
 ```
 
 這個遞迴指令也會處理 App 套件內嵌的 Helper。不要把 Helper 單獨複製出來，也不需要再對它執行一次 `xattr`。正常開啟 Palmos，需要時再到設定中安裝 SMART Helper。
@@ -92,7 +92,7 @@ security find-identity -v -p codesigning
 Scripts/build-local-smart-app.sh --identity APPLE_DEVELOPMENT_SHA1
 ```
 
-指令碼每次都會在隔離目錄中，從固定版本且經過 SHA 驗證的原始碼封存檔重新建置 smartctl。它會簽署新產生的二進位檔，將簽署後的 SHA-256 傳給 Helper，再使用從 companion 簽署中擷取的 Team ID 建置全部元件並執行完整簽署檢查。驗證通過的 companion 會放到 `DerivedData/LocalSMART` 下不可變的摘要命名路徑；只有所有檢查都通過後，指令碼才會以不可分割的方式取代被 Git 忽略的 `Config/xcconfigs/Local.xcconfig`。之後從 Xcode 執行 **Cmd+R** 會重複使用這個已驗證的 companion 和 Personal Team；命令列明確停用簽署時則不會嵌入它。指令碼最後會輸出可以啟動的 `.app` 完整路徑。
+指令碼每次都會在隔離目錄中，從固定版本且經過 SHA 驗證的原始碼封存檔重新建置 smartctl。它會簽署新產生的二進位檔，將簽署後的 SHA-256 傳給 Helper，再使用從 companion 簽署中擷取的 Team ID 建置全部元件並執行完整簽署檢查。驗證通過的 companion 和對應原始碼封存檔會放到 `DerivedData/LocalSMART` 下不可變的摘要命名路徑；只有所有檢查都通過後，指令碼才會以不可分割的方式取代被 Git 忽略的 `Config/xcconfigs/Local.xcconfig`。之後從 Xcode 執行 **Cmd+R** 會重複使用這兩個已驗證的檔案和 Personal Team；命令列明確停用簽署時則不會嵌入它們。指令碼最後會輸出可以啟動的 `.app` 完整路徑。
 
 如果所選 Personal Team 與已安裝 Helper 的 Team ID 不一致，請先按照[移除 Helper](#移除-helper)中的指令清理舊版本，再從新的建置安裝。已安裝的 Helper 只授權原 Team 的用戶端，本機建置指令碼不會自動執行具破壞性的系統清理。
 
@@ -137,7 +137,7 @@ Palmos 使用 [MenuBarExtraAccess 1.3.0](https://github.com/orchetect/MenuBarExt
 
 Palmos Release 包含一個單獨簽署的 `smartctl` 可執行檔。它由 smartmontools 7.5 建置，並停用了外部硬碟資料庫，因此 root Helper 不會讀取 `/usr/local` 或 Homebrew 路徑中的設定和資料庫檔案。
 
-smartmontools 依照 GNU GPL version 2 or later 發布。完整的上游授權條款位於 [`Shared/Licensing/smartmontools-COPYING.txt`](Shared/Licensing/smartmontools-COPYING.txt)，也會隨 App 一起封裝。每個 GitHub Release 還會附帶建置時實際使用、經過 checksum 固定的 `smartmontools-7.5.tar.gz` 對應原始碼封存檔。
+smartmontools 依照 GNU GPL version 2 or later 發布。完整的上游授權條款位於 [`Shared/Licensing/smartmontools-COPYING.txt`](Shared/Licensing/smartmontools-COPYING.txt)，也會隨 App 一起封裝。建置時實際使用、經過 checksum 固定的對應原始碼封存檔會內嵌在 `Palmos.app/Contents/Resources/ThirdPartySources/smartmontools-7.5.tar.gz`，因此 GitHub Release 只需要提供 DMG，不再單獨上傳原始碼附件。
 
 固定的上游封存檔從 SourceForge 下載，其 SHA-256 必須為：
 

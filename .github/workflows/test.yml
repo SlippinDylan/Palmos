@@ -32,10 +32,12 @@ jobs:
           bash -n Scripts/build-local-smart-app.sh
           bash -n Scripts/build-smartctl-companion.sh
           bash -n Scripts/create-dmg.sh
+          bash -n Scripts/verify/create-dmg-tests.sh
           bash -n Scripts/verify/code-signing.sh
           bash -n Scripts/verify/code-signing-tests.sh
           bash -n Scripts/verify/local-smart-build-tests.sh
           Scripts/build-local-smart-app.sh --help >/dev/null
+          Scripts/verify/create-dmg-tests.sh
           Scripts/verify/code-signing-tests.sh
           Scripts/verify/local-smart-build-tests.sh
 

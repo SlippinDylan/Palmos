@@ -35,9 +35,10 @@ assert_fails() {
 
 readonly FIXTURE_ROOT="$work_directory/Signing Fixture"
 readonly MOCK_TOOLS="$FIXTURE_ROOT/mock tools"
-readonly APP_PATH="$FIXTURE_ROOT/PalmosApp.app"
+readonly APP_PATH="$FIXTURE_ROOT/Palmos.app"
 readonly HELPER_PATH="$APP_PATH/Contents/Library/LaunchServices/com.palmos.smartservice"
 readonly COMPANION_PATH="$APP_PATH/Contents/Library/Helpers/com.palmos.smartservice.smartctl"
+readonly SOURCE_ARCHIVE_PATH="$APP_PATH/Contents/Resources/ThirdPartySources/smartmontools-7.5.tar.gz"
 readonly VERIFIER="$FIXTURE_ROOT/code-signing.sh"
 readonly TEAM_ID="TESTTEAM12"
 
@@ -46,8 +47,8 @@ readonly TEAM_ID="TESTTEAM12"
   "$APP_PATH/Contents/MacOS" \
   "$APP_PATH/Contents/Library/LaunchServices" \
   "$APP_PATH/Contents/Library/Helpers" \
-  "$APP_PATH/Contents/Resources"
-/usr/bin/touch "$APP_PATH/Contents/MacOS/PalmosApp" "$HELPER_PATH" "$APP_PATH/Contents/Info.plist"
+  "$APP_PATH/Contents/Resources/ThirdPartySources"
+/usr/bin/touch "$APP_PATH/Contents/MacOS/Palmos" "$HELPER_PATH" "$APP_PATH/Contents/Info.plist"
 /bin/cat > "$COMPANION_PATH" <<'EOF'
 #!/bin/bash
 if [[ "${1:-}" == "--version" ]]; then
@@ -61,6 +62,8 @@ EOF
   "$APP_PATH/Contents/Resources/MenuBarExtraAccess-LICENSE.txt"
 /bin/cp "$REPOSITORY_ROOT/LICENSE" \
   "$APP_PATH/Contents/Resources/LICENSE"
+/usr/bin/printf 'mock smartmontools 7.5 source archive\n' > "$SOURCE_ARCHIVE_PATH"
+readonly SOURCE_ARCHIVE_SHA256="$(/usr/bin/shasum -a 256 "$SOURCE_ARCHIVE_PATH" | /usr/bin/awk '{ print $1 }')"
 readonly COMPANION_SHA256="$(/usr/bin/shasum -a 256 "$COMPANION_PATH" | /usr/bin/awk '{ print $1 }')"
 
 /usr/bin/sed \
@@ -73,6 +76,7 @@ readonly COMPANION_SHA256="$(/usr/bin/shasum -a 256 "$COMPANION_PATH" | /usr/bin
   -e "s#/usr/bin/plutil#\"$MOCK_TOOLS/plutil\"#g" \
   -e "s#/usr/bin/csreq#\"$MOCK_TOOLS/csreq\"#g" \
   -e "s#/usr/libexec/PlistBuddy#\"$MOCK_TOOLS/PlistBuddy\"#g" \
+  -e "s#690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e#$SOURCE_ARCHIVE_SHA256#g" \
   "$REPOSITORY_ROOT/Scripts/verify/code-signing.sh" > "$VERIFIER"
 
 /bin/cat > "$MOCK_TOOLS/codesign" <<'EOF'
@@ -105,7 +109,7 @@ for argument in "$@"; do
   path="$argument"
 done
 case "$path" in
-  */MacOS/PalmosApp) printf '%s\n' "${MOCK_APP_ARCHS:-arm64 x86_64}" ;;
+  */MacOS/Palmos) printf '%s\n' "${MOCK_APP_ARCHS:-arm64 x86_64}" ;;
   */LaunchServices/*) printf '%s\n' "${MOCK_HELPER_ARCHS:-arm64 x86_64}" ;;
   */Helpers/*) printf '%s\n' "${MOCK_COMPANION_ARCHS:-arm64 x86_64}" ;;
   *) exit 73 ;;
@@ -190,6 +194,14 @@ run_verifier() {
 }
 
 run_verifier >/dev/null
+source_archive_backup="$work_directory/smartmontools-7.5.tar.gz"
+/bin/mv "$SOURCE_ARCHIVE_PATH" "$source_archive_backup"
+assert_fails "bundled smartmontools source archive not found" run_verifier
+/bin/mv "$source_archive_backup" "$SOURCE_ARCHIVE_PATH"
+/bin/cp "$SOURCE_ARCHIVE_PATH" "$source_archive_backup"
+/usr/bin/printf 'tampered\n' >> "$SOURCE_ARCHIVE_PATH"
+assert_fails "bundled smartmontools source archive SHA-256" run_verifier
+/bin/mv "$source_archive_backup" "$SOURCE_ARCHIVE_PATH"
 assert_fails "app architectures 'arm64 x86_64' do not match helper architectures 'arm64'" \
   run_verifier MOCK_HELPER_ARCHS=arm64
 assert_fails "app architectures 'arm64 x86_64' do not match companion architectures 'arm64'" \

@@ -8,6 +8,8 @@ unset BASH_ENV ENV CDPATH PLIST_BUDDY
 
 readonly REPOSITORY_ROOT="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly COMPANION_IDENTIFIER="com.palmos.smartservice.smartctl"
+readonly SOURCE_ARCHIVE_NAME="smartmontools-7.5.tar.gz"
+readonly SOURCE_ARCHIVE_SHA256="690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e"
 readonly LOCAL_SUPPORT_DIRECTORY="$REPOSITORY_ROOT/DerivedData/LocalSMART"
 readonly SIGNED_COMPANION_DIRECTORY="$LOCAL_SUPPORT_DIRECTORY/SignedCompanions"
 readonly TEMPORARY_DIRECTORY="$LOCAL_SUPPORT_DIRECTORY/Temporary"
@@ -152,6 +154,15 @@ validate_signed_companion() {
   assert_universal_companion "$path"
 }
 
+validate_source_archive() {
+  local path="$1"
+
+  [[ -f "$path" && ! -L "$path" ]] \
+    || fail "smartmontools source archive is not a regular file at $path"
+  [[ "$(sha256 "$path")" == "$SOURCE_ARCHIVE_SHA256" ]] \
+    || fail "smartmontools source archive does not match the pinned 7.5 archive"
+}
+
 while (($# > 0)); do
   case "$1" in
     --identity)
@@ -249,11 +260,13 @@ unset SDKROOT MACOSX_DEPLOYMENT_TARGET SMARTCTL_BUILD_ARCHS
 
 readonly UNSIGNED_COMPANION_PATH="$COMPANION_BUILD_OUTPUT/smartctl"
 readonly COMPANION_LICENSE_PATH="$COMPANION_BUILD_OUTPUT/smartmontools-COPYING.txt"
+readonly SOURCE_ARCHIVE_PATH="$COMPANION_BUILD_OUTPUT/$SOURCE_ARCHIVE_NAME"
 [[ -f "$UNSIGNED_COMPANION_PATH" && ! -L "$UNSIGNED_COMPANION_PATH" ]] \
   || fail "builder did not produce a regular smartctl companion"
 /usr/bin/cmp \
   "$COMPANION_LICENSE_PATH" \
   "$REPOSITORY_ROOT/Shared/Licensing/smartmontools-COPYING.txt"
+validate_source_archive "$SOURCE_ARCHIVE_PATH"
 assert_universal_companion "$UNSIGNED_COMPANION_PATH"
 
 companion_size="$(/usr/bin/stat -f%z "$UNSIGNED_COMPANION_PATH")"
@@ -309,23 +322,32 @@ echo "Building Palmos with Apple Development identity: $signing_certificate_name
   PROVISIONING_PROFILE_SPECIFIER="" \
   SMARTCTL_COMPANION_PATH="$SIGNED_STAGING_PATH" \
   SMARTCTL_COMPANION_SHA256="$companion_sha256" \
+  SMARTMONTOOLS_SOURCE_ARCHIVE_PATH="$SOURCE_ARCHIVE_PATH" \
   SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD=YES
 
-readonly APP_PATH="$DERIVED_DATA_PATH/Build/Products/Release/PalmosApp.app"
+readonly APP_PATH="$DERIVED_DATA_PATH/Build/Products/Release/Palmos.app"
 "$CODE_SIGNING_VERIFIER" "$APP_PATH" "$signing_team_id"
 
 readonly IMMUTABLE_COMPANION_DIRECTORY="$SIGNED_COMPANION_DIRECTORY/$companion_sha256"
 readonly IMMUTABLE_COMPANION_PATH="$IMMUTABLE_COMPANION_DIRECTORY/smartctl"
+readonly IMMUTABLE_SOURCE_ARCHIVE_PATH="$IMMUTABLE_COMPANION_DIRECTORY/$SOURCE_ARCHIVE_NAME"
 if [[ -e "$IMMUTABLE_COMPANION_DIRECTORY" || -L "$IMMUTABLE_COMPANION_DIRECTORY" ]]; then
   [[ -d "$IMMUTABLE_COMPANION_DIRECTORY" && ! -L "$IMMUTABLE_COMPANION_DIRECTORY" ]] \
     || fail "immutable companion path is unsafe: $IMMUTABLE_COMPANION_DIRECTORY"
   validate_signed_companion "$IMMUTABLE_COMPANION_PATH" "$companion_sha256" "$signing_team_id"
+  if [[ ! -e "$IMMUTABLE_SOURCE_ARCHIVE_PATH" && ! -L "$IMMUTABLE_SOURCE_ARCHIVE_PATH" ]]; then
+    /usr/bin/install -m 0400 "$SOURCE_ARCHIVE_PATH" "$IMMUTABLE_SOURCE_ARCHIVE_PATH"
+  fi
 else
+  /usr/bin/install -m 0400 "$SOURCE_ARCHIVE_PATH" "$SIGNED_STAGING_DIRECTORY/$SOURCE_ARCHIVE_NAME"
   /bin/chmod 0500 "$SIGNED_STAGING_PATH"
   /bin/mv "$SIGNED_STAGING_DIRECTORY" "$IMMUTABLE_COMPANION_DIRECTORY"
   /bin/chmod 0700 "$IMMUTABLE_COMPANION_DIRECTORY"
   validate_signed_companion "$IMMUTABLE_COMPANION_PATH" "$companion_sha256" "$signing_team_id"
 fi
+validate_source_archive "$IMMUTABLE_SOURCE_ARCHIVE_PATH"
+[[ "$(/usr/bin/stat -f%Lp "$IMMUTABLE_SOURCE_ARCHIVE_PATH")" == 400 ]] \
+  || fail "immutable source archive permissions changed at $IMMUTABLE_SOURCE_ARCHIVE_PATH"
 
 local_config_temporary="$(/usr/bin/mktemp "$LOCAL_CONFIG_PATH.tmp.XXXXXX")"
 case "$local_config_temporary" in
@@ -338,6 +360,7 @@ DEVELOPMENT_TEAM = $signing_team_id
 TEAM_IDENTIFIER = \$(DEVELOPMENT_TEAM)
 SMARTCTL_COMPANION_PATH = \$(SRCROOT)/DerivedData/LocalSMART/SignedCompanions/$companion_sha256/smartctl
 SMARTCTL_COMPANION_SHA256 = $companion_sha256
+SMARTMONTOOLS_SOURCE_ARCHIVE_PATH = \$(SRCROOT)/DerivedData/LocalSMART/SignedCompanions/$companion_sha256/$SOURCE_ARCHIVE_NAME
 SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD = YES
 EOF
 /bin/chmod 0600 "$local_config_temporary"
