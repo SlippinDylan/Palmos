@@ -227,7 +227,7 @@ private struct SMARTHelperSettingsSection: View {
         case .installed:
             SettingsGlassButton("Check Again", action: onRefreshStatus)
         case .inspectionFailed:
-            SettingsGlassButton("Try Again", action: onRefreshStatus)
+            SettingsGlassButton("Repair", prominent: true, action: onInstallOrUpdate)
         case .installationFailed:
             SettingsGlassButton("Try Again", prominent: true, action: onInstallOrUpdate)
         }

@@ -59,6 +59,7 @@
 		100000000000000000000026 /* TransportHintResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000027 /* TransportHintResolver.swift */; };
 		100000000000000000000027 /* PalmosCore in Frameworks */ = {isa = PBXBuildFile; productRef = 500000000000000000000004 /* PalmosCore */; };
 		100000000000000000000028 /* HelperInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000028 /* HelperInstaller.swift */; };
+		4D1A00000000000000000001 /* LegacyHelperServiceEnabler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1A20000000000000000001 /* LegacyHelperServiceEnabler.swift */; };
 		4D1400000000000000000001 /* HelperInstallationPreflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1420000000000000000001 /* HelperInstallationPreflight.swift */; };
 		4D1400000000000000000002 /* BundledSMARTCompanionReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1420000000000000000002 /* BundledSMARTCompanionReader.swift */; };
 		100000000000000000000029 /* PanelSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000029 /* PanelSection.swift */; };
@@ -248,6 +249,7 @@
 		200000000000000000000084 /* SettingsWindowActivatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowActivatorTests.swift; sourceTree = "<group>"; };
 		200000000000000000000027 /* TransportHintResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportHintResolver.swift; sourceTree = "<group>"; };
 		200000000000000000000028 /* HelperInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperInstaller.swift; sourceTree = "<group>"; };
+		4D1A20000000000000000001 /* LegacyHelperServiceEnabler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyHelperServiceEnabler.swift; sourceTree = "<group>"; };
 		4D1420000000000000000001 /* HelperInstallationPreflight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperInstallationPreflight.swift; sourceTree = "<group>"; };
 		4D1420000000000000000002 /* BundledSMARTCompanionReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundledSMARTCompanionReader.swift; sourceTree = "<group>"; };
 		200000000000000000000029 /* PanelSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelSection.swift; sourceTree = "<group>"; };
@@ -457,6 +459,7 @@
 				4D1520000000000000000006 /* SMARTServiceErrorMapper.swift */,
 				200000000000000000000063 /* SMARTHelperManager.swift */,
 				200000000000000000000028 /* HelperInstaller.swift */,
+				4D1A20000000000000000001 /* LegacyHelperServiceEnabler.swift */,
 				4D1420000000000000000001 /* HelperInstallationPreflight.swift */,
 				4D1420000000000000000002 /* BundledSMARTCompanionReader.swift */,
 				200000000000000000000012 /* SystemActions.swift */,
@@ -907,6 +910,7 @@
 				4D1500000000000000000006 /* SMARTServiceErrorMapper.swift in Sources */,
 				10000000000000000000006C /* SMARTHelperManager.swift in Sources */,
 				100000000000000000000028 /* HelperInstaller.swift in Sources */,
+				4D1A00000000000000000001 /* LegacyHelperServiceEnabler.swift in Sources */,
 				4D1400000000000000000001 /* HelperInstallationPreflight.swift in Sources */,
 				4D1400000000000000000002 /* BundledSMARTCompanionReader.swift in Sources */,
 				10000000000000000000002A /* IOKitDiskSampler.swift in Sources */,
@@ -1066,7 +1070,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_TESTABILITY = YES;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -1079,7 +1083,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CURRENT_PROJECT_VERSION = 1;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
@@ -1094,7 +1098,7 @@
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.palmos.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1112,7 +1116,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.palmos.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PalmosApp.app/Contents/MacOS/PalmosApp";
@@ -1125,7 +1129,7 @@
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_TESTABILITY = YES;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 				ONLY_ACTIVE_ARCH = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -1136,7 +1140,7 @@
 			baseConfigurationReference = 200000000000000000000020 /* Helper.xcconfig */;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 1;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.2;
 			};
 			name = Release;
 		};

@@ -1,5 +1,7 @@
 import CryptoKit
 import Foundation
+import Security
+import ServiceManagement
 import XCTest
 @testable import PalmosApp
 
@@ -259,6 +261,351 @@ final class Task7HelperPackagingTests: XCTestCase {
         XCTAssertEqual(provisionedBinary, binary)
     }
 
+    func testHelperInstallerRetriesOneXPCConnectionFailure() async throws {
+        let provisioner = SequencedCompanionProvisioner(
+            errors: [SMARTServiceClientError.connectionInvalidated]
+        )
+        let installer = HelperInstaller(
+            provisioner: provisioner,
+            prepareInstallation: { Data([1]) }
+        )
+
+        try await installer.install()
+
+        let callCount = await provisioner.callCount
+        XCTAssertEqual(callCount, 2)
+    }
+
+    func testHelperInstallerDoesNotRetryNonConnectionFailure() async {
+        let provisioner = SequencedCompanionProvisioner(
+            errors: [SMARTServiceClientError.companionInstallationUnconfirmed]
+        )
+        let installer = HelperInstaller(
+            provisioner: provisioner,
+            prepareInstallation: { Data([1]) }
+        )
+
+        do {
+            try await installer.install()
+            XCTFail("Expected companion verification to fail")
+        } catch {
+            XCTAssertEqual(
+                error as? SMARTServiceClientError,
+                .companionInstallationUnconfirmed
+            )
+        }
+
+        let callCount = await provisioner.callCount
+        XCTAssertEqual(callCount, 1)
+    }
+
+    func testHelperInstallerRetriesXPCConnectionOnlyOnce() async {
+        let provisioner = SequencedCompanionProvisioner(
+            errors: [
+                SMARTServiceClientError.connectionInvalidated,
+                SMARTServiceClientError.connectionInterrupted
+            ]
+        )
+        let installer = HelperInstaller(
+            provisioner: provisioner,
+            prepareInstallation: { Data([1]) }
+        )
+
+        do {
+            try await installer.install()
+            XCTFail("Expected the second XPC connection failure")
+        } catch {
+            XCTAssertEqual(error as? SMARTServiceClientError, .connectionInterrupted)
+        }
+        let callCount = await provisioner.callCount
+        XCTAssertEqual(callCount, 2)
+    }
+
+    func testHelperInstallerPropagatesCancellationIntoPreparationTask() async throws {
+        let provisioner = SequencedCompanionProvisioner(errors: [])
+        let installer = HelperInstaller(
+            provisioner: provisioner,
+            prepareInstallation: {
+                for _ in 0..<500 {
+                    try Task.checkCancellation()
+                    Thread.sleep(forTimeInterval: 0.001)
+                }
+                return Data([1])
+            }
+        )
+        let installation = Task {
+            try await installer.install()
+        }
+
+        try await Task.sleep(for: .milliseconds(20))
+        installation.cancel()
+
+        do {
+            try await installation.value
+            XCTFail("Expected installation cancellation")
+        } catch is CancellationError {
+            // Expected.
+        } catch {
+            XCTFail("Expected CancellationError, received \(error)")
+        }
+        let callCount = await provisioner.callCount
+        XCTAssertEqual(callCount, 0)
+    }
+
+    func testServiceRepairJobUsesOnlyFixedLaunchctlArguments() throws {
+        let job = LegacyHelperServiceEnabler.repairJob
+
+        XCTAssertEqual(
+            Set(job.keys),
+            Set(["Label", "ProgramArguments", "RunAtLoad", "LaunchOnlyOnce"])
+        )
+        XCTAssertEqual(
+            job["Label"] as? String,
+            "com.palmos.smartservice.enable-repair"
+        )
+        XCTAssertEqual(
+            job["ProgramArguments"] as? [String],
+            [
+                "/bin/launchctl",
+                "enable",
+                "system/com.palmos.smartservice"
+            ]
+        )
+        XCTAssertEqual(job["RunAtLoad"] as? Bool, true)
+        XCTAssertEqual(job["LaunchOnlyOnce"] as? Bool, true)
+    }
+
+    func testServiceRepairWaitsForSuccessAndRemovesTemporaryJob() throws {
+        let manager = RecordingLegacyHelperServiceJobManager(
+            statuses: [.requiresApproval, .enabled]
+        )
+
+        try withAuthorization { authorization in
+            try LegacyHelperServiceEnabler(jobManager: manager)
+                .repairService(authorization: authorization) {
+                    manager.recordInstall()
+                }
+        }
+
+        XCTAssertEqual(
+            manager.events,
+            ["remove-if-present", "submit", "install", "status", "wait", "status", "remove-if-present"]
+        )
+    }
+
+    func testServiceRepairRetriesJobMustBeEnabledUntilInstallSucceeds() throws {
+        let manager = RecordingLegacyHelperServiceJobManager(statuses: [.enabled])
+        var installAttempts = 0
+
+        try withAuthorization { authorization in
+            try LegacyHelperServiceEnabler(jobManager: manager).repairService(
+                authorization: authorization,
+                shouldRetryInstall: { error in
+                    guard case HelperInstallerError.serviceMustBeEnabled = error else {
+                        return false
+                    }
+                    return true
+                },
+                installHelper: {
+                    installAttempts += 1
+                    manager.recordInstall()
+                    if installAttempts < 3 {
+                        throw HelperInstallerError.serviceMustBeEnabled("Not enabled yet")
+                    }
+                }
+            )
+        }
+
+        XCTAssertEqual(installAttempts, 3)
+        XCTAssertEqual(
+            manager.events,
+            [
+                "remove-if-present", "submit", "install", "install-retry-wait",
+                "install", "install-retry-wait", "install", "status",
+                "remove-if-present"
+            ]
+        )
+    }
+
+    func testServiceRepairStopsAtJobMustBeEnabledRetryLimit() throws {
+        let manager = RecordingLegacyHelperServiceJobManager(statuses: [.enabled])
+        var installAttempts = 0
+
+        XCTAssertThrowsError(
+            try withAuthorization { authorization in
+                try LegacyHelperServiceEnabler(jobManager: manager).repairService(
+                    authorization: authorization,
+                    shouldRetryInstall: { _ in true },
+                    installHelper: {
+                        installAttempts += 1
+                        manager.recordInstall()
+                        throw HelperInstallerError.serviceMustBeEnabled("Still disabled")
+                    }
+                )
+            }
+        ) { error in
+            XCTAssertEqual(error.localizedDescription, "Still disabled")
+        }
+
+        XCTAssertEqual(
+            installAttempts,
+            LegacyHelperServiceEnabler.maximumInstallAttempts
+        )
+        XCTAssertEqual(
+            manager.events.filter { $0 == "install-retry-wait" }.count,
+            LegacyHelperServiceEnabler.maximumInstallAttempts - 1
+        )
+        XCTAssertEqual(manager.events.last, "remove-if-present")
+    }
+
+    func testJobMustBeEnabledRetryRequiresServiceManagementDomainAndCode() throws {
+        let retryableError = try XCTUnwrap(CFErrorCreate(
+            kCFAllocatorDefault,
+            kSMErrorDomainFramework,
+            kSMErrorJobMustBeEnabled,
+            nil
+        ))
+        let wrongCode = try XCTUnwrap(CFErrorCreate(
+            kCFAllocatorDefault,
+            kSMErrorDomainFramework,
+            kSMErrorJobNotFound,
+            nil
+        ))
+        let wrongDomain = try XCTUnwrap(CFErrorCreate(
+            kCFAllocatorDefault,
+            NSCocoaErrorDomain as CFString,
+            kSMErrorJobMustBeEnabled,
+            nil
+        ))
+
+        XCTAssertTrue(HelperInstaller.isServiceMustBeEnabledError(retryableError))
+        XCTAssertFalse(HelperInstaller.isServiceMustBeEnabledError(wrongCode))
+        XCTAssertFalse(HelperInstaller.isServiceMustBeEnabledError(wrongDomain))
+    }
+
+    func testServiceRepairRemovesStaleJobBeforeSubmission() throws {
+        let manager = RecordingLegacyHelperServiceJobManager(statuses: [.enabled])
+
+        try withAuthorization { authorization in
+            try LegacyHelperServiceEnabler(jobManager: manager)
+                .repairService(authorization: authorization) {
+                    manager.recordInstall()
+                }
+        }
+
+        XCTAssertEqual(
+            manager.events,
+            ["remove-if-present", "submit", "install", "status", "remove-if-present"]
+        )
+    }
+
+    func testOnlyEnabledLegacyServiceSkipsRepair() {
+        XCTAssertFalse(
+            LegacyHelperServiceEnabler.requiresRepair(for: .enabled)
+        )
+        XCTAssertTrue(
+            LegacyHelperServiceEnabler.requiresRepair(for: .requiresApproval)
+        )
+        XCTAssertTrue(
+            LegacyHelperServiceEnabler.requiresRepair(for: .notRegistered)
+        )
+        XCTAssertTrue(
+            LegacyHelperServiceEnabler.requiresRepair(for: .notFound)
+        )
+    }
+
+    func testServiceRepairDoesNotSubmitAfterStaleRemovalFailure() throws {
+        let manager = RecordingLegacyHelperServiceJobManager(
+            staleRemovalError: TestServiceRepairError.rejected
+        )
+
+        XCTAssertThrowsError(
+            try withAuthorization { authorization in
+                try LegacyHelperServiceEnabler(jobManager: manager)
+                    .repairService(authorization: authorization) {}
+            }
+        ) { error in
+            XCTAssertEqual(error as? TestServiceRepairError, .rejected)
+        }
+        XCTAssertEqual(manager.events, ["remove-if-present"])
+    }
+
+    func testServiceRepairPropagatesSubmitFailureWithoutPolling() throws {
+        let manager = RecordingLegacyHelperServiceJobManager(
+            submitError: TestServiceRepairError.rejected
+        )
+
+        XCTAssertThrowsError(
+            try withAuthorization { authorization in
+                try LegacyHelperServiceEnabler(jobManager: manager)
+                    .repairService(authorization: authorization) {}
+            }
+        ) { error in
+            XCTAssertEqual(error as? TestServiceRepairError, .rejected)
+        }
+        XCTAssertEqual(manager.events, ["remove-if-present", "submit"])
+    }
+
+    func testServiceRepairReportsServiceStillDisabledAfterRemovingJob() throws {
+        let manager = RecordingLegacyHelperServiceJobManager(
+            statuses: [.requiresApproval]
+        )
+
+        XCTAssertThrowsError(
+            try withAuthorization { authorization in
+                try LegacyHelperServiceEnabler(jobManager: manager)
+                    .repairService(authorization: authorization) {}
+            }
+        ) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "The SMART Helper service remains disabled after the repair attempt."
+            )
+        }
+        XCTAssertEqual(manager.events.filter { $0 == "submit" }.count, 1)
+        XCTAssertEqual(manager.events.filter { $0 == "status" }.count, 251)
+        XCTAssertEqual(manager.events.last, "remove-if-present")
+    }
+
+    func testServiceRepairTimesOutForUnavailableLegacyStatus() throws {
+        let manager = RecordingLegacyHelperServiceJobManager(statuses: [.notFound])
+
+        XCTAssertThrowsError(
+            try withAuthorization { authorization in
+                try LegacyHelperServiceEnabler(jobManager: manager)
+                    .repairService(authorization: authorization) {}
+            }
+        ) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "Timed out while waiting for the SMART Helper service to become enabled (status 3)."
+            )
+        }
+        XCTAssertEqual(manager.events.filter { $0 == "submit" }.count, 1)
+        XCTAssertEqual(manager.events.filter { $0 == "status" }.count, 251)
+        XCTAssertEqual(manager.events.last, "remove-if-present")
+    }
+
+    func testServiceRepairReportsExecutionAndRemovalFailures() throws {
+        let manager = RecordingLegacyHelperServiceJobManager(
+            statuses: [.notFound],
+            finalRemovalError: TestServiceRepairError.rejected
+        )
+
+        XCTAssertThrowsError(
+            try withAuthorization { authorization in
+                try LegacyHelperServiceEnabler(jobManager: manager)
+                    .repairService(authorization: authorization) {
+                        throw TestServiceRepairError.rejected
+                    }
+            }
+        ) { error in
+            let description = (error as? LocalizedError)?.errorDescription
+            XCTAssertTrue(description?.contains("Repair rejected") == true)
+            XCTAssertTrue(description?.contains("could not be removed") == true)
+        }
+    }
+
     func testBlessFailureDescriptionPreservesNestedNSErrorDetails() {
         let underlyingError = NSError(
             domain: "com.palmos.signing",
@@ -458,6 +805,90 @@ final class Task7HelperPackagingTests: XCTestCase {
 
         return Data(bytes)
     }
+
+    private func withAuthorization<T>(
+        _ body: (AuthorizationRef) throws -> T
+    ) throws -> T {
+        var authorizationRef: AuthorizationRef?
+        let status = AuthorizationCreate(nil, nil, [], &authorizationRef)
+        XCTAssertEqual(status, errAuthorizationSuccess)
+        let authorization = try XCTUnwrap(authorizationRef)
+        defer { AuthorizationFree(authorization, []) }
+        return try body(authorization)
+    }
+}
+
+private enum TestServiceRepairError: LocalizedError, Equatable {
+    case rejected
+
+    var errorDescription: String? {
+        "Repair rejected"
+    }
+}
+
+private final class RecordingLegacyHelperServiceJobManager:
+    LegacyHelperServiceJobManaging
+{
+    private var statuses: [SMAppService.Status]
+    private let submitError: Error?
+    private let staleRemovalError: Error?
+    private let finalRemovalError: Error?
+    private var removalCallCount = 0
+    private(set) var events: [String] = []
+
+    init(
+        statuses: [SMAppService.Status] = [.enabled],
+        submitError: Error? = nil,
+        staleRemovalError: Error? = nil,
+        finalRemovalError: Error? = nil
+    ) {
+        self.statuses = statuses
+        self.submitError = submitError
+        self.staleRemovalError = staleRemovalError
+        self.finalRemovalError = finalRemovalError
+    }
+
+    func submitRepairJob(
+        _ job: [String: Any],
+        authorization: AuthorizationRef
+    ) throws {
+        events.append("submit")
+        if let submitError {
+            throw submitError
+        }
+    }
+
+    func helperServiceStatus() -> SMAppService.Status {
+        events.append("status")
+        guard statuses.count > 1 else { return statuses[0] }
+        return statuses.removeFirst()
+    }
+
+    func removeRepairJob(
+        authorization: AuthorizationRef,
+        allowsMissing: Bool
+    ) throws {
+        removalCallCount += 1
+        events.append(allowsMissing ? "remove-if-present" : "remove")
+        if removalCallCount == 1, let staleRemovalError {
+            throw staleRemovalError
+        }
+        if removalCallCount > 1, let finalRemovalError {
+            throw finalRemovalError
+        }
+    }
+
+    func waitBeforeNextStatusCheck() {
+        events.append("wait")
+    }
+
+    func waitBeforeInstallRetry() {
+        events.append("install-retry-wait")
+    }
+
+    func recordInstall() {
+        events.append("install")
+    }
 }
 
 private actor RecordingCompanionProvisioner: SMARTCompanionProvisioning {
@@ -465,5 +896,21 @@ private actor RecordingCompanionProvisioner: SMARTCompanionProvisioning {
 
     func installBundledSmartctlCompanion(_ binary: Data) async throws {
         self.binary = binary
+    }
+}
+
+private actor SequencedCompanionProvisioner: SMARTCompanionProvisioning {
+    private var errors: [Error]
+    private(set) var callCount = 0
+
+    init(errors: [Error]) {
+        self.errors = errors
+    }
+
+    func installBundledSmartctlCompanion(_ binary: Data) async throws {
+        callCount += 1
+        if errors.isEmpty == false {
+            throw errors.removeFirst()
+        }
     }
 }

@@ -4,6 +4,7 @@
 # Local docs and working memory
 docs/
 memory/
+.engramory-memory/
 
 # Swift Package Manager
 .build/
