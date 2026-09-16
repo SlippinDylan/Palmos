@@ -1,15 +1,17 @@
-name: Test
+name: CI
 
 on:
+  push:
+    branches:
+      - '**'
   pull_request:
-    branches: [main]
-    paths-ignore:
-      - 'README.md'
-      - 'README.*.md'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: test-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,10 +20,13 @@ jobs:
     # macos-26 is required: the project uses macOS 26 APIs guarded by @available,
     # and Xcode 16.x on macos-15 does not ship the macOS 26 SDK.
     runs-on: macos-26
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Pin to a specific Xcode to avoid silent breakage on runner image updates.
       - name: Select Xcode 26.4
@@ -40,6 +45,11 @@ jobs:
           Scripts/verify/create-dmg-tests.sh
           Scripts/verify/code-signing-tests.sh
           Scripts/verify/local-smart-build-tests.sh
+
+      - name: Validate Automation
+        run: |
+          node .github/scripts/release-manifest.mjs validate
+          node --test .github/scripts/*.test.mjs
 
       - name: Run PalmosCore Tests
         working-directory: Packages/PalmosCore

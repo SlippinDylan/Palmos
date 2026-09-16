@@ -78,7 +78,7 @@ for a free Personal Team under **Settings → Accounts → Manage Certificates**
 Developer Program membership, Developer ID certificate, or notarization is required for
 local use.
 
-Pull request tests explicitly disable signing from the command line. Local compile/test
+CI for every branch push and pull request explicitly disables signing from the command line. Local compile/test
 commands may do the same. Any running build that uses the SMART Helper must instead sign the
 App, Helper, and companion with the same free Apple Development team.
 
@@ -118,8 +118,10 @@ signature, license, or source archive is missing.
 
 The release workflow expects two GitHub Actions secrets:
 
-- `APPLE_DEVELOPMENT_P12_BASE64` — a base64-encoded export of an Apple Development certificate and its private key.
-- `APPLE_DEVELOPMENT_P12_PASSWORD` — the export password for that P12 file.
+- `CERTIFICATES_P12` — a base64-encoded export of an Apple Development certificate and its private key.
+- `CERTIFICATES_PASSWORD` — the export password for that P12 file.
+
+The workflow also accepts the legacy `APPLE_DEVELOPMENT_P12_BASE64` and `APPLE_DEVELOPMENT_P12_PASSWORD` names. Feishu activity notifications additionally use `FEISHU_WEBHOOK` and `FEISHU_SECRET`.
 
 For example, after exporting the certificate as `AppleDevelopment.p12`, copy its encoded content with:
 
@@ -130,6 +132,12 @@ base64 -i AppleDevelopment.p12 | pbcopy
 Add that value and the export password under the repository's **Settings → Secrets and variables → Actions**. The workflow derives the Team ID from the certificate, builds smartmontools 7.5 from its pinned source archive, signs the app, helper, and companion with the same identity, and verifies the strict signatures plus both `SMJobBless` signing requirements before packaging. The Team ID is not a secret and is never used as a credential.
 
 Free Apple Development certificates expire periodically. When renewing one, export the replacement certificate and update the two secrets. As long as the Personal Team ID remains the same, the App/Helper requirements do not need to change.
+
+### Versioned Releases
+
+Every main push first passes the same CI as other branches. The Release workflow consumes only the exact commit verified by CI. [`Config/Release/manifest.json`](Config/Release/manifest.json) is the release entry point: `version` accepts `x.y.z`, `x.y.z-alpha.n`, and `x.y.z-beta.n`; `release: false` skips signing and packaging, while `release: true` requests publication.
+
+Publication also requires a unique, non-empty `## [version] - YYYY-MM-DD` section in [`CHANGELOG.md`](CHANGELOG.md), and the version must be newer than every existing GitHub Release. The workflow creates and verifies a draft Release before publishing the DMG.
 
 ## Testing
 

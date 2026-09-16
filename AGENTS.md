@@ -78,7 +78,7 @@ Palmos/
 ├── Config/Plists/                      # App/Helper Info.plist 与 SMJobBless 约束
 ├── Scripts/verify/                     # 签名与真机 smoke 验证
 ├── Palmos.xcworkspace              # 日常构建入口
-└── .github/workflows/                  # PR 测试与 main 分支 release
+└── .github/workflows/                  # 全分支 CI、飞书通知与 main 分支 release
 ```
 
 新增或移动 Swift 文件时，必须同步检查 `Palmos.xcodeproj/project.pbxproj` 的 file reference、target membership 与 build phase；仅在磁盘上创建文件不代表 Xcode target 会编译它。
@@ -169,7 +169,7 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 
 - 仅 `PalmosCore`：`swift test`。
 - App UI/state/integration：`PalmosApp` scheme tests；涉及 Core 时再跑 Core tests。
-- Helper/XPC/签名：Core compatibility tests + App tests + `PalmosSMARTServiceTests`；PR CI 会运行 Helper scheme，本地仍需在交付前确认退出码为 0；打包改动再做 signed build 与 `code-signing.sh`。
+- Helper/XPC/签名：Core compatibility tests + App tests + `PalmosSMARTServiceTests`；所有 push/PR 的 CI 都会运行 Helper scheme，本地仍需在交付前确认退出码为 0；打包改动再做 signed build 与 `code-signing.sh`。
 - 发现、吞吐、SMART、eject 的真实硬件行为：自动测试后执行相关 manual smoke 项；不要声称已验证未连接的硬件或未安装的 Helper。
 - 发布相关：对照 `.github/workflows/test.yml` 和 `.github/workflows/release.yml`，不要把本地无签名成功等同于可安装 Helper 的 release 成功。
 
@@ -185,9 +185,9 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 
 - 配置源在 `Config/xcconfigs/`；Swift 6、macOS 15 deployment target、bundle IDs 和 Team ID 不应散落复制到源码。
 - Fork 使用者可替换 `Base.xcconfig` 的 `DEVELOPMENT_TEAM`，但 App 与 Helper 必须继承同一 Team ID。
-- PR CI 使用 macOS 26 runner 与固定 Xcode，命令行禁用签名；修改 SDK/API 使用后同时确认本地与 CI Xcode 能力。
+- push/PR CI 使用 macOS 26 runner 与固定 Xcode，命令行禁用签名；修改 SDK/API 使用后同时确认本地与 CI Xcode 能力。
 - release 使用免费 Apple Development 证书，不依赖 paid Developer ID/notarization；不要擅自改成要求付费签名的分发模型。
-- `MARKETING_VERSION` 是 release tag 的版本来源；版本与 release workflow 的更改必须保持单一来源。
+- `Config/Release/manifest.json` 是 release、tag、DMG 与 CHANGELOG 版本的单一来源；预发布后缀不进入 App 的数字型 `MARKETING_VERSION`。修改版本语义时同步更新 manifest 校验、Release workflow 和文档。
 - `Shared/Licensing/smartmontools-COPYING.txt` 与 `MenuBarExtraAccess-LICENSE.txt` 不得随意删除；任何分发 `smartctl` 的方案都必须同步核对 GPLv2 许可义务，升级 SwiftPM 依赖时必须同步核对并测试随包分发的许可声明。
 
 ## 9. 文档导航
@@ -197,9 +197,11 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 | [README.md](README.md) | 产品范围、支持设备、安装、Helper、构建、签名与发布说明 |
 | [Packages/PalmosCore/Package.swift](Packages/PalmosCore/Package.swift) | Core 平台、product 和 test target 定义 |
 | [Config/xcconfigs/Base.xcconfig](Config/xcconfigs/Base.xcconfig) | Swift、deployment target、签名基线 |
+| [Config/Release/manifest.json](Config/Release/manifest.json) | 发布候选版本与显式发布开关 |
+| [CHANGELOG.md](CHANGELOG.md) | manifest 驱动的 GitHub Release Notes |
 | [Shared/XPCContracts/PalmosXPCContracts.swift](Shared/XPCContracts/PalmosXPCContracts.swift) | XPC 版本与协议入口 |
 | [Scripts/verify/manual-smoke-checklist.md](Scripts/verify/manual-smoke-checklist.md) | 真机与 release smoke checklist |
-| [.github/workflows/test.yml](.github/workflows/test.yml) | PR CI 的权威测试环境和命令 |
+| [.github/workflows/test.yml](.github/workflows/test.yml) | 全分支 push/PR CI 的权威测试环境和命令 |
 | [.github/workflows/release.yml](.github/workflows/release.yml) | 构建、签名、校验、打包与 GitHub Release 流程 |
 
 权威顺序：当前工程配置/源码/测试/CI → 本文件 → README 与 manual checklist → 历史设计记录。发现冲突时先验证现状并修正文档，不要照搬旧描述。

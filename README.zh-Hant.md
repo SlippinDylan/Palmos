@@ -72,7 +72,7 @@ sudo rm /Library/PrivilegedHelperTools/com.palmos.smartservice.smartctl
 
 `PalmosSMARTService` scheme 用來建置特權 Helper。儲存庫預設使用維護者公開的 Team ID。免費 Personal Team 使用者可以在 Xcode 的 **Settings → Accounts → Manage Certificates** 中建立 Apple Development 憑證。本機使用不需要付費加入 Apple Developer Program，也不需要 Developer ID 憑證或 Apple 公證。
 
-Pull Request 測試會在命令列中明確停用簽署，本機編譯和測試也可以這樣做。凡是需要執行 SMART Helper 的建置，都必須用同一個免費 Apple Development Team 簽署 App、Helper 和 companion。
+所有分支 push 和 Pull Request 的 CI 都會在命令列中明確停用簽署，本機編譯和測試也可以這樣做。凡是需要執行 SMART Helper 的建置，都必須用同一個免費 Apple Development Team 簽署 App、Helper 和 companion。
 
 一般 Debug 建置不會下載第三方工具。建立 Apple Development 憑證後，可以用專用指令碼建置支援 SMART 的本機 App：
 
@@ -102,8 +102,10 @@ Release workflow 會在 CI 中執行等價流程。如果 companion、簽署、�
 
 Release workflow 需要設定兩個 GitHub Actions secret：
 
-- `APPLE_DEVELOPMENT_P12_BASE64`：匯出的 Apple Development 憑證及私密金鑰，以 base64 編碼。
-- `APPLE_DEVELOPMENT_P12_PASSWORD`：P12 檔案的匯出密碼。
+- `CERTIFICATES_P12`：匯出的 Apple Development 憑證及私密金鑰，以 base64 編碼。
+- `CERTIFICATES_PASSWORD`：P12 檔案的匯出密碼。
+
+為了相容既有設定，workflow 也接受 `APPLE_DEVELOPMENT_P12_BASE64` 和 `APPLE_DEVELOPMENT_P12_PASSWORD`。飛書活動通知另外使用 `FEISHU_WEBHOOK` 和 `FEISHU_SECRET`。
 
 例如，將憑證匯出為 `AppleDevelopment.p12` 後，可以用以下指令複製編碼內容：
 
@@ -114,6 +116,12 @@ base64 -i AppleDevelopment.p12 | pbcopy
 在儲存庫的 **Settings → Secrets and variables → Actions** 中加入編碼內容和匯出密碼。Workflow 會從憑證中讀取 Team ID，使用固定原始碼建置 smartmontools 7.5，以同一個簽署身分簽署 App、Helper 和 companion，並在封裝前檢查嚴格簽署以及兩端的 `SMJobBless` signing requirements。Team ID 不是秘密，也不會被當作憑證使用。
 
 免費的 Apple Development 憑證會定期過期。續簽後，匯出新憑證並更新這兩個 secret 即可。只要 Personal Team ID 沒有變更，App 與 Helper 的簽署要求就不需要修改。
+
+### 版本發布
+
+所有 main push 會先通過與其他分支相同的 CI，Release workflow 只處理 CI 實際驗證過的 commit。發布入口是 [`Config/Release/manifest.json`](Config/Release/manifest.json)：`version` 支援 `x.y.z`、`x.y.z-alpha.n` 和 `x.y.z-beta.n`，`release` 為 `false` 時不進行簽署或封裝，為 `true` 時才嘗試發布。
+
+發布還要求 [`CHANGELOG.md`](CHANGELOG.md) 存在唯一、非空且與版本完全相符的 `## [版本] - YYYY-MM-DD` 章節，版本必須高於已有 GitHub Release。Workflow 會先建立並驗證 draft Release，再公開發布 DMG。
 
 ## 測試
 

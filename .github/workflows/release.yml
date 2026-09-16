@@ -1,107 +1,142 @@
 name: Release
 
-on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'README.md'
-      - 'README.*.md'
+on: # zizmor: ignore[dangerous-triggers] Jobs accept only successful push CI from this repository's main branch.
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
 
-# Allow only one release job at a time; never cancel mid-flight.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-main
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
-  release:
-    name: Build and Release
-    # macos-26 is required: the project uses macOS 26 APIs guarded by @available,
-    # and Xcode 16.x on macos-15 does not ship the macOS 26 SDK.
-    runs-on: macos-26
-    permissions:
-      contents: write
+  plan:
+    name: Plan release
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.plan.outputs.publish || 'false' }}
+      version: ${{ steps.manifest.outputs.version }}
+      marketing_version: ${{ steps.manifest.outputs.marketing_version }}
+      tag: ${{ steps.manifest.outputs.tag }}
+      prerelease: ${{ steps.manifest.outputs.prerelease }}
+      dmg_name: ${{ steps.manifest.outputs.dmg_name }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Read release manifest
+        id: manifest
+        run: node .github/scripts/release-manifest.mjs validate
+
+      - name: Check existing release
+        if: steps.manifest.outputs.release == 'true'
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.manifest.outputs.tag }}
+        run: |
+          if is_draft="$(gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft \
+            --jq '.isDraft' 2>/dev/null)"; then
+            if [[ "$is_draft" == 'true' ]]; then
+              echo 'exists=false' >> "$GITHUB_OUTPUT"
+              echo 'draft=true' >> "$GITHUB_OUTPUT"
+              echo "Draft release $TAG exists; the run will rebuild and finish it."
+            else
+              echo 'exists=true' >> "$GITHUB_OUTPUT"
+              echo 'draft=false' >> "$GITHUB_OUTPUT"
+              echo "Published release $TAG already exists; packaging is not required."
+            fi
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+            echo 'draft=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate release request
+        if: steps.manifest.outputs.release == 'true' && steps.existing.outputs.exists == 'false'
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_TAG: ${{ steps.manifest.outputs.tag }}
+        run: |
+          all_tags="$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '.[].tag_name')"
+          published_tags="$(awk -v current="$CURRENT_TAG" '$0 != current' <<< "$all_tags")"
+          PUBLISHED_RELEASE_TAGS="$published_tags" \
+            node .github/scripts/release-manifest.mjs plan
+
+  release:
+    name: Build and publish DMG
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      MARKETING_VERSION: ${{ needs.plan.outputs.marketing_version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+      DMG_NAME: ${{ needs.plan.outputs.dmg_name }}
+      TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TESTED_SHA }}
+          persist-credentials: false
 
       - name: Select Xcode 26.4
         run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
 
-      - name: Run PalmosCore Tests
-        working-directory: Packages/PalmosCore
-        run: swift test
-
-      - name: Run PalmosApp Tests
+      - name: Prepare release notes
         run: |
-          set -o pipefail
-          xcodebuild test \
-            -workspace Palmos.xcworkspace \
-            -scheme PalmosApp \
-            -destination 'platform=macOS,arch=arm64' \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
-
-      - name: Run PalmosSMARTService Tests
-        run: |
-          set -o pipefail
-          xcodebuild test \
-            -workspace Palmos.xcworkspace \
-            -scheme PalmosSMARTServiceTests \
-            -destination 'platform=macOS,arch=arm64' \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
-
-      # Read MARKETING_VERSION from Xcode build settings — single source of truth.
-      - name: Read version
-        id: version
-        run: |
-          set -euo pipefail
-
-          BUILD_SETTINGS="$(xcodebuild \
-            -workspace Palmos.xcworkspace \
-            -scheme PalmosApp \
-            -showBuildSettings 2>/dev/null)"
-          VERSION="$(
-            awk '
-              $1 == "MARKETING_VERSION" && $2 == "=" && !found {
-                print $3
-                found = 1
-              }
-            ' <<< "$BUILD_SETTINGS"
-          )"
-          if [[ -z "$VERSION" ]]; then
-            echo "Unable to read MARKETING_VERSION from Xcode build settings." >&2
-            exit 1
-          fi
-          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-
-      # If the tag already exists the version hasn't been bumped — skip release.
-      - name: Check if release already exists
-        id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "${{ steps.version.outputs.tag }}" &>/dev/null; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release ${{ steps.version.outputs.tag }} already exists — skipping."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          release_notes_path="$RUNNER_TEMP/release-notes.md"
+          node .github/scripts/release-manifest.mjs notes > "$release_notes_path"
+          {
+            echo
+            echo '## 安装'
+            echo
+            echo '1. 打开 DMG，将 `Palmos.app` 拖到 `Applications`。'
+            echo '2. 移除下载隔离属性：'
+            echo
+            echo '   ```bash'
+            echo '   sudo xattr -rd com.apple.quarantine /Applications/Palmos.app'
+            echo '   ```'
+            echo
+            echo '> 此版本使用 Apple Development 证书签名，未经过 Apple 公证。需要时可在设置中安装 SMART Helper。'
+          } >> "$release_notes_path"
 
       - name: Install Apple Development certificate
-        if: steps.check.outputs.exists == 'false'
         env:
           APPLE_DEVELOPMENT_P12_BASE64: ${{ secrets.APPLE_DEVELOPMENT_P12_BASE64 || secrets.CERTIFICATES_P12 }}
           APPLE_DEVELOPMENT_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPMENT_P12_PASSWORD || secrets.CERTIFICATES_PASSWORD }}
         run: |
           set -euo pipefail
 
-          : "${APPLE_DEVELOPMENT_P12_BASE64:?Missing APPLE_DEVELOPMENT_P12_BASE64 secret}"
-          : "${APPLE_DEVELOPMENT_P12_PASSWORD:?Missing APPLE_DEVELOPMENT_P12_PASSWORD secret}"
+          : "${APPLE_DEVELOPMENT_P12_BASE64:?Missing APPLE_DEVELOPMENT_P12_BASE64 or CERTIFICATES_P12 secret}"
+          : "${APPLE_DEVELOPMENT_P12_PASSWORD:?Missing APPLE_DEVELOPMENT_P12_PASSWORD or CERTIFICATES_PASSWORD secret}"
 
           umask 077
           CERTIFICATE_PATH="$RUNNER_TEMP/apple-development.p12"
@@ -162,7 +197,6 @@ jobs:
           rm -f "$CERTIFICATE_PATH"
 
       - name: Build and sign smartctl companion
-        if: steps.check.outputs.exists == 'false'
         run: |
           set -euo pipefail
 
@@ -193,7 +227,6 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build Release
-        if: steps.check.outputs.exists == 'false'
         run: |
           set -o pipefail
           xcodebuild build \
@@ -201,6 +234,8 @@ jobs:
             -scheme PalmosApp \
             -configuration Release \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
             DEVELOPMENT_TEAM="$SIGNING_TEAM_ID" \
@@ -213,15 +248,13 @@ jobs:
             SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD=YES
 
       - name: Verify Release signatures
-        if: steps.check.outputs.exists == 'false'
         run: |
           APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/Palmos.app"
           Scripts/verify/code-signing.sh "$APP_PATH" "$SIGNING_TEAM_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")" = "$MARKETING_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist")" = "${{ github.run_number }}"
 
-      # Build drag-to-install DMG with custom background and Finder layout.
       - name: Package DMG
-        if: steps.check.outputs.exists == 'false'
-        id: package
         run: |
           set -euo pipefail
 
@@ -231,23 +264,112 @@ jobs:
             exit 1
           fi
 
-          DMG_NAME="Palmos-${{ steps.version.outputs.tag }}.dmg"
-          DMG_PATH="$RUNNER_TEMP/$DMG_NAME"
+          Scripts/create-dmg.sh "$APP_PATH" "$RUNNER_TEMP/$DMG_NAME" "Palmos"
+          hdiutil verify "$RUNNER_TEMP/$DMG_NAME"
 
-          Scripts/create-dmg.sh "$APP_PATH" "$DMG_PATH" "Palmos"
-
-          echo "dmg=$DMG_PATH" >> "$GITHUB_OUTPUT"
-          echo "name=$DMG_NAME" >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        if: steps.check.outputs.exists == 'false'
+      - name: Recheck release availability
+        id: availability
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "Palmos ${{ steps.version.outputs.tag }}" \
-            --generate-notes \
-            "${{ steps.package.outputs.dmg }}#${{ steps.package.outputs.name }}"
+          set -euo pipefail
+
+          if is_draft="$(gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft \
+            --jq '.isDraft' 2>/dev/null)"; then
+            if [[ "$is_draft" != 'true' ]]; then
+              echo "Published release $TAG was created while this run was queued." >&2
+              exit 1
+            fi
+            tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.sha')"
+            if [[ "$tag_sha" != "$TESTED_SHA" ]]; then
+              echo "Draft release $TAG targets $tag_sha instead of tested commit $TESTED_SHA." >&2
+              exit 1
+            fi
+            echo 'draft=true' >> "$GITHUB_OUTPUT"
+          elif tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.sha' 2>/dev/null)"; then
+            if [[ "$tag_sha" != "$TESTED_SHA" ]]; then
+              echo "Existing tag $TAG targets $tag_sha instead of tested commit $TESTED_SHA." >&2
+              exit 1
+            fi
+          fi
+
+      - name: Create draft GitHub Release
+        if: steps.availability.outputs.draft != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          arguments=(
+            release create "$TAG"
+            --repo "$GITHUB_REPOSITORY"
+            --target "$TESTED_SHA"
+            --title "Palmos $TAG"
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+            --draft
+          )
+          if [[ "$PRERELEASE" == 'true' ]]; then
+            arguments+=(--prerelease)
+          fi
+          arguments+=("$RUNNER_TEMP/$DMG_NAME#$DMG_NAME")
+          gh "${arguments[@]}"
+
+      - name: Refresh existing draft GitHub Release
+        if: steps.availability.outputs.draft == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            "$RUNNER_TEMP/$DMG_NAME#$DMG_NAME"
+          gh release edit "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Palmos $TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --prerelease="$PRERELEASE"
+
+      - name: Verify draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" = 'true'
+          asset_names="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          if [[ "$asset_names" != "$DMG_NAME" ]]; then
+            echo "Draft release assets must contain only $DMG_NAME; found: $asset_names" >&2
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      - name: Dispatch release notification
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          changelog="$(node .github/scripts/release-manifest.mjs notes)"
+          jq -n \
+            --arg version "$VERSION" \
+            --argjson prerelease "$PRERELEASE" \
+            --arg dmg_name "$DMG_NAME" \
+            --arg changelog "$changelog" \
+            --arg release_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}" \
+            --arg download_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${TAG}/${DMG_NAME}" \
+            '{
+              event_type: "release_published",
+              client_payload: {
+                version: $version,
+                prerelease: $prerelease,
+                dmg_name: $dmg_name,
+                changelog: $changelog,
+                release_url: $release_url,
+                download_url: $download_url
+              }
+            }' \
+            | gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" --input -
 
       - name: Remove signing keychain
         if: always()
