@@ -188,6 +188,7 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 - push/PR CI 使用 macOS 26 runner 与固定 Xcode，命令行禁用签名；修改 SDK/API 使用后同时确认本地与 CI Xcode 能力。
 - release 使用免费 Apple Development 证书，不依赖 paid Developer ID/notarization；不要擅自改成要求付费签名的分发模型。
 - `Config/Release/manifest.json` 是 release、tag、DMG 与 CHANGELOG 版本的单一来源；预发布后缀不进入 App 的数字型 `MARKETING_VERSION`。修改版本语义时同步更新 manifest 校验、Release workflow 和文档。
+- Palmos 源码使用 Apache License 2.0；修改根 `LICENSE` 时必须同步 README、App bundle 中的许可证副本、固定摘要与打包测试。
 - `Shared/Licensing/smartmontools-COPYING.txt` 与 `MenuBarExtraAccess-LICENSE.txt` 不得随意删除；任何分发 `smartctl` 的方案都必须同步核对 GPLv2 许可义务，升级 SwiftPM 依赖时必须同步核对并测试随包分发的许可声明。
 
 ## 9. 文档导航

@@ -2,7 +2,12 @@
 .DS_Store
 
 # Local docs and working memory
-docs/
+docs/*
+!docs/README.*.md
+!docs/images/
+docs/images/*
+!docs/images/readme/
+!docs/images/readme/**
 memory/
 .engramory-memory/
 

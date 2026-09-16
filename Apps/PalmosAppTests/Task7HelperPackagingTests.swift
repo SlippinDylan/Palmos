@@ -73,7 +73,7 @@ final class Task7HelperPackagingTests: XCTestCase {
         try assertBundledLicense(
             resource: "LICENSE",
             extension: nil,
-            expectedSHA256: "054515e39d8e9ec2004aeafc2aba2700aad7f7c94041c43fd316ac998c822b59"
+            expectedSHA256: "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
         )
     }
 
