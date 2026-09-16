@@ -121,7 +121,7 @@ base64 -i AppleDevelopment.p12 | pbcopy
 
 所有 main push 先通过与其他分支相同的 CI，Release workflow 只处理 CI 实际验证过的 commit。发布入口是 [`Config/Release/manifest.json`](Config/Release/manifest.json)：`version` 支持 `x.y.z`、`x.y.z-alpha.n` 和 `x.y.z-beta.n`，`release` 为 `false` 时不进行签名或打包，为 `true` 时才尝试发布。
 
-发布还要求 [`CHANGELOG.md`](CHANGELOG.md) 存在唯一、非空且与版本完全匹配的 `## [版本] - YYYY-MM-DD` 章节，版本必须高于已有 GitHub Release。Workflow 会先创建并验证 draft Release，再公开发布 DMG。
+请求发布的同一个提交还必须创建或更新 `CHANGELOG.md`，提供唯一、非空且与版本完全匹配的 `## [版本] - YYYY-MM-DD` 章节；版本必须高于已有 GitHub Release。Workflow 会先创建并验证 draft Release，再公开发布 DMG。
 
 ## 测试
 

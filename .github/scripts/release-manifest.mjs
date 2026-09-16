@@ -146,26 +146,19 @@ async function writeOutputs(values) {
   await appendFile(outputPath, lines, 'utf8');
 }
 
-async function loadInputs() {
-  const [manifestSource, changelogSource] = await Promise.all([
-    readFile(MANIFEST_PATH, 'utf8'),
-    readFile(CHANGELOG_PATH, 'utf8'),
-  ]);
-  return { manifestSource, changelogSource };
-}
-
 async function main() {
   const command = process.argv[2] ?? 'validate';
-  const inputs = await loadInputs();
+  const manifestSource = await readFile(MANIFEST_PATH, 'utf8');
 
   if (command === 'notes') {
-    const manifest = parseManifest(inputs.manifestSource);
-    process.stdout.write(`${extractChangelogSection(inputs.changelogSource, manifest.version.value)}\n`);
+    const manifest = parseManifest(manifestSource);
+    const changelogSource = await readFile(CHANGELOG_PATH, 'utf8');
+    process.stdout.write(`${extractChangelogSection(changelogSource, manifest.version.value)}\n`);
     return;
   }
 
   if (command === 'validate') {
-    const manifest = parseManifest(inputs.manifestSource);
+    const manifest = parseManifest(manifestSource);
     await writeOutputs({
       release: manifest.release,
       version: manifest.version.value,
@@ -178,8 +171,15 @@ async function main() {
   }
 
   if (command === 'plan') {
+    const manifest = parseManifest(manifestSource);
+    if (!manifest.release) {
+      await writeOutputs({ publish: false });
+      return;
+    }
+
+    const changelogSource = await readFile(CHANGELOG_PATH, 'utf8');
     const publishedTags = String(process.env.PUBLISHED_RELEASE_TAGS ?? '').split('\n').filter(Boolean);
-    const plan = createReleasePlan({ ...inputs, publishedTags });
+    const plan = createReleasePlan({ manifestSource, changelogSource, publishedTags });
     await writeOutputs({ publish: plan.release });
     return;
   }

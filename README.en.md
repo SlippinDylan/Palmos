@@ -137,7 +137,7 @@ Free Apple Development certificates expire periodically. When renewing one, expo
 
 Every main push first passes the same CI as other branches. The Release workflow consumes only the exact commit verified by CI. [`Config/Release/manifest.json`](Config/Release/manifest.json) is the release entry point: `version` accepts `x.y.z`, `x.y.z-alpha.n`, and `x.y.z-beta.n`; `release: false` skips signing and packaging, while `release: true` requests publication.
 
-Publication also requires a unique, non-empty `## [version] - YYYY-MM-DD` section in [`CHANGELOG.md`](CHANGELOG.md), and the version must be newer than every existing GitHub Release. The workflow creates and verifies a draft Release before publishing the DMG.
+The commit requesting publication must also create or update `CHANGELOG.md` with one unique, non-empty `## [version] - YYYY-MM-DD` section, and the version must be newer than every existing GitHub Release. The workflow creates and verifies a draft Release before publishing the DMG.
 
 ## Testing
 

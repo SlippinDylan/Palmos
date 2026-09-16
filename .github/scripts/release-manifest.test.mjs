@@ -80,7 +80,7 @@ test('rejects versions that do not advance published history', () => {
 
 test('does not require release notes while release is disabled', () => {
   const plan = createReleasePlan({
-    manifestSource: '{"version":"0.1.0-beta.1","release":false}',
+    manifestSource: '{"version":"0.1.0-beta.4","release":false}',
     changelogSource: '',
     publishedTags: ['v1.0.3'],
   });

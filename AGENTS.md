@@ -198,7 +198,6 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 | [Packages/PalmosCore/Package.swift](Packages/PalmosCore/Package.swift) | Core 平台、product 和 test target 定义 |
 | [Config/xcconfigs/Base.xcconfig](Config/xcconfigs/Base.xcconfig) | Swift、deployment target、签名基线 |
 | [Config/Release/manifest.json](Config/Release/manifest.json) | 发布候选版本与显式发布开关 |
-| [CHANGELOG.md](CHANGELOG.md) | manifest 驱动的 GitHub Release Notes |
 | [Shared/XPCContracts/PalmosXPCContracts.swift](Shared/XPCContracts/PalmosXPCContracts.swift) | XPC 版本与协议入口 |
 | [Scripts/verify/manual-smoke-checklist.md](Scripts/verify/manual-smoke-checklist.md) | 真机与 release smoke checklist |
 | [.github/workflows/test.yml](.github/workflows/test.yml) | 全分支 push/PR CI 的权威测试环境和命令 |
