@@ -70,6 +70,7 @@ readonly COMPANION_SHA256="$(/usr/bin/shasum -a 256 "$COMPANION_PATH" | /usr/bin
   -e "s#/usr/bin/codesign#\"$MOCK_TOOLS/codesign\"#g" \
   -e "s#/usr/bin/lipo#\"$MOCK_TOOLS/lipo\"#g" \
   -e "s#/usr/bin/otool#\"$MOCK_TOOLS/otool\"#g" \
+  -e "s#/usr/bin/vtool#\"$MOCK_TOOLS/vtool\"#g" \
   -e "s#/usr/bin/strings#\"$MOCK_TOOLS/strings\"#g" \
   -e "s#/usr/bin/stat#\"$MOCK_TOOLS/stat\"#g" \
   -e "s#/usr/bin/xxd#\"$MOCK_TOOLS/xxd\"#g" \
@@ -109,9 +110,9 @@ for argument in "$@"; do
   path="$argument"
 done
 case "$path" in
-  */MacOS/Palmos) printf '%s\n' "${MOCK_APP_ARCHS:-arm64 x86_64}" ;;
-  */LaunchServices/*) printf '%s\n' "${MOCK_HELPER_ARCHS:-arm64 x86_64}" ;;
-  */Helpers/*) printf '%s\n' "${MOCK_COMPANION_ARCHS:-arm64 x86_64}" ;;
+  */MacOS/Palmos) printf '%s\n' "${MOCK_APP_ARCHS:-arm64}" ;;
+  */LaunchServices/*) printf '%s\n' "${MOCK_HELPER_ARCHS:-arm64}" ;;
+  */Helpers/*) printf '%s\n' "${MOCK_COMPANION_ARCHS:-arm64}" ;;
   *) exit 73 ;;
 esac
 EOF
@@ -123,6 +124,18 @@ case " $* " in
   *" __info_plist "*) printf '00000000 00\n' ;;
   *) exit 74 ;;
 esac
+EOF
+
+/bin/cat > "$MOCK_TOOLS/vtool" <<'EOF'
+#!/bin/bash
+path="${@: -1}"
+case "$path" in
+  */MacOS/Palmos) minos="${MOCK_APP_MINOS:-26.0}" ;;
+  */LaunchServices/*) minos="${MOCK_HELPER_MINOS:-26.0}" ;;
+  */Helpers/*) minos="${MOCK_COMPANION_MINOS:-26.0}" ;;
+  *) exit 76 ;;
+esac
+printf '    minos %s\n' "$minos"
 EOF
 
 /bin/cat > "$MOCK_TOOLS/strings" <<'EOF'
@@ -166,11 +179,7 @@ case "$command" in
     printf 'identifier "com.palmos.smartservice" and anchor apple generic\n'
     ;;
   "Print :PalmosSmartctlCompanionRequirement")
-    if [[ "${MOCK_MISMATCH_SLICE:-0}" == 1 && "$path" == *helper-x86_64.plist ]]; then
-      printf 'identifier "com.palmos.smartservice.smartctl" and anchor apple generic and true\n'
-    else
-      printf 'identifier "com.palmos.smartservice.smartctl" and anchor apple generic\n'
-    fi
+    printf 'identifier "com.palmos.smartservice.smartctl" and anchor apple generic\n'
     ;;
   "Print :PalmosSmartctlCompanionSHA256")
     printf '%s\n' "${MOCK_COMPANION_SHA256:?}"
@@ -202,14 +211,21 @@ assert_fails "bundled smartmontools source archive not found" run_verifier
 /usr/bin/printf 'tampered\n' >> "$SOURCE_ARCHIVE_PATH"
 assert_fails "bundled smartmontools source archive SHA-256" run_verifier
 /bin/mv "$source_archive_backup" "$SOURCE_ARCHIVE_PATH"
-assert_fails "app architectures 'arm64 x86_64' do not match helper architectures 'arm64'" \
-  run_verifier MOCK_HELPER_ARCHS=arm64
-assert_fails "app architectures 'arm64 x86_64' do not match companion architectures 'arm64'" \
-  run_verifier MOCK_COMPANION_ARCHS=arm64
-assert_fails "helper security fields differ between architecture slices" \
-  run_verifier MOCK_MISMATCH_SLICE=1
-assert_fails "do not include 'x86_64'" \
-  run_verifier MOCK_APP_ARCHS=arm64 MOCK_HELPER_ARCHS=arm64 MOCK_COMPANION_ARCHS=arm64
+assert_fails "app architectures 'arm64' do not match helper architectures 'x86_64'" \
+  run_verifier MOCK_HELPER_ARCHS=x86_64
+assert_fails "app architectures 'arm64' do not match companion architectures 'x86_64'" \
+  run_verifier MOCK_COMPANION_ARCHS=x86_64
+assert_fails "release architecture is 'arm64 x86_64', expected 'arm64'" \
+  run_verifier \
+    MOCK_APP_ARCHS='arm64 x86_64' \
+    MOCK_HELPER_ARCHS='arm64 x86_64' \
+    MOCK_COMPANION_ARCHS='arm64 x86_64'
+assert_fails "app minimum system is '15.0', expected '26.0'" \
+  run_verifier MOCK_APP_MINOS=15.0
+assert_fails "helper minimum system is '15.0', expected '26.0'" \
+  run_verifier MOCK_HELPER_MINOS=15.0
+assert_fails "smartctl companion minimum system is '15.0', expected '26.0'" \
+  run_verifier MOCK_COMPANION_MINOS=15.0
 
 marker_path="$work_directory/inherited-plist-buddy-ran"
 /usr/bin/env \

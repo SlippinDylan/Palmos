@@ -183,21 +183,15 @@ struct SettingsGlassButton: View {
         self.action = action
     }
 
-    @ViewBuilder
     var body: some View {
-        let button = Button(title, action: action)
-            .controlSize(.regular)
-
-        if #available(macOS 26.0, *) {
-            if prominent {
-                button.buttonStyle(.glassProminent)
-            } else {
-                button.buttonStyle(.glass)
-            }
-        } else if prominent {
-            button.buttonStyle(.borderedProminent)
+        if prominent {
+            Button(title, action: action)
+                .controlSize(.regular)
+                .buttonStyle(.glassProminent)
         } else {
-            button.buttonStyle(.bordered)
+            Button(title, action: action)
+                .controlSize(.regular)
+                .buttonStyle(.glass)
         }
     }
 }

@@ -1,61 +1,6 @@
-import Foundation
 import SwiftUI
 
 import PalmosCore
-
-struct MenuBarVisualStyle {
-    let usesLiquidGlass: Bool
-
-    static func current(processInfo: ProcessInfo = .processInfo) -> Self {
-        Self(
-            usesLiquidGlass: supportsLiquidGlass(processInfo.operatingSystemVersion)
-        )
-    }
-
-    static func supportsLiquidGlass(_ version: OperatingSystemVersion) -> Bool {
-        version.majorVersion >= 26
-    }
-}
-
-struct PanelControlCluster<Content: View>: View {
-    let usesLiquidGlass: Bool
-    let content: Content
-
-    init(
-        usesLiquidGlass: Bool,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.usesLiquidGlass = usesLiquidGlass
-        self.content = content()
-    }
-
-    var body: some View {
-        if #available(macOS 26.0, *), usesLiquidGlass {
-            GlassEffectContainer(spacing: 10) {
-                content
-            }
-        } else {
-            content
-        }
-    }
-}
-
-struct PanelIconControlModifier<S: InsettableShape>: ViewModifier {
-    let usesLiquidGlass: Bool
-    let isEnabled: Bool
-    let shape: S
-
-    func body(content: Content) -> some View {
-        content.modifier(
-            PanelControlSurfaceModifier(
-                usesLiquidGlass: usesLiquidGlass,
-                isEnabled: isEnabled,
-                isPressed: false,
-                shape: shape
-            )
-        )
-    }
-}
 
 enum FooterActionLabelLayout: Equatable {
     case horizontal
@@ -70,8 +15,6 @@ enum FooterActionBarMode: Equatable {
 struct FooterActionLayoutMetrics: Equatable {
     let labelLayout: FooterActionLabelLayout
     let controlSpacing: CGFloat
-    let horizontalPadding: CGFloat
-    let verticalPadding: CGFloat
     let labelSpacing: CGFloat
     let iconFontSize: CGFloat
     let titleFontSize: CGFloat
@@ -84,8 +27,6 @@ struct FooterActionLayoutMetrics: Equatable {
             return Self(
                 labelLayout: .stacked,
                 controlSpacing: 6,
-                horizontalPadding: 8,
-                verticalPadding: 8,
                 labelSpacing: 4,
                 iconFontSize: 12,
                 titleFontSize: 10,
@@ -96,61 +37,12 @@ struct FooterActionLayoutMetrics: Equatable {
             return Self(
                 labelLayout: .horizontal,
                 controlSpacing: 10,
-                horizontalPadding: 12,
-                verticalPadding: 7,
                 labelSpacing: 6,
                 iconFontSize: 11,
                 titleFontSize: 11,
                 minHeight: 34,
                 fixedWidth: 132
             )
-        }
-    }
-}
-
-private struct PanelFooterButtonStyle: ButtonStyle {
-    let usesLiquidGlass: Bool
-    let metrics: FooterActionLayoutMetrics
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.primary)
-            .padding(.horizontal, metrics.horizontalPadding)
-            .padding(.vertical, metrics.verticalPadding)
-            .frame(maxWidth: .infinity, minHeight: metrics.minHeight)
-            .contentShape(Capsule())
-            .modifier(
-                PanelControlSurfaceModifier(
-                    usesLiquidGlass: usesLiquidGlass,
-                    isEnabled: isEnabled,
-                    isPressed: configuration.isPressed,
-                    shape: Capsule()
-                )
-            )
-    }
-}
-
-private struct PanelControlSurfaceModifier<S: InsettableShape>: ViewModifier {
-    let usesLiquidGlass: Bool
-    let isEnabled: Bool
-    let isPressed: Bool
-    let shape: S
-
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *), usesLiquidGlass {
-            content
-                .opacity(isEnabled ? (isPressed ? 0.82 : 1) : 0.45)
-                .glassEffect(.regular.interactive(isEnabled), in: shape)
-                .scaleEffect(isPressed ? 0.98 : 1)
-        } else {
-            content
-                .opacity(isEnabled ? (isPressed ? 0.88 : 1) : 0.45)
-                .background(.regularMaterial, in: shape)
-                .overlay {
-                    shape.strokeBorder(Color.white.opacity(0.12))
-                }
-                .scaleEffect(isPressed ? 0.98 : 1)
         }
     }
 }
@@ -163,53 +55,39 @@ struct ActionBarView: View {
     let onAction: (SystemAction) -> Void
     let onActivateEjectRecovery: () -> Void
 
-    private var visualStyle: MenuBarVisualStyle {
-        .current()
-    }
-
     private var layoutMetrics: FooterActionLayoutMetrics {
         .forMode(mode)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PanelControlCluster(usesLiquidGlass: visualStyle.usesLiquidGlass) {
-                HStack(spacing: layoutMetrics.controlSpacing) {
-                    if mode == .empty {
-                        Spacer(minLength: 0)
-                    }
-
-                    ForEach(actions) { action in
-                        Button {
-                            onAction(action)
-                            if action.kind == .eject { onActivateEjectRecovery() }
-                        } label: {
-                            FooterActionButtonLabel(
-                                action: action,
-                                metrics: layoutMetrics
-                            )
-                        }
-                        .buttonStyle(
-                            PanelFooterButtonStyle(
-                                usesLiquidGlass: visualStyle.usesLiquidGlass,
-                                metrics: layoutMetrics
-                            )
-                        )
-                        .frame(width: layoutMetrics.fixedWidth)
-                        .frame(
-                            maxWidth: mode == .device
-                                ? .infinity
-                                : layoutMetrics.fixedWidth
-                        )
-                        .disabled(isActionEnabled(action) == false)
-                    }
-
-                    if mode == .empty {
-                        Spacer(minLength: 0)
-                    }
+            HStack(spacing: layoutMetrics.controlSpacing) {
+                if mode == .empty {
+                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity)
+
+                ForEach(actions) { action in
+                    Button {
+                        onAction(action)
+                        if action.kind == .eject { onActivateEjectRecovery() }
+                    } label: {
+                        FooterActionButtonLabel(
+                            action: action,
+                            metrics: layoutMetrics
+                        )
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .buttonSizing(.flexible)
+                    .frame(width: layoutMetrics.fixedWidth)
+                    .disabled(isActionEnabled(action) == false)
+                }
+
+                if mode == .empty {
+                    Spacer(minLength: 0)
+                }
             }
+            .frame(maxWidth: .infinity)
             .controlSize(.small)
 
             if let message, message.isEmpty == false {
@@ -242,7 +120,7 @@ private struct FooterActionButtonLabel: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(minHeight: metrics.minHeight)
     }
 
     private var icon: some View {

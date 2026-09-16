@@ -215,7 +215,7 @@ private struct LiveWorkspaceClient: WorkspaceClient {
         // The app runs with an accessory activation policy (no Dock icon), so
         // without an explicit activate() the window server can leave Finder
         // noticeably slow to come forward.
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
 
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
@@ -237,7 +237,7 @@ private struct LiveWorkspaceClient: WorkspaceClient {
             throw SystemActionError.applicationNotFound
         }
 
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
 
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true

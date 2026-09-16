@@ -49,6 +49,7 @@ cleanup() {
 }
 
 trap cleanup EXIT
+work_created=true
 
 # ---------------------------------------------------------------------------
 # Validate inputs
@@ -62,7 +63,18 @@ if [[ ! -d "$APP_PATH/Contents/MacOS" ]]; then
   fail "$APP_PATH does not appear to be a valid .app bundle (missing Contents/MacOS)"
 fi
 
-work_created=true
+component_paths=(
+  "$APP_PATH/Contents/MacOS/Palmos"
+  "$APP_PATH/Contents/Library/LaunchServices/com.palmos.smartservice"
+  "$APP_PATH/Contents/Library/Helpers/com.palmos.smartservice.smartctl"
+)
+for component_path in "${component_paths[@]}"; do
+  [[ -f "$component_path" && ! -L "$component_path" ]] \
+    || fail "Required executable not found at $component_path"
+  component_architecture="$(/usr/bin/lipo -archs "$component_path")"
+  [[ "$component_architecture" == arm64 ]] \
+    || fail "Executable architecture is '$component_architecture', expected 'arm64': $component_path"
+done
 
 # ---------------------------------------------------------------------------
 # 1. Generate DMG background image (Python stdlib only — no external deps)

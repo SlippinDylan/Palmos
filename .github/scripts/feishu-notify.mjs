@@ -229,6 +229,7 @@ function releaseDetails(event, release) {
   return commonDetails(event, [
     `类型：${release.prerelease ? 'Pre-release' : 'Stable'}`,
     release.dmgName ? `制品：${release.dmgName}` : '',
+    '架构：arm64',
     '签名：Apple Development（未公证）',
     'SMART Helper：已随 App 签名打包',
     ...extractReleaseHighlights(release.body),

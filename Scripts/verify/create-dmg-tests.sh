@@ -11,6 +11,8 @@ readonly WORK_DIRECTORY="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/palmos-dmg-tests.
 readonly APP_PATH="$WORK_DIRECTORY/Palmos.app"
 readonly DMG_PATH="$WORK_DIRECTORY/Palmos-test.dmg"
 readonly MOUNT_POINT="$WORK_DIRECTORY/mounted"
+readonly MOCK_TOOLS="$WORK_DIRECTORY/mock-tools"
+readonly SCRIPT_UNDER_TEST="$WORK_DIRECTORY/create-dmg.sh"
 dmg_attached=false
 
 cleanup() {
@@ -27,13 +29,62 @@ fail() {
   exit 1
 }
 
-/bin/mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources" "$MOUNT_POINT"
-/usr/bin/touch "$APP_PATH/Contents/MacOS/Palmos"
+assert_fails() {
+  local expected_message="$1"
+  shift
+  local output
+
+  if output="$("$@" 2>&1)"; then
+    fail "command unexpectedly succeeded: $*"
+  fi
+  case "$output" in
+    *"$expected_message"*) ;;
+    *) fail "failure output did not contain '$expected_message': $output" ;;
+  esac
+}
+
+/bin/mkdir -p \
+  "$APP_PATH/Contents/MacOS" \
+  "$APP_PATH/Contents/Library/LaunchServices" \
+  "$APP_PATH/Contents/Library/Helpers" \
+  "$APP_PATH/Contents/Resources" \
+  "$MOUNT_POINT" \
+  "$MOCK_TOOLS"
+/usr/bin/touch \
+  "$APP_PATH/Contents/MacOS/Palmos" \
+  "$APP_PATH/Contents/Library/LaunchServices/com.palmos.smartservice" \
+  "$APP_PATH/Contents/Library/Helpers/com.palmos.smartservice.smartctl"
 /usr/bin/plutil -create xml1 "$APP_PATH/Contents/Info.plist"
 /usr/bin/plutil -insert CFBundleIconFile -string Palmos "$APP_PATH/Contents/Info.plist"
 /usr/bin/printf 'fixture icon' > "$APP_PATH/Contents/Resources/Palmos.icns"
 
-"$REPOSITORY_ROOT/Scripts/create-dmg.sh" "$APP_PATH" "$DMG_PATH" "Palmos Test"
+/usr/bin/sed \
+  -e "s#^readonly SCRIPT_DIRECTORY=.*#readonly SCRIPT_DIRECTORY=\"$REPOSITORY_ROOT/Scripts\"#" \
+  -e "s#/usr/bin/lipo#\"$MOCK_TOOLS/lipo\"#g" \
+  "$REPOSITORY_ROOT/Scripts/create-dmg.sh" > "$SCRIPT_UNDER_TEST"
+/bin/cat > "$MOCK_TOOLS/lipo" <<'EOF'
+#!/bin/bash
+path="${@: -1}"
+case "$path" in
+  */MacOS/Palmos) printf '%s\n' "${MOCK_APP_ARCHS:-arm64}" ;;
+  */LaunchServices/*) printf '%s\n' "${MOCK_HELPER_ARCHS:-arm64}" ;;
+  */Helpers/*) printf '%s\n' "${MOCK_COMPANION_ARCHS:-arm64}" ;;
+  *) exit 1 ;;
+esac
+EOF
+/bin/chmod 0755 "$SCRIPT_UNDER_TEST" "$MOCK_TOOLS/lipo"
+
+assert_fails "Executable architecture is 'arm64 x86_64', expected 'arm64'" \
+  /usr/bin/env MOCK_APP_ARCHS='arm64 x86_64' \
+  "$SCRIPT_UNDER_TEST" "$APP_PATH" "$WORK_DIRECTORY/universal.dmg" "Palmos Test"
+assert_fails "Executable architecture is 'x86_64', expected 'arm64'" \
+  /usr/bin/env MOCK_HELPER_ARCHS=x86_64 \
+  "$SCRIPT_UNDER_TEST" "$APP_PATH" "$WORK_DIRECTORY/x86-helper.dmg" "Palmos Test"
+assert_fails "Executable architecture is 'arm64 x86_64', expected 'arm64'" \
+  /usr/bin/env MOCK_COMPANION_ARCHS='arm64 x86_64' \
+  "$SCRIPT_UNDER_TEST" "$APP_PATH" "$WORK_DIRECTORY/universal-companion.dmg" "Palmos Test"
+
+"$SCRIPT_UNDER_TEST" "$APP_PATH" "$DMG_PATH" "Palmos Test"
 [[ -f "$DMG_PATH" ]] || fail "create-dmg.sh did not create the output image"
 
 /usr/bin/hdiutil attach "$DMG_PATH" \

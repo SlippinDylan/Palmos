@@ -23,7 +23,7 @@ final class PalmosSMARTXPCDelegate: NSObject, NSXPCListenerDelegate {
         newConnection.setCodeSigningRequirement(authorizedClientRequirement)
         newConnection.exportedInterface = NSXPCInterface(with: PalmosSMARTXPCProtocol.self)
         newConnection.exportedObject = service
-        newConnection.resume()
+        newConnection.activate()
         return true
     }
 

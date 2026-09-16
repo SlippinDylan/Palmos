@@ -124,6 +124,7 @@ test('builds a release card with Palmos packaging facts', () => {
   const card = buildCard(notification);
   assert.equal(card.header.template, 'green');
   assert.equal(card.elements[1].actions.length, 2);
+  assert.ok(notification.details.includes('架构：arm64'));
   assert.ok(notification.details.includes('SMART Helper：已随 App 签名打包'));
 });
 

@@ -67,7 +67,7 @@ Run this checklist after each significant change to the app or helper. Every ite
 - [ ] APFS media with multiple volumes includes every mounted descendant in occupancy matching
 - [ ] Non-APFS partitioned media matches exact mounted descendants without path-prefix collisions
 - [ ] Removing/reassigning the target during recovery prevents Retry or Force from acting on the replacement disk
-- [ ] Validate on both Apple silicon and Intel hardware when preparing a universal release
+- [ ] Confirm the release App, Helper, and smartctl each contain exactly one arm64 slice
 - [ ] Validate every supported macOS major version
 - [ ] At the 360-point menu panel width, verify English, Simplified Chinese, and Traditional Chinese layouts without clipped footer controls
 - [ ] In English, Simplified Chinese, and Traditional Chinese, verify both recovery-window variants at short and long content heights without clipped buttons, excess blank space, or unintended horizontal resizing
@@ -91,7 +91,7 @@ Run this checklist after each significant change to the app or helper. Every ite
 ## SMART — Helper Installed
 
 - [ ] Refresh reads SMART data and shows overall health and temperature
-- [ ] Refresh SMART Data is a centered compact glass capsule on macOS 26 and a centered bordered capsule on earlier supported macOS versions
+- [ ] Refresh SMART Data is a centered compact glass capsule
 - [ ] Replacing the bundled companion with an unsigned or differently signed executable causes installation to fail without replacing an existing trusted companion
 - [ ] Highest temperature is displayed in the Overview card
 - [ ] All temperature sensors appear in the SMART detail section

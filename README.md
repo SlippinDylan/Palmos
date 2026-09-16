@@ -43,13 +43,14 @@ The top-level object is always the external physical device. Network volumes, in
 | Supported | USB storage, Thunderbolt / USB4 storage, SD cards, external SSDs and HDDs, external NVMe enclosures |
 | Excluded | Internal storage, network volumes, virtual media, iPhone and iPad mounts |
 | Top-level model | External physical device, with mounted volumes shown underneath |
-| Minimum system | macOS 15 or later |
+| Minimum system | macOS 26 or later |
+| Architecture | Apple Silicon (arm64) |
 | Build toolchain | Xcode 26.4 or later with the macOS 26 SDK |
 | Distribution | Apple Development-signed, non-notarized DMG from GitHub Releases |
 
 ## Installation and Releases
 
-Each GitHub Release contains one `Palmos-v<version>.dmg`. Open the DMG and drag `Palmos.app` into `Applications`. Releases use a free Apple Development certificate so the app, privileged helper, and bundled `smartctl` companion can authenticate each other. They are not notarized, so remove the installed bundle's quarantine attribute once before the first launch:
+Each GitHub Release contains one arm64-only `Palmos-v<version>.dmg`. Open the DMG and drag `Palmos.app` into `Applications`. Releases use a free Apple Development certificate so the app, privileged helper, and bundled `smartctl` companion can authenticate each other. They are not notarized, so remove the installed bundle's quarantine attribute once before the first launch:
 
 ```bash
 sudo xattr -rd com.apple.quarantine /Applications/Palmos.app

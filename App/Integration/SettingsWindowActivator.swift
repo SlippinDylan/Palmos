@@ -43,7 +43,7 @@ private final class LiveSettingsApplication: SettingsApplicationProviding {
     }
 
     func activate() {
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
     }
 }
 

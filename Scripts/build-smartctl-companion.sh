@@ -18,6 +18,9 @@ fail() {
   exit 1
 }
 
+[[ "$(/usr/sbin/sysctl -n hw.optional.arm64)" == 1 ]] \
+  || fail "arm64 smartctl builds require Apple Silicon hardware"
+
 verify_archive() {
   local archive_path="$1"
   local actual_sha256
@@ -79,54 +82,38 @@ source_directory="$work_directory/source"
 /usr/bin/tar -xzf "$archive_path" -C "$source_directory" --strip-components=1
 [[ -f "$source_directory/COPYING" ]] || fail "upstream COPYING file is missing"
 
-readonly DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-15.0}"
-readonly BUILD_ARCHITECTURES="${SMARTCTL_BUILD_ARCHS:-arm64 x86_64}"
+readonly DEPLOYMENT_TARGET="26.0"
+readonly BUILD_ARCHITECTURE="arm64"
 readonly SDK_PATH="${SDKROOT:-$(/usr/bin/xcrun --sdk macosx --show-sdk-path)}"
 
-build_slices=()
-for architecture in $BUILD_ARCHITECTURES; do
-  case "$architecture" in
-    arm64) configure_host="aarch64-apple-darwin" ;;
-    x86_64) configure_host="x86_64-apple-darwin" ;;
-    *) fail "unsupported architecture '$architecture'" ;;
-  esac
+build_directory="$work_directory/build-$BUILD_ARCHITECTURE"
+/bin/mkdir -p "$build_directory"
+cd "$build_directory"
 
-  build_directory="$work_directory/build-$architecture"
-  /bin/mkdir -p "$build_directory"
-  cd "$build_directory"
+common_flags="-arch $BUILD_ARCHITECTURE -mmacosx-version-min=$DEPLOYMENT_TARGET -isysroot $SDK_PATH"
+/usr/bin/env \
+  CC="$(/usr/bin/xcrun --find clang)" \
+  CXX="$(/usr/bin/xcrun --find clang++)" \
+  CFLAGS="-O2 -g0 $common_flags" \
+  CXXFLAGS="-O2 -g0 $common_flags" \
+  LDFLAGS="$common_flags" \
+  "$source_directory/configure" \
+    --host=aarch64-apple-darwin \
+    --prefix=/Library/PrivilegedHelperTools/PalmosSmartctl \
+    --with-drivedbdir=no \
+    --without-gnupg \
+    --without-libcap-ng \
+    --without-libsystemd \
+    --without-selinux
 
-  common_flags="-arch $architecture -mmacosx-version-min=$DEPLOYMENT_TARGET -isysroot $SDK_PATH"
-  /usr/bin/env \
-    CC="$(/usr/bin/xcrun --find clang)" \
-    CXX="$(/usr/bin/xcrun --find clang++)" \
-    CFLAGS="-O2 -g0 $common_flags" \
-    CXXFLAGS="-O2 -g0 $common_flags" \
-    LDFLAGS="$common_flags" \
-    "$source_directory/configure" \
-      --host="$configure_host" \
-      --prefix=/Library/PrivilegedHelperTools/PalmosSmartctl \
-      --with-drivedbdir=no \
-      --without-gnupg \
-      --without-libcap-ng \
-      --without-libsystemd \
-      --without-selinux
-
-  /usr/bin/make -j"$(/usr/sbin/sysctl -n hw.logicalcpu)" smartctl
-  build_slices+=("$build_directory/smartctl")
-done
-
-/usr/bin/lipo -create "${build_slices[@]}" -output "$OUTPUT_DIRECTORY/smartctl"
-/bin/chmod 0755 "$OUTPUT_DIRECTORY/smartctl"
+/usr/bin/make -j"$(/usr/sbin/sysctl -n hw.logicalcpu)" smartctl
+/usr/bin/install -m 0755 "$build_directory/smartctl" "$OUTPUT_DIRECTORY/smartctl"
 /usr/bin/install -m 0644 "$source_directory/COPYING" "$OUTPUT_DIRECTORY/smartmontools-COPYING.txt"
 /usr/bin/install -m 0644 "$archive_path" "$OUTPUT_DIRECTORY/$SMARTMONTOOLS_ARCHIVE"
 
 actual_architecture="$(/usr/bin/lipo -archs "$OUTPUT_DIRECTORY/smartctl")"
-for architecture in $BUILD_ARCHITECTURES; do
-  case " $actual_architecture " in
-    *" $architecture "*) ;;
-    *) fail "built smartctl architectures '$actual_architecture' omit '$architecture'" ;;
-  esac
-done
+[[ "$actual_architecture" == "$BUILD_ARCHITECTURE" ]] \
+  || fail "built smartctl architecture is '$actual_architecture', expected '$BUILD_ARCHITECTURE'"
 
 smartctl_version_output="$("$OUTPUT_DIRECTORY/smartctl" --version)"
 printf '%s\n' "${smartctl_version_output%%$'\n'*}"

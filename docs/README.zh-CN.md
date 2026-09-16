@@ -43,13 +43,14 @@ Palmos 把外接硬盘的状态放进菜单栏。打开原生面板即可查看�
 | 支持设备 | USB 存储、Thunderbolt / USB4 存储、SD 卡、外接 SSD 和 HDD、外接 NVMe 硬盘盒 |
 | 排除设备 | 内置存储、网络卷、虚拟磁盘、iPhone 和 iPad 挂载 |
 | 顶层模型 | 外接物理设备，已挂载卷显示在设备下面 |
-| 最低系统 | macOS 15 或更高版本 |
+| 最低系统 | macOS 26 或更高版本 |
+| 架构 | Apple 芯片（arm64） |
 | 构建环境 | Xcode 26.4 或更高版本，并安装 macOS 26 SDK |
 | 分发方式 | GitHub Releases 提供 Apple Development 签名、未经公证的 DMG |
 
 ## 安装与发布
 
-每个 GitHub Release 只包含一个 `Palmos-v<版本号>.dmg`。打开 DMG，把 `Palmos.app` 拖入 `Applications`。Release 使用免费的 Apple Development 证书，使 App、特权 Helper 和随包提供的 `smartctl` companion 能够互相验证。当前 Release 未经过 Apple 公证，第一次打开前需要移除下载隔离属性：
+每个 GitHub Release 只包含一个 arm64 制品 `Palmos-v<版本号>.dmg`。打开 DMG，把 `Palmos.app` 拖入 `Applications`。Release 使用免费的 Apple Development 证书，使 App、特权 Helper 和随包提供的 `smartctl` companion 能够互相验证。当前 Release 未经过 Apple 公证，第一次打开前需要移除下载隔离属性：
 
 ```bash
 sudo xattr -rd com.apple.quarantine /Applications/Palmos.app

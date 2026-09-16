@@ -64,6 +64,19 @@ sha256() {
   /usr/bin/shasum -a 256 "$1" | /usr/bin/awk '{ print $1 }'
 }
 
+assert_minimum_system() {
+  local name="$1"
+  local path="$2"
+  local minimum_system
+
+  minimum_system="$(
+    /usr/bin/vtool -show-build "$path" \
+      | /usr/bin/awk '$1 == "minos" { print $2 }'
+  )"
+  [[ "$minimum_system" == 26.0 ]] \
+    || fail "$name minimum system is '$minimum_system', expected '26.0'"
+}
+
 contains_architecture() {
   local architectures="$1"
   local expected="$2"
@@ -162,16 +175,11 @@ helper_architectures="$(/usr/bin/lipo -archs "$HELPER_PATH")"
 companion_architectures="$(/usr/bin/lipo -archs "$COMPANION_PATH")"
 assert_same_architectures "app" "$app_architectures" "helper" "$helper_architectures"
 assert_same_architectures "app" "$app_architectures" "companion" "$companion_architectures"
-for required_architecture in arm64 x86_64; do
-  contains_architecture "$app_architectures" "$required_architecture" \
-    || fail "release architectures '$app_architectures' do not include '$required_architecture'"
-done
-for architecture in $app_architectures; do
-  case "$architecture" in
-    arm64|x86_64) ;;
-    *) fail "release bundle contains unsupported architecture '$architecture'" ;;
-  esac
-done
+[[ "$app_architectures" == arm64 ]] \
+  || fail "release architecture is '$app_architectures', expected 'arm64'"
+assert_minimum_system "app" "$APP_EXECUTABLE"
+assert_minimum_system "helper" "$HELPER_PATH"
+assert_minimum_system "smartctl companion" "$COMPANION_PATH"
 
 for architecture in $app_architectures; do
   [[ "$(signature_field "$APP_PATH" Identifier "$architecture")" == "$APP_IDENTIFIER" ]] \
@@ -242,8 +250,6 @@ readonly REQUIREMENT_BINARY="$verification_directory/requirement.bin"
 /usr/bin/codesign --verify --strict --all-architectures -R="$helper_requirement" "$HELPER_PATH"
 
 actual_companion_sha256="$(sha256 "$COMPANION_PATH")"
-baseline_security_manifest=""
-
 for architecture in $helper_architectures; do
   helper_info_plist="$verification_directory/helper-$architecture.plist"
   extract_helper_info_plist "$architecture" "$helper_info_plist"
@@ -280,21 +286,6 @@ for architecture in $helper_architectures; do
   ((${#app_requirements[@]} > 0)) \
     || fail "helper does not contain an SMAuthorizedClients requirement in architecture '$architecture'"
 
-  security_manifest="$(
-    {
-      /usr/bin/printf 'companion-requirement\0%s\0companion-sha256\0%s\0' \
-        "$companion_requirement" "$expected_companion_sha256"
-      for app_requirement in "${app_requirements[@]}"; do
-        /usr/bin/printf 'authorized-client\0%s\0' "$app_requirement"
-      done
-    } | /usr/bin/shasum -a 256 | /usr/bin/awk '{ print $1 }'
-  )"
-  if [[ -z "$baseline_security_manifest" ]]; then
-    baseline_security_manifest="$security_manifest"
-  elif [[ "$security_manifest" != "$baseline_security_manifest" ]]; then
-    fail "helper security fields differ between architecture slices"
-  fi
-
   app_requirement_matched=false
   for app_requirement in "${app_requirements[@]}"; do
     /usr/bin/csreq -r "=$app_requirement" -b "$REQUIREMENT_BINARY" >/dev/null 2>&1 \
@@ -307,4 +298,4 @@ for architecture in $helper_architectures; do
     || fail "none of the helper SMAuthorizedClients requirements accepts the app in architecture '$architecture'"
 done
 
-echo "Verified universal Palmos app, helper, and companion signatures for Team ID $app_team_id."
+echo "Verified arm64 Palmos app, helper, and companion signatures for Team ID $app_team_id."

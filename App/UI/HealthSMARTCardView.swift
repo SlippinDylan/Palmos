@@ -54,17 +54,11 @@ struct HealthSMARTCardView: View {
         }
     }
 
-    @ViewBuilder
     private var refreshButton: some View {
-        let button = Button("Refresh SMART Data", action: onRefresh)
+        Button("Refresh SMART Data", action: onRefresh)
             .controlSize(.small)
             .buttonBorderShape(.capsule)
-
-        if #available(macOS 26.0, *) {
-            button.buttonStyle(.glass)
-        } else {
-            button.buttonStyle(.bordered)
-        }
+            .buttonStyle(.glass)
     }
 
     private var smartData: SmartData? {
@@ -207,15 +201,9 @@ struct SMARTHelperPlaceholderView: View {
         }
     }
 
-    @ViewBuilder
     private var openSettingsButton: some View {
-        let button = Button("Settings", action: onOpenSettings)
+        Button("Settings", action: onOpenSettings)
             .controlSize(.small)
-
-        if #available(macOS 26.0, *) {
-            button.buttonStyle(.glass)
-        } else {
-            button.buttonStyle(.bordered)
-        }
+            .buttonStyle(.glass)
     }
 }

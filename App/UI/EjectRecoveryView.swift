@@ -153,7 +153,7 @@ final class EjectRecoveryWindowPresenter: NSObject, ObservableObject, NSWindowDe
     func bringForwardIfVisible() {
         guard let panel else { return }
         panel.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
     }
 
     func setTerminalRetryHandler(
@@ -177,7 +177,7 @@ final class EjectRecoveryWindowPresenter: NSObject, ObservableObject, NSWindowDe
         let isFirstPresentation = panel == nil
         if isFirstPresentation { makePanel() }
         if isFirstPresentation {
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.activate()
             panel?.makeKeyAndOrderFront(nil)
         } else {
             panel?.orderFrontRegardless()

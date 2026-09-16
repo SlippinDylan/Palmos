@@ -2,7 +2,7 @@
 
 ## 1. 项目定位
 
-Palmos 是面向 macOS 15+ 的菜单栏 App，以外接物理存储设备为顶层对象，展示实时读写、容量、卷/分区、连接链路与 SMART 健康信息。代码使用 Swift 6、SwiftUI、DiskArbitration、IOKit、ServiceManagement/XPC；原生 API 无法覆盖的数据由受控的 `system_profiler`、`diskutil`、`smartctl` 子进程补齐。为与 CI 一致，使用 Xcode 26.4/macOS 26 SDK；macOS 26 API 即使有 availability guard，也需要对应 SDK 才能编译。
+Palmos 是面向 macOS 26+、仅支持 Apple Silicon（arm64）的菜单栏 App，以外接物理存储设备为顶层对象，展示实时读写、容量、卷/分区、连接链路与 SMART 健康信息。代码使用 Swift 6、SwiftUI、DiskArbitration、IOKit、ServiceManagement/XPC；原生 API 无法覆盖的数据由受控的 `system_profiler`、`diskutil`、`smartctl` 子进程补齐。为与 CI 一致，使用 Xcode 26.4/macOS 26 SDK；后续优先采用 macOS 26 及更高版本的原生 API 和设计体系。
 
 本文件是 Agent 的项目导航与硬约束。产品说明、安装/签名方式和常用命令见 [README.md](README.md)；实现细节以当前源码和测试为准。
 
@@ -151,7 +151,7 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 - 以 Swift 6 concurrency checking 为准：UI/state mutation 留在 `@MainActor`；跨任务值使用 `Sendable`；不要用 `@unchecked Sendable` 掩盖未说明的共享可变状态。
 - 长任务必须支持 cancellation，并用 generation/workflow ID 防止过期结果覆盖新插入设备或新请求。
 - 错误必须转换为明确的领域/capability state 或 `LocalizedError`；禁止吞异常、返回含义不明的 `nil`、仅写日志后假装成功。
-- macOS 15 是 deployment target；macOS 26 专属 API 必须以 `#available`/`@available` 守卫并保留 macOS 15 路径。
+- macOS 26 是 deployment target；macOS 26 API 不需要 availability fallback，采用更高系统版本 API 时必须保留 macOS 26 路径。
 - 保持原生 SwiftUI 菜单栏体验，不引入重型 UI 依赖；当前唯一远程 Swift Package 是 `MenuBarExtraAccess`，不要无理由扩展依赖面。
 - 用户可见字符串进入 `App/Localization/Localizable.xcstrings`；至少检查 English、Simplified Chinese、Traditional Chinese，并更新相关 catalog/UI 测试。
 
@@ -189,7 +189,8 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 
 ## 8. 构建、签名与发布约束
 
-- 配置源在 `Config/xcconfigs/`；Swift 6、macOS 15 deployment target、bundle IDs 和 Team ID 不应散落复制到源码。
+- 配置源在 `Config/xcconfigs/`；Swift 6、macOS 26 deployment target、bundle IDs 和 Team ID 不应散落复制到源码。
+- App、Helper 和随包提供的 `smartctl` 只发布 arm64，签名与打包验证必须拒绝 universal 或 x86_64 制品。
 - Fork 使用者可替换 `Base.xcconfig` 的 `DEVELOPMENT_TEAM`，但 App 与 Helper 必须继承同一 Team ID。
 - push/PR CI 使用 macOS 26 runner 与固定 Xcode，命令行禁用签名；修改 SDK/API 使用后同时确认本地与 CI Xcode 能力。
 - release 使用免费 Apple Development 证书，不依赖 paid Developer ID/notarization；不要擅自改成要求付费签名的分发模型。

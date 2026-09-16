@@ -53,6 +53,16 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertTrue(controller.isEnabled)
     }
 
+    @MainActor
+    func testLaunchAtLoginUsesSystemLoginItemsSettingsEntryPoint() {
+        let service = StubLaunchAtLoginService(status: .requiresApproval)
+        let controller = LaunchAtLoginController(service: service)
+
+        controller.openLoginItemsSettings()
+
+        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 1)
+    }
+
     func testSettingsRoundTripTemperatureUnit() {
         let suiteName = "Task6SettingsAndActionsTests.\(#function).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -182,26 +192,11 @@ final class Task6SettingsAndActionsTests: XCTestCase {
         XCTAssertNotEqual(actions[1].footerTitle, actions[1].title)
     }
 
-    func testMenuBarVisualStyleUsesLiquidGlassOnlyOnMacOS26AndNewer() {
-        XCTAssertFalse(
-            MenuBarVisualStyle.supportsLiquidGlass(
-                OperatingSystemVersion(majorVersion: 25, minorVersion: 6, patchVersion: 0)
-            )
-        )
-        XCTAssertTrue(
-            MenuBarVisualStyle.supportsLiquidGlass(
-                OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
-            )
-        )
-    }
-
     func testDeviceFooterLayoutUsesStableStackedCapsules() {
         let metrics = FooterActionLayoutMetrics.forMode(.device)
 
         XCTAssertEqual(metrics.labelLayout, .stacked)
         XCTAssertEqual(metrics.controlSpacing, 6)
-        XCTAssertEqual(metrics.horizontalPadding, 8)
-        XCTAssertEqual(metrics.verticalPadding, 8)
         XCTAssertEqual(metrics.titleFontSize, 10)
         XCTAssertEqual(metrics.minHeight, 46)
         XCTAssertNil(metrics.fixedWidth)
@@ -397,6 +392,7 @@ private final class StubWorkspaceClient: WorkspaceClient, @unchecked Sendable {
 
 private final class StubLaunchAtLoginService: LaunchAtLoginServicing, @unchecked Sendable {
     var status: SMAppService.Status
+    private(set) var openSystemSettingsLoginItemsCallCount = 0
 
     init(status: SMAppService.Status) {
         self.status = status
@@ -406,5 +402,9 @@ private final class StubLaunchAtLoginService: LaunchAtLoginServicing, @unchecked
 
     func unregister(completionHandler: @escaping (Error?) -> Void) {
         completionHandler(nil)
+    }
+
+    func openSystemSettingsLoginItems() {
+        openSystemSettingsLoginItemsCallCount += 1
     }
 }

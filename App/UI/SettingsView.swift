@@ -12,22 +12,25 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            GeneralSettingsPane(
-                settings: settings,
-                launchAtLoginController: launchAtLoginController,
-                smartHelperManager: smartHelperManager,
-                onInstallOrUpdateHelper: onInstallOrUpdateHelper,
-                onRefreshHelperStatus: onRefreshHelperStatus
-            )
-            .tabItem { Label("General", systemImage: "gearshape") }
+            Tab("General", systemImage: "gearshape") {
+                GeneralSettingsPane(
+                    settings: settings,
+                    launchAtLoginController: launchAtLoginController,
+                    smartHelperManager: smartHelperManager,
+                    onInstallOrUpdateHelper: onInstallOrUpdateHelper,
+                    onRefreshHelperStatus: onRefreshHelperStatus
+                )
+            }
 
-            DisplaySettingsPane(settings: settings)
-                .tabItem { Label("Display", systemImage: "rectangle.3.group") }
+            Tab("Display", systemImage: "rectangle.3.group") {
+                DisplaySettingsPane(settings: settings)
+            }
 
-            AboutSettingsPane()
-                .tabItem { Label("About", systemImage: "info.circle") }
+            Tab("About", systemImage: "info.circle") {
+                AboutSettingsPane()
+            }
         }
-        .padding(20)
+        .scenePadding()
         .frame(width: 520, height: 390)
         .onAppear(perform: refreshExternalState)
         .onChange(of: scenePhase) { _, newPhase in

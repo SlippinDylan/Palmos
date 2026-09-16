@@ -90,7 +90,7 @@ enum SMARTXPCConnectionFactory {
                 gate.resume(throwing: SMARTServiceClientError.connectionInvalidated)
             }
             connection.remoteObjectInterface = NSXPCInterface(with: PalmosSMARTXPCProtocol.self)
-            connection.resume()
+            connection.activate()
 
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
                 gate.resume(throwing: error)

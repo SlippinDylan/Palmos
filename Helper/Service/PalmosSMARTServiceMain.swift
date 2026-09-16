@@ -8,7 +8,7 @@ struct PalmosSMARTServiceMain {
         )
         let delegate = PalmosSMARTXPCDelegate()
         listener.delegate = delegate
-        listener.resume()
+        listener.activate()
         RunLoop.current.run()
     }
 }

@@ -17,8 +17,7 @@ concurrency:
 jobs:
   test:
     name: Run Tests
-    # macos-26 is required: the project uses macOS 26 APIs guarded by @available,
-    # and Xcode 16.x on macos-15 does not ship the macOS 26 SDK.
+    # macos-26 is required because macOS 26 is the deployment target.
     runs-on: macos-26
     timeout-minutes: 45
 
@@ -76,3 +75,28 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
+
+      - name: Build unsigned arm64 app
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -workspace Palmos.xcworkspace \
+            -scheme PalmosApp \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData-Release" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Verify unsigned arm64 artifact
+        run: |
+          app="$RUNNER_TEMP/DerivedData-Release/Build/Products/Release/Palmos.app"
+          app_binary="$app/Contents/MacOS/Palmos"
+          helper="$app/Contents/Library/LaunchServices/com.palmos.smartservice"
+          test "$(lipo -archs "$app_binary")" = 'arm64'
+          test "$(lipo -archs "$helper")" = 'arm64'
+          test "$(vtool -show-build "$app_binary" | grep -c 'minos 26.0')" -eq 1
+          test "$(vtool -show-build "$helper" | grep -c 'minos 26.0')" -eq 1

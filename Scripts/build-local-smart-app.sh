@@ -111,23 +111,13 @@ sha256() {
   /usr/bin/shasum -a 256 "$1" | /usr/bin/awk '{ print $1 }'
 }
 
-assert_universal_companion() {
+assert_arm64_companion() {
   local path="$1"
   local architectures
 
   architectures="$(/usr/bin/lipo -archs "$path")"
-  for required_architecture in arm64 x86_64; do
-    case " $architectures " in
-      *" $required_architecture "*) ;;
-      *) fail "smartctl architectures '$architectures' omit '$required_architecture'" ;;
-    esac
-  done
-  for architecture in $architectures; do
-    case "$architecture" in
-      arm64|x86_64) ;;
-      *) fail "smartctl contains unsupported architecture '$architecture'" ;;
-    esac
-  done
+  [[ "$architectures" == arm64 ]] \
+    || fail "smartctl architecture is '$architectures', expected 'arm64'"
 }
 
 validate_signed_companion() {
@@ -151,7 +141,7 @@ validate_signed_companion() {
     || fail "immutable companion permissions changed at $path"
   [[ "$(/usr/bin/stat -f%Lp "${path%/*}")" == 700 ]] \
     || fail "immutable companion directory permissions changed at ${path%/*}"
-  assert_universal_companion "$path"
+  assert_arm64_companion "$path"
 }
 
 validate_source_archive() {
@@ -255,7 +245,7 @@ esac
 
 readonly COMPANION_BUILD_OUTPUT="$run_directory/build-output"
 export TMPDIR="$TEMPORARY_DIRECTORY"
-unset SDKROOT MACOSX_DEPLOYMENT_TARGET SMARTCTL_BUILD_ARCHS
+unset SDKROOT MACOSX_DEPLOYMENT_TARGET
 "$COMPANION_BUILD_SCRIPT" "$COMPANION_BUILD_OUTPUT"
 
 readonly UNSIGNED_COMPANION_PATH="$COMPANION_BUILD_OUTPUT/smartctl"
@@ -267,7 +257,7 @@ readonly SOURCE_ARCHIVE_PATH="$COMPANION_BUILD_OUTPUT/$SOURCE_ARCHIVE_NAME"
   "$COMPANION_LICENSE_PATH" \
   "$REPOSITORY_ROOT/Shared/Licensing/smartmontools-COPYING.txt"
 validate_source_archive "$SOURCE_ARCHIVE_PATH"
-assert_universal_companion "$UNSIGNED_COMPANION_PATH"
+assert_arm64_companion "$UNSIGNED_COMPANION_PATH"
 
 companion_size="$(/usr/bin/stat -f%z "$UNSIGNED_COMPANION_PATH")"
 (( companion_size > 0 && companion_size <= 8 * 1024 * 1024 )) \
@@ -313,8 +303,10 @@ echo "Building Palmos with Apple Development identity: $signing_certificate_name
   -workspace "$REPOSITORY_ROOT/Palmos.xcworkspace" \
   -scheme PalmosApp \
   -configuration Release \
-  -destination 'platform=macOS' \
+  -destination 'generic/platform=macOS' \
   -derivedDataPath "$DERIVED_DATA_PATH" \
+  ARCHS=arm64 \
+  ONLY_ACTIVE_ARCH=NO \
   CODE_SIGN_STYLE=Manual \
   CODE_SIGN_IDENTITY="$signing_identity" \
   DEVELOPMENT_TEAM="$signing_team_id" \

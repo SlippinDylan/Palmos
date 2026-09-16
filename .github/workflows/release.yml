@@ -125,6 +125,8 @@ jobs:
             echo '   sudo xattr -rd com.apple.quarantine /Applications/Palmos.app'
             echo '   ```'
             echo
+            echo '> 此版本仅支持 Apple Silicon（arm64）。Intel Mac 无法运行；如旧版本曾安装 SMART Helper，请先按 README 的卸载说明清理。'
+            echo
             echo '> 此版本使用 Apple Development 证书签名，未经过 Apple 公证。需要时可在设置中安装 SMART Helper。'
           } >> "$release_notes_path"
 
@@ -233,7 +235,10 @@ jobs:
             -workspace Palmos.xcworkspace \
             -scheme PalmosApp \
             -configuration Release \
+            -destination 'generic/platform=macOS' \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
             MARKETING_VERSION="$MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             CODE_SIGN_STYLE=Manual \
@@ -266,6 +271,21 @@ jobs:
 
           Scripts/create-dmg.sh "$APP_PATH" "$RUNNER_TEMP/$DMG_NAME" "Palmos"
           hdiutil verify "$RUNNER_TEMP/$DMG_NAME"
+
+          MOUNT_POINT="$RUNNER_TEMP/PalmosDMG"
+          mkdir -p "$MOUNT_POINT"
+          hdiutil attach \
+            -readonly \
+            -nobrowse \
+            -mountpoint "$MOUNT_POINT" \
+            "$RUNNER_TEMP/$DMG_NAME"
+          cleanup_mount() { hdiutil detach "$MOUNT_POINT" >/dev/null; }
+          trap cleanup_mount EXIT
+          test -d "$MOUNT_POINT/Palmos.app"
+          test "$(readlink "$MOUNT_POINT/Applications")" = '/Applications'
+          Scripts/verify/code-signing.sh "$MOUNT_POINT/Palmos.app" "$SIGNING_TEAM_ID"
+          cleanup_mount
+          trap - EXIT
 
       - name: Recheck release availability
         id: availability

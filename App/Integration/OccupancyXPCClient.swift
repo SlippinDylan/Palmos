@@ -248,7 +248,7 @@ final class LiveOccupancyXPCSession: OccupancyXPCSession, @unchecked Sendable {
             connection.interruptionHandler = { eventHandler(.interrupted) }
             connection.invalidationHandler = { eventHandler(.invalidated) }
             connection.remoteObjectInterface = NSXPCInterface(with: PalmosSMARTXPCProtocol.self)
-            connection.resume()
+            connection.activate()
             self.connection = connection
             return connection
         }

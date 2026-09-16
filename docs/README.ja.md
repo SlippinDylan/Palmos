@@ -42,13 +42,14 @@ Palmos は、接続中の外付けドライブの状態をメニューバーか�
 |---|---|
 | 対応デバイス | USB ストレージ、Thunderbolt / USB4、SD カード、外付け SSD / HDD、外付け NVMe ケース |
 | 対象外 | 内蔵ストレージ、ネットワークボリューム、仮想メディア、iPhone / iPad マウント |
-| 最小 OS | macOS 15 以降 |
+| 最小 OS | macOS 26 以降 |
+| アーキテクチャ | Apple Silicon（arm64） |
 | ビルド環境 | Xcode 26.4 以降と macOS 26 SDK |
 | 配布形式 | Apple Development 署名済み、未公証の DMG を GitHub Releases で配布 |
 
 ## インストールとリリース
 
-各 GitHub Release には `Palmos-v<バージョン>.dmg` が 1 つ含まれます。DMG を開き、`Palmos.app` を `Applications` にドラッグしてください。リリースは無料の Apple Development 証明書で署名されていますが、公証は受けていません。初回起動前に隔離属性を削除します。
+各 GitHub Release には arm64 専用の `Palmos-v<バージョン>.dmg` が 1 つ含まれます。DMG を開き、`Palmos.app` を `Applications` にドラッグしてください。リリースは無料の Apple Development 証明書で署名されていますが、公証は受けていません。初回起動前に隔離属性を削除します。
 
 ```bash
 sudo xattr -rd com.apple.quarantine /Applications/Palmos.app

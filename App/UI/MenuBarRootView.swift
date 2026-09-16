@@ -367,10 +367,6 @@ private struct MenuBarHeaderView: View {
     @ObservedObject var controller: PalmosAppController
     @ObservedObject var settingsWindowActivator: SettingsWindowActivator
 
-    private var visualStyle: MenuBarVisualStyle {
-        .current()
-    }
-
     var body: some View {
         HStack(spacing: 12) {
             Text("Palmos")
@@ -379,25 +375,18 @@ private struct MenuBarHeaderView: View {
 
             Spacer(minLength: 0)
 
-            PanelControlCluster(usesLiquidGlass: visualStyle.usesLiquidGlass) {
-                Button {
-                    controller.isMenuBarPanelPresented = false
-                    settingsWindowActivator.open()
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(width: 28, height: 28)
-                        .modifier(
-                            PanelIconControlModifier(
-                                usesLiquidGlass: visualStyle.usesLiquidGlass,
-                                isEnabled: true,
-                                shape: Circle()
-                            )
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Settings")
+            Button {
+                controller.isMenuBarPanelPresented = false
+                settingsWindowActivator.open()
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 28, height: 28)
             }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .controlSize(.small)
+            .help("Settings")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

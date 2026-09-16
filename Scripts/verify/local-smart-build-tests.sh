@@ -107,7 +107,7 @@ EOF
 
 /bin/cat > "$MOCK_TOOLS/lipo" <<'EOF'
 #!/bin/bash
-printf 'arm64 x86_64\n'
+printf 'arm64\n'
 EOF
 
 /bin/cat > "$MOCK_TOOLS/otool" <<'EOF'
@@ -126,15 +126,21 @@ set -euo pipefail
 [[ "${MOCK_XCODEBUILD_FAIL:-0}" != 1 ]] || exit 51
 derived_data_path=""
 source_archive_path=""
+architectures=""
+only_active_arch=""
 while (($# > 0)); do
   case "$1" in
     -derivedDataPath) derived_data_path="$2"; shift 2 ;;
+    ARCHS=*) architectures="${1#*=}"; shift ;;
+    ONLY_ACTIVE_ARCH=*) only_active_arch="${1#*=}"; shift ;;
     SMARTMONTOOLS_SOURCE_ARCHIVE_PATH=*) source_archive_path="${1#*=}"; shift ;;
     *) shift ;;
   esac
 done
 [[ -n "$derived_data_path" ]]
 [[ -f "$source_archive_path" ]]
+[[ "$architectures" == arm64 ]]
+[[ "$only_active_arch" == NO ]]
 app_path="$derived_data_path/Build/Products/Release/Palmos.app"
 /bin/mkdir -p "$app_path/Contents/Resources/ThirdPartySources"
 /bin/cp "$source_archive_path" \

@@ -1,10 +1,10 @@
-import AppKit
 import ServiceManagement
 
 protocol LaunchAtLoginServicing: Sendable {
     var status: SMAppService.Status { get }
     func register() throws
     func unregister(completionHandler: @escaping @Sendable (Error?) -> Void)
+    func openSystemSettingsLoginItems()
 }
 
 private final class LiveLaunchAtLoginService: LaunchAtLoginServicing, @unchecked Sendable {
@@ -24,6 +24,10 @@ private final class LiveLaunchAtLoginService: LaunchAtLoginServicing, @unchecked
 
     func unregister(completionHandler: @escaping @Sendable (Error?) -> Void) {
         service.unregister(completionHandler: completionHandler)
+    }
+
+    func openSystemSettingsLoginItems() {
+        SMAppService.openSystemSettingsLoginItems()
     }
 }
 
@@ -89,10 +93,6 @@ final class LaunchAtLoginController: ObservableObject {
     }
 
     func openLoginItemsSettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") else {
-            return
-        }
-
-        NSWorkspace.shared.open(url)
+        service.openSystemSettingsLoginItems()
     }
 }
