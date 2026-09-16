@@ -1,0 +1,102 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "display-p3:0.13600,0.09722,0.06033,1.00000",
+          "display-p3:0.11020,0.11020,0.11020,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 0.7
+          }
+        }
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : "automatic"
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "hidden" : true,
+          "image-name" : "ChatGPT Image 2026年6月28日 16_53_25.png",
+          "name" : "icon-portable-ssd",
+          "position" : {
+            "scale" : 0.7,
+            "translation-in-points" : [
+              -18.200000000000045,
+              19.600000000000023
+            ]
+          }
+        },
+        {
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "image-LOkItiJcxn85rPi6aqW8Uwi8GumDjr.png",
+          "name" : "icon-rugged-ssd",
+          "position" : {
+            "scale" : 0.9,
+            "translation-in-points" : [
+              -27.450000000000102,
+              6.000000000000114
+            ]
+          }
+        },
+        {
+          "blend-mode-specializations" : [
+            {
+              "appearance" : "dark",
+              "value" : "normal"
+            }
+          ],
+          "glass" : false,
+          "hidden" : true,
+          "image-name" : "image-ImCIIS0rK57wUQATUvlqns0FoK9gS1.png",
+          "name" : "icon-desktop-storage",
+          "position" : {
+            "scale" : 0.8,
+            "translation-in-points" : [
+              -26.200000000000045,
+              25
+            ]
+          }
+        },
+        {
+          "hidden" : true,
+          "image-name" : "image-9V4M1ocwbb7scvjbgzV6KBMQLNEAPZ 2.png",
+          "name" : "icon-internal-hdd",
+          "position" : {
+            "scale" : 0.8,
+            "translation-in-points" : [
+              6,
+              5
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

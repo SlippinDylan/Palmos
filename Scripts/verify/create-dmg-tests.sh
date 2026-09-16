@@ -27,8 +27,11 @@ fail() {
   exit 1
 }
 
-/bin/mkdir -p "$APP_PATH/Contents/MacOS" "$MOUNT_POINT"
+/bin/mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources" "$MOUNT_POINT"
 /usr/bin/touch "$APP_PATH/Contents/MacOS/Palmos"
+/usr/bin/plutil -create xml1 "$APP_PATH/Contents/Info.plist"
+/usr/bin/plutil -insert CFBundleIconFile -string Palmos "$APP_PATH/Contents/Info.plist"
+/usr/bin/printf 'fixture icon' > "$APP_PATH/Contents/Resources/Palmos.icns"
 
 "$REPOSITORY_ROOT/Scripts/create-dmg.sh" "$APP_PATH" "$DMG_PATH" "Palmos Test"
 [[ -f "$DMG_PATH" ]] || fail "create-dmg.sh did not create the output image"
@@ -46,6 +49,9 @@ dmg_attached=true
   || fail "Applications symlink has the wrong target"
 [[ -s "$MOUNT_POINT/.background/background.png" ]] || fail "DMG background is missing"
 [[ -s "$MOUNT_POINT/.DS_Store" ]] || fail "Finder .DS_Store metadata is missing"
+[[ -s "$MOUNT_POINT/.VolumeIcon.icns" ]] || fail "DMG volume icon is missing"
+cmp "$APP_PATH/Contents/Resources/Palmos.icns" "$MOUNT_POINT/.VolumeIcon.icns" \
+  || fail "DMG volume icon does not match the app icon"
 [[ ! -e "$MOUNT_POINT/vendor" ]] || fail "build-only Python dependencies leaked into the DMG"
 
 PYTHONPATH="$REPOSITORY_ROOT/Scripts/vendor" /usr/bin/python3 \

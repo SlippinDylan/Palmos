@@ -226,13 +226,23 @@ echo "    Copying background image"
 /bin/mkdir -p "$actual_mount_point/.background"
 /bin/cp "$BACKGROUND_IMAGE" "$actual_mount_point/.background/background.png"
 
-# Set volume icon from the app's icon.
+# Set the volume icon from the app icon selected by Xcode. Icon Composer names
+# the generated file after ASSETCATALOG_COMPILER_APPICON_NAME.
 APP_ICON_TARGET="$actual_mount_point/.VolumeIcon.icns"
-APP_BUNDLE_ICON="$actual_mount_point/$(/usr/bin/basename "$APP_PATH")/Contents/Resources/AppIcon.icns"
-if [[ -f "$APP_BUNDLE_ICON" ]]; then
-  /bin/cp "$APP_BUNDLE_ICON" "$APP_ICON_TARGET" 2>/dev/null || true
-  /usr/bin/SetFile -a C "$actual_mount_point" 2>/dev/null || true
-fi
+COPIED_APP_PATH="$actual_mount_point/$(/usr/bin/basename "$APP_PATH")"
+APP_ICON_NAME="$(
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$COPIED_APP_PATH/Contents/Info.plist" 2>/dev/null
+)" || fail "App bundle does not declare CFBundleIconFile"
+APP_ICON_NAME="${APP_ICON_NAME%.icns}"
+case "$APP_ICON_NAME" in
+  ""|*/*|*..*) fail "App bundle declares an invalid CFBundleIconFile" ;;
+esac
+APP_BUNDLE_ICON="$COPIED_APP_PATH/Contents/Resources/$APP_ICON_NAME.icns"
+[[ -f "$APP_BUNDLE_ICON" ]] || fail "App icon not found at $APP_BUNDLE_ICON"
+/bin/cp "$APP_BUNDLE_ICON" "$APP_ICON_TARGET" \
+  || fail "could not copy the app icon to the DMG volume"
+/usr/bin/SetFile -a C "$actual_mount_point" \
+  || fail "could not mark the DMG volume as having a custom icon"
 
 # ---------------------------------------------------------------------------
 # 6. Configure Finder window layout without launching Finder
