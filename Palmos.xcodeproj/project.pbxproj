@@ -363,8 +363,8 @@
 			children = (
 				BE7C5993305ACC7A0041C3BF /* Palmos.icon */,
 				20000000000000000000008C /* LICENSE */,
-				300000000000000000000003 /* PalmosApp */,
-				30000000000000000000000D /* PalmosSMARTService */,
+				300000000000000000000003 /* App */,
+				30000000000000000000000D /* Helper */,
 				300000000000000000000023 /* PalmosSMARTServiceTests */,
 				300000000000000000000008 /* PalmosAppTests */,
 				300000000000000000000009 /* Config */,
@@ -373,21 +373,21 @@
 			);
 			sourceTree = "<group>";
 		};
-		300000000000000000000003 /* PalmosApp */ = {
+		300000000000000000000003 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				300000000000000000000004 /* App */,
+				300000000000000000000004 /* Application */,
 				30000000000000000000001C /* Metrics */,
 				300000000000000000000006 /* Integration */,
 				300000000000000000000005 /* UI */,
 				300000000000000000000007 /* Localization */,
+				30000000000000000000001D /* Resources */,
 				30000000000000000000001E /* Eject */,
-				200000000000000000000039 /* PrivacyInfo.xcprivacy */,
 			);
-			path = Apps/PalmosApp;
+			path = App;
 			sourceTree = "<group>";
 		};
-		300000000000000000000004 /* App */ = {
+		300000000000000000000004 /* Application */ = {
 			isa = PBXGroup;
 			children = (
 				200000000000000000000001 /* PalmosApp.swift */,
@@ -395,7 +395,7 @@
 				4D1620000000000000000002 /* DeviceContextMerger.swift */,
 				200000000000000000000003 /* PalmosAppState.swift */,
 			);
-			path = App;
+			path = Application;
 			sourceTree = "<group>";
 		};
 		30000000000000000000001E /* Eject */ = {
@@ -519,7 +519,7 @@
 				4D1820000000000000000001 /* IOKitDiskSamplerTests.swift */,
 				200000000000000000000084 /* SettingsWindowActivatorTests.swift */,
 			);
-			path = Apps/PalmosAppTests;
+			path = Tests/PalmosAppTests;
 			sourceTree = "<group>";
 		};
 		300000000000000000000009 /* Config */ = {
@@ -581,7 +581,7 @@
 			path = Licensing;
 			sourceTree = "<group>";
 		};
-		30000000000000000000000D /* PalmosSMARTService */ = {
+		30000000000000000000000D /* Helper */ = {
 			isa = PBXGroup;
 			children = (
 				30000000000000000000000E /* Service */,
@@ -589,7 +589,7 @@
 				30000000000000000000001F /* Occupancy */,
 				200000000000000000000023 /* com.palmos.smartservice.plist */,
 			);
-			path = Apps/PalmosSMARTService;
+			path = Helper;
 			sourceTree = "<group>";
 		};
 		30000000000000000000001F /* Occupancy */ = {
@@ -610,7 +610,7 @@
 			children = (
 				200000000000000000000053 /* HelperOccupancySecurityTests.swift */,
 			);
-			path = Apps/PalmosSMARTServiceTests;
+			path = Tests/PalmosSMARTServiceTests;
 			sourceTree = "<group>";
 		};
 		30000000000000000000000E /* Service */ = {
@@ -642,6 +642,14 @@
 				200000000000000000000085 /* ThroughputSamplingCoordinator.swift */,
 			);
 			path = Metrics;
+			sourceTree = "<group>";
+		};
+		30000000000000000000001D /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000039 /* PrivacyInfo.xcprivacy */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

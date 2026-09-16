@@ -29,11 +29,11 @@ final class EjectLocalizationCatalogTests: XCTestCase {
     }
 
     private func loadCatalog() throws -> [String: Any] {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let catalogURL = testFile
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("PalmosApp/Localization/Localizable.xcstrings")
+            .deletingLastPathComponent()
+        let catalogURL = repositoryRoot.appendingPathComponent("App/Localization/Localizable.xcstrings")
         let data = try Data(contentsOf: catalogURL)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }

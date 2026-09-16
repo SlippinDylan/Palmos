@@ -70,9 +70,11 @@ final class LocalizationCatalogTests: XCTestCase {
     }
 
     private func loadCatalog() throws -> [String: Any] {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let url = testFile.deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("PalmosApp/Localization/Localizable.xcstrings")
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let url = repositoryRoot.appendingPathComponent("App/Localization/Localizable.xcstrings")
         return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
     }
 

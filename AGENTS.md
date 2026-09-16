@@ -52,18 +52,22 @@ xcodebuild build \
 
 ```text
 Palmos/
-├── Apps/
-│   ├── PalmosApp/                  # 菜单栏 App
-│   │   ├── App/                        # composition root、控制器、界面状态
-│   │   ├── Integration/                # 系统 API、子进程、Helper/XPC 客户端
-│   │   ├── Metrics/                    # IOKit 实时磁盘采样
-│   │   ├── Eject/                      # 安全弹出、占用诊断、I/O quiescence
-│   │   ├── UI/                         # SwiftUI 视图与展示模型
-│   │   ├── Localization/               # String Catalog
-│   │   └── Resources/                  # App 图标等资源
-│   ├── PalmosAppTests/             # App、集成层、UI 模型与打包测试
-│   ├── PalmosSMARTService/         # root Helper、smartctl、占用扫描
-│   └── PalmosSMARTServiceTests/    # Helper 输入边界与安全测试
+├── App/                           # PalmosApp target
+│   ├── Application/                   # composition root、控制器、界面状态
+│   ├── Integration/                   # 系统 API、子进程、Helper/XPC 客户端
+│   ├── Metrics/                       # IOKit 实时磁盘采样
+│   ├── Eject/                         # 安全弹出、占用诊断、I/O quiescence
+│   ├── UI/                            # SwiftUI 视图与展示模型
+│   ├── Localization/                  # String Catalog
+│   └── Resources/                     # Privacy manifest 等资源
+├── Helper/                        # PalmosSMARTService target
+│   ├── Launchd/
+│   ├── Occupancy/
+│   ├── Service/
+│   └── XPC/
+├── Tests/
+│   ├── PalmosAppTests/            # App、集成层、UI 模型与打包测试
+│   └── PalmosSMARTServiceTests/   # Helper 输入边界与安全测试
 ├── Packages/PalmosCore/            # 无 AppKit/IOKit/特权依赖的共享逻辑
 │   ├── Sources/PalmosCore/
 │   │   ├── Domain/                     # 设备、卷、SMART、链路领域模型
@@ -72,8 +76,10 @@ Palmos/
 │   │   ├── SMART/                      # smartctl JSON 解析与温度选择
 │   │   └── Settings/                   # 可持久化用户设置
 │   └── Tests/PalmosCoreTests/
-├── Shared/XPCContracts/                # App/Helper 共同编译的版本化 XPC 合约
-├── Shared/Licensing/                   # bundled third-party licenses
+├── Shared/
+│   ├── XPCContracts/                   # App/Helper 共同编译的版本化 XPC 合约
+│   ├── ProcessInspection/              # App/Helper 共用的进程检查边界
+│   └── Licensing/                      # bundled third-party licenses
 ├── Config/xcconfigs/                   # Swift、部署版本、签名、bundle ID
 ├── Config/Plists/                      # App/Helper Info.plist 与 SMJobBless 约束
 ├── Scripts/verify/                     # 签名与真机 smoke 验证
@@ -147,20 +153,20 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 - 错误必须转换为明确的领域/capability state 或 `LocalizedError`；禁止吞异常、返回含义不明的 `nil`、仅写日志后假装成功。
 - macOS 15 是 deployment target；macOS 26 专属 API 必须以 `#available`/`@available` 守卫并保留 macOS 15 路径。
 - 保持原生 SwiftUI 菜单栏体验，不引入重型 UI 依赖；当前唯一远程 Swift Package 是 `MenuBarExtraAccess`，不要无理由扩展依赖面。
-- 用户可见字符串进入 `Apps/PalmosApp/Localization/Localizable.xcstrings`；至少检查 English、Simplified Chinese、Traditional Chinese，并更新相关 catalog/UI 测试。
+- 用户可见字符串进入 `App/Localization/Localizable.xcstrings`；至少检查 English、Simplified Chinese、Traditional Chinese，并更新相关 catalog/UI 测试。
 
 ## 6. 修改路由
 
 | 需求 | 首选位置 | 同步检查 |
 | --- | --- | --- |
 | 领域模型、SMART parser、吞吐 reducer | `Packages/PalmosCore/Sources/PalmosCore/` | Core tests；public API 的 App 调用点 |
-| 设备发现、容量、APFS/链路 enrich | `Apps/PalmosApp/Integration/` | mapper/controller tests；设备 identity 与 stale-write 防护 |
-| 菜单栏状态协调 | `Apps/PalmosApp/App/` | `PalmosAppControllerTests.swift`；MainActor/cancellation |
-| SwiftUI 布局与展示 | `Apps/PalmosApp/UI/` | 360 pt 面板、空/错误/加载状态、三种语言 |
-| 安全弹出与占用诊断 | `Apps/PalmosApp/Eject/` | eject unit/integration tests；manual disposable-media checklist |
-| SMART/Helper 客户端 | `Integration/SMARTServiceClient.swift`、`SMARTHelperManager.swift` | XPC compatibility、取消、helper absent/outdated states |
+| 设备发现、容量、APFS/链路 enrich | `App/Integration/` | mapper/controller tests；设备 identity 与 stale-write 防护 |
+| 菜单栏状态协调 | `App/Application/` | `PalmosAppControllerTests.swift`；MainActor/cancellation |
+| SwiftUI 布局与展示 | `App/UI/` | 360 pt 面板、空/错误/加载状态、三种语言 |
+| 安全弹出与占用诊断 | `App/Eject/` | eject unit/integration tests；manual disposable-media checklist |
+| SMART/Helper 客户端 | `App/Integration/SMARTServiceClient.swift`、`SMARTHelperManager.swift` | XPC compatibility、取消、helper absent/outdated states |
 | XPC schema/capability | `Shared/XPCContracts/` | App + Helper + Core compatibility tests |
-| root-side 实现 | `Apps/PalmosSMARTService/` | 输入验证、deadline/limit、Helper security tests |
+| root-side 实现 | `Helper/` | 输入验证、deadline/limit、Helper security tests |
 | bundle、签名、Helper packaging | `Config/`、project file、verify scripts | `Task7HelperPackagingTests`、signed build、code-signing script |
 
 ## 7. 验证矩阵

@@ -1546,11 +1546,11 @@ final class HelperOccupancySecurityTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let delegateSource = try String(
-            contentsOf: projectRoot.appendingPathComponent("Apps/PalmosSMARTService/XPC/PalmosSMARTXPCDelegate.swift"),
+            contentsOf: projectRoot.appendingPathComponent("Helper/XPC/PalmosSMARTXPCDelegate.swift"),
             encoding: .utf8
         )
         let endpointSource = try String(
-            contentsOf: projectRoot.appendingPathComponent("Apps/PalmosSMARTService/Occupancy/HelperOccupancyEndpoint.swift"),
+            contentsOf: projectRoot.appendingPathComponent("Helper/Occupancy/HelperOccupancyEndpoint.swift"),
             encoding: .utf8
         )
         XCTAssertTrue(delegateSource.contains("setCodeSigningRequirement"))
