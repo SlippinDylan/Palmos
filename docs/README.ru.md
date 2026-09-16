@@ -57,6 +57,8 @@ sudo xattr -rd com.apple.quarantine /Applications/Palmos.app
 
 Публикация настраивается в [`Config/Release/manifest.json`](../Config/Release/manifest.json). Она выполняется только после успешного main CI, при `release: true`, для ещё не опубликованной версии и при наличии единственного непустого совпадающего раздела в [CHANGELOG.md](../CHANGELOG.md).
 
+Для push в `main` и pull request всегда запускаются лёгкие проверки автоматизации выпуска. Если изменены только `README.md`, `docs/`, `LICENSE` или `AGENTS.md`, сборка macOS пропускается, кроме случаев, когда публикация включена. Для остальных изменений проверяются Core, App, безопасность Helper, упаковка и неподписанная arm64-сборка; `release: true` также принудительно включает эту полную проверку.
+
 ## SMART Helper
 
 Необязательный Helper устанавливается через `SMJobBless` в `/Library/PrivilegedHelperTools/com.palmos.smartservice`. Он предоставляет только согласование версий, ограниченное чтение SMART, установку companion и ограниченную диагностику занятых устройств.

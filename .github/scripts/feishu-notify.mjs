@@ -195,7 +195,23 @@ function conclusionLabel(conclusion) {
 function buildWorkflowRun(event) {
   const repoUrl = repositoryUrl(event);
   const run = event.workflow_run ?? {};
+  const action = String(event.action ?? '').toLowerCase();
   const conclusion = String(run.conclusion ?? '').toLowerCase();
+
+  if (action === 'requested') {
+    if (run.name !== 'CI') return null;
+    return {
+      title: `${PRODUCT_NAME} CI 已触发`,
+      details: commonDetails(event, [
+        `分支：${run.head_branch ?? '未知'}`,
+        `提交：${shortSha(run.head_sha)}`,
+        `运行：#${run.run_number ?? '未知'}`,
+        `触发：${run.event ?? '未知'}`,
+      ]),
+      button: { text: '查看运行', url: safeGitHubUrl(run.html_url, repoUrl) },
+      color: 'blue',
+    };
+  }
 
   if (run.name === 'Release' && conclusion === 'success') return null;
   if (run.name === 'CI' && conclusion === 'success' && run.event !== 'pull_request' && run.head_branch !== 'main') {
@@ -274,6 +290,29 @@ function buildReleaseDispatch(event) {
   };
 }
 
+function buildReleaseStarted(event) {
+  const repoUrl = repositoryUrl(event);
+  const payload = event.client_payload ?? {};
+  return {
+    title: `${PRODUCT_NAME} ${payload.version ?? '未知版本'} 开始打包`,
+    details: commonDetails(event, [
+      `类型：${payload.prerelease ? 'Pre-release' : 'Stable'}`,
+      payload.dmg_name ? `制品：${payload.dmg_name}` : '',
+      '架构：arm64',
+      'SMART Helper：将随 App 签名打包',
+      `提交：${shortSha(payload.sha)}`,
+    ]),
+    button: { text: '查看运行', url: safeGitHubUrl(payload.run_url, repoUrl) },
+    color: 'blue',
+  };
+}
+
+function buildRepositoryDispatch(event) {
+  if (event.action === 'release_started') return buildReleaseStarted(event);
+  if (event.action === 'release_published') return buildReleaseDispatch(event);
+  return null;
+}
+
 const BUILDERS = {
   push: buildPush,
   pull_request_target: buildPullRequest,
@@ -282,7 +321,7 @@ const BUILDERS = {
   pull_request_review: buildReview,
   workflow_run: buildWorkflowRun,
   release: buildRelease,
-  repository_dispatch: buildReleaseDispatch,
+  repository_dispatch: buildRepositoryDispatch,
 };
 
 export function buildNotification(eventName, event) {

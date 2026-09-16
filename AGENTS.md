@@ -84,7 +84,7 @@ Palmos/
 ├── Config/Plists/                      # App/Helper Info.plist 与 SMJobBless 约束
 ├── Scripts/verify/                     # 签名与真机 smoke 验证
 ├── Palmos.xcworkspace              # 日常构建入口
-└── .github/workflows/                  # 全分支 CI、飞书通知与 main 分支 release
+└── .github/workflows/                  # main/PR 分层 CI、飞书通知与 main 分支 release
 ```
 
 新增或移动 Swift 文件时，必须同步检查 `Palmos.xcodeproj/project.pbxproj` 的 file reference、target membership 与 build phase；仅在磁盘上创建文件不代表 Xcode target 会编译它。
@@ -175,7 +175,7 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 
 - 仅 `PalmosCore`：`swift test`。
 - App UI/state/integration：`PalmosApp` scheme tests；涉及 Core 时再跑 Core tests。
-- Helper/XPC/签名：Core compatibility tests + App tests + `PalmosSMARTServiceTests`；所有 push/PR 的 CI 都会运行 Helper scheme，本地仍需在交付前确认退出码为 0；打包改动再做 signed build 与 `code-signing.sh`。
+- Helper/XPC/签名：Core compatibility tests + App tests + `PalmosSMARTServiceTests`；非纯文档的 main push/PR CI 会运行 Helper scheme，`release: true` 时也会强制执行，本地仍需在交付前确认退出码为 0；打包改动再做 signed build 与 `code-signing.sh`。
 - 发现、吞吐、SMART、eject 的真实硬件行为：自动测试后执行相关 manual smoke 项；不要声称已验证未连接的硬件或未安装的 Helper。
 - 发布相关：对照 `.github/workflows/test.yml` 和 `.github/workflows/release.yml`，不要把本地无签名成功等同于可安装 Helper 的 release 成功。
 
@@ -192,7 +192,7 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 - 配置源在 `Config/xcconfigs/`；Swift 6、macOS 26 deployment target、bundle IDs 和 Team ID 不应散落复制到源码。
 - App、Helper 和随包提供的 `smartctl` 只发布 arm64，签名与打包验证必须拒绝 universal 或 x86_64 制品。
 - Fork 使用者可替换 `Base.xcconfig` 的 `DEVELOPMENT_TEAM`，但 App 与 Helper 必须继承同一 Team ID。
-- push/PR CI 使用 macOS 26 runner 与固定 Xcode，命令行禁用签名；修改 SDK/API 使用后同时确认本地与 CI Xcode 能力。
+- main push/PR CI 先运行 Ubuntu 轻量自动化检查；非纯文档变更或 `release: true` 时再使用 macOS 26 runner 与固定 Xcode，并在命令行禁用签名。修改 SDK/API 使用后同时确认本地与 CI Xcode 能力。
 - release 使用免费 Apple Development 证书，不依赖 paid Developer ID/notarization；不要擅自改成要求付费签名的分发模型。
 - `Config/Release/manifest.json` 是 release、tag、DMG 与 CHANGELOG 版本的单一来源；预发布后缀不进入 App 的数字型 `MARKETING_VERSION`。修改版本语义时同步更新 manifest 校验、Release workflow 和文档。
 - Palmos 源码使用 Apache License 2.0；修改根 `LICENSE` 时必须同步 README、App bundle 中的许可证副本、固定摘要与打包测试。
@@ -208,7 +208,7 @@ PalmosApp ── versioned XPC ──> PalmosSMARTService ──> smartctl / bou
 | [Config/Release/manifest.json](Config/Release/manifest.json) | 发布候选版本与显式发布开关 |
 | [Shared/XPCContracts/PalmosXPCContracts.swift](Shared/XPCContracts/PalmosXPCContracts.swift) | XPC 版本与协议入口 |
 | [Scripts/verify/manual-smoke-checklist.md](Scripts/verify/manual-smoke-checklist.md) | 真机与 release smoke checklist |
-| [.github/workflows/test.yml](.github/workflows/test.yml) | 全分支 push/PR CI 的权威测试环境和命令 |
+| [.github/workflows/test.yml](.github/workflows/test.yml) | main push/PR 分层 CI、文档分类与权威测试命令 |
 | [.github/workflows/release.yml](.github/workflows/release.yml) | 构建、签名、校验、打包与 GitHub Release 流程 |
 
 权威顺序：当前工程配置/源码/测试/CI → 本文件 → README 与 manual checklist → 历史设计记录。发现冲突时先验证现状并修正文档，不要照搬旧描述。

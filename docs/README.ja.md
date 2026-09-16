@@ -57,6 +57,8 @@ sudo xattr -rd com.apple.quarantine /Applications/Palmos.app
 
 リリース設定は [`Config/Release/manifest.json`](../Config/Release/manifest.json) にあります。main CI の成功、`release: true`、未公開のバージョン、[CHANGELOG.md](../CHANGELOG.md) 内の一致する一意で空でないセクションが揃った場合だけ公開されます。
 
+`main` への push と Pull Request では、常に軽量なリリース自動化チェックを実行します。変更が `README.md`、`docs/`、`LICENSE`、`AGENTS.md` のみに限られる場合は macOS ビルドを省略しますが、公開が有効な場合は完全なチェックを強制します。それ以外の変更では Core、App、Helper のセキュリティ、パッケージング、未署名 arm64 ビルドを検証します。
+
 ## SMART Helper
 
 オプションの Helper は `SMJobBless` を通じて `/Library/PrivilegedHelperTools/com.palmos.smartservice` にインストールされます。公開する機能は、バージョン交渉、上限付き SMART 読み取り、companion のインストール、上限付き使用中プロセス診断だけです。

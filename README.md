@@ -111,7 +111,7 @@ xcodebuild test \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 ```
 
-Every push and pull request runs the Core, App, Helper security, packaging, and automation checks in CI.
+Pushes to `main` and pull requests always run lightweight release-automation checks. Changes limited to `README.md`, `docs/`, `LICENSE`, or `AGENTS.md` skip the macOS build unless publishing is enabled. All other changes run the Core, App, Helper security, packaging, and unsigned arm64 build checks; `release: true` also forces this full check.
 
 ## License
 

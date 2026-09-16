@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches:
-      - '**'
+      - main
   pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -15,8 +17,77 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Run Tests
+  lightweight-check:
+    name: Lightweight Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_macos: ${{ steps.changes.outputs.run_macos }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Classify changes
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          changed_files="$RUNNER_TEMP/changed-files"
+
+          if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
+            run_macos=true
+          else
+            if [[ "$EVENT_NAME" == 'pull_request' ]]; then
+              git diff --name-only -z "$BASE_SHA...$HEAD_SHA" > "$changed_files"
+            elif [[ -n "$BEFORE_SHA" && ! "$BEFORE_SHA" =~ ^0+$ ]]; then
+              git diff --name-only -z "$BEFORE_SHA" "$CURRENT_SHA" > "$changed_files"
+            elif git rev-parse "${CURRENT_SHA}^" >/dev/null 2>&1; then
+              git diff --name-only -z "${CURRENT_SHA}^" "$CURRENT_SHA" > "$changed_files"
+            else
+              git ls-tree -r --name-only -z "$CURRENT_SHA" > "$changed_files"
+            fi
+
+            run_macos=false
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                README.md | LICENSE | AGENTS.md | docs/*) ;;
+                *) run_macos=true; break ;;
+              esac
+            done < "$changed_files"
+
+            if node -e "const manifest = require('./Config/Release/manifest.json'); process.exit(manifest.release === true ? 0 : 1)"; then
+              run_macos=true
+            fi
+          fi
+
+          echo "run_macos=$run_macos" >> "$GITHUB_OUTPUT"
+
+      - name: Validate automation
+        run: |
+          bash -n Scripts/build-local-smart-app.sh
+          bash -n Scripts/build-smartctl-companion.sh
+          bash -n Scripts/create-dmg.sh
+          bash -n Scripts/verify/create-dmg-tests.sh
+          bash -n Scripts/verify/code-signing.sh
+          bash -n Scripts/verify/code-signing-tests.sh
+          bash -n Scripts/verify/local-smart-build-tests.sh
+          Scripts/build-local-smart-app.sh --help >/dev/null
+          node .github/scripts/release-manifest.mjs validate
+          node --test .github/scripts/*.test.mjs
+
+  macos-check:
+    name: Test and build Palmos
+    needs: lightweight-check
+    if: needs.lightweight-check.outputs.run_macos == 'true'
     # macos-26 is required because macOS 26 is the deployment target.
     runs-on: macos-26
     timeout-minutes: 45
@@ -31,30 +102,22 @@ jobs:
       - name: Select Xcode 26.4
         run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
 
-      - name: Validate Local SMART Build Entry Point
+      - name: Report toolchain
         run: |
-          bash -n Scripts/build-local-smart-app.sh
-          bash -n Scripts/build-smartctl-companion.sh
-          bash -n Scripts/create-dmg.sh
-          bash -n Scripts/verify/create-dmg-tests.sh
-          bash -n Scripts/verify/code-signing.sh
-          bash -n Scripts/verify/code-signing-tests.sh
-          bash -n Scripts/verify/local-smart-build-tests.sh
-          Scripts/build-local-smart-app.sh --help >/dev/null
+          xcodebuild -version
+          node --version
+
+      - name: Validate SMART build and packaging
+        run: |
           Scripts/verify/create-dmg-tests.sh
           Scripts/verify/code-signing-tests.sh
           Scripts/verify/local-smart-build-tests.sh
 
-      - name: Validate Automation
-        run: |
-          node .github/scripts/release-manifest.mjs validate
-          node --test .github/scripts/*.test.mjs
-
-      - name: Run PalmosCore Tests
+      - name: Run PalmosCore tests
         working-directory: Packages/PalmosCore
         run: swift test
 
-      - name: Run PalmosApp Tests
+      - name: Run PalmosApp tests
         run: |
           set -o pipefail
           xcodebuild test \
@@ -65,7 +128,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
-      - name: Run PalmosSMARTService Tests
+      - name: Run PalmosSMARTService tests
         run: |
           set -o pipefail
           xcodebuild test \
@@ -100,3 +163,21 @@ jobs:
           test "$(lipo -archs "$helper")" = 'arm64'
           test "$(vtool -show-build "$app_binary" | grep -c 'minos 26.0')" -eq 1
           test "$(vtool -show-build "$helper" | grep -c 'minos 26.0')" -eq 1
+
+  required-check:
+    name: Run Tests
+    needs:
+      - lightweight-check
+      - macos-check
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify CI result
+        env:
+          LIGHTWEIGHT_RESULT: ${{ needs.lightweight-check.result }}
+          MACOS_RESULT: ${{ needs.macos-check.result }}
+        run: |
+          test "$LIGHTWEIGHT_RESULT" = 'success'
+          [[ "$MACOS_RESULT" == 'success' || "$MACOS_RESULT" == 'skipped' ]]

@@ -111,7 +111,7 @@ xcodebuild test \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 ```
 
-所有 push 和 Pull Request 都會在 CI 中執行 Core、App、Helper 安全、封裝和自動化檢查。
+main push 與 Pull Request 始終執行輕量發佈自動化檢查。僅修改 `README.md`、`docs/`、`LICENSE` 或 `AGENTS.md` 時會略過 macOS 建置，但啟用發佈時仍會強制執行完整檢查。其他變更會執行 Core、App、Helper 安全、封裝和未簽署 arm64 建置檢查。
 
 ## 授權條款
 
