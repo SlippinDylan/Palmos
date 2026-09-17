@@ -32,6 +32,19 @@ final class Task7HelperPackagingTests: XCTestCase {
         )
     }
 
+    func testAppExecutableCanResolveEmbeddedFrameworks() throws {
+        let executableURL = try appBundleURL().appendingPathComponent(
+            "Contents/MacOS/Palmos"
+        )
+        let loadCommands = try runTool(
+            "/usr/bin/otool",
+            arguments: ["-l", executableURL.path]
+        )
+
+        XCTAssertTrue(loadCommands.contains("cmd LC_RPATH"))
+        XCTAssertTrue(loadCommands.contains("path @executable_path/../Frameworks"))
+    }
+
     func testAppBundleIncludesExactSmartmontoolsLicense() throws {
         let licenseURL = try XCTUnwrap(
             Bundle.main.url(

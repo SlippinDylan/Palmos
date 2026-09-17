@@ -171,6 +171,7 @@ jobs:
           test "$(lipo -archs "$helper")" = 'arm64'
           test "$(vtool -show-build "$app_binary" | grep -c 'minos 26.0')" -eq 1
           test "$(vtool -show-build "$helper" | grep -c 'minos 26.0')" -eq 1
+          otool -l "$app_binary" | grep -A2 'cmd LC_RPATH' | grep -q '@executable_path/../Frameworks'
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")" = '26.0'
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" = 'https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml'
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = 'EagyaGi+/pVuyXbZArnqGZ1g4QzJNYvRrrW1//SHfJ8='
