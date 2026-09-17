@@ -4,9 +4,17 @@ import SwiftUI
 
 struct AboutSettingsPane: View {
     private let metadata: AboutAppMetadata
+    private let canCheckForUpdates: () -> Bool
+    private let onCheckForUpdates: () -> Void
 
-    init(metadata: AboutAppMetadata = .current) {
+    init(
+        metadata: AboutAppMetadata = .current,
+        canCheckForUpdates: @escaping () -> Bool = { false },
+        onCheckForUpdates: @escaping () -> Void = {}
+    ) {
         self.metadata = metadata
+        self.canCheckForUpdates = canCheckForUpdates
+        self.onCheckForUpdates = onCheckForUpdates
     }
 
     var body: some View {
@@ -40,6 +48,9 @@ struct AboutSettingsPane: View {
 
                 Divider()
                     .frame(width: 200)
+
+                Button("Check for Updates…", action: onCheckForUpdates)
+                    .disabled(canCheckForUpdates() == false)
 
                 Text("Copyright © 2025-2026 SlippinDylan Studio")
                     .font(.caption)

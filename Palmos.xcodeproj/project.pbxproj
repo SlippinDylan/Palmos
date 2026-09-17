@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		4D1700000000000000000001 /* AboutSettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1700000000000000000002 /* AboutSettingsPane.swift */; };
+		4D1900000000000000000001 /* ApplicationUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1920000000000000000001 /* ApplicationUpdateController.swift */; };
+		4D1900000000000000000002 /* ApplicationUpdateControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1920000000000000000002 /* ApplicationUpdateControllerTests.swift */; };
+		4D1900000000000000000003 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 4D1930000000000000000002 /* Sparkle */; };
 		100000000000000000000001 /* PalmosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* PalmosApp.swift */; };
 		100000000000000000000002 /* PalmosAppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* PalmosAppController.swift */; };
 		100000000000000000000003 /* PalmosAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* PalmosAppState.swift */; };
@@ -188,6 +191,8 @@
 
 /* Begin PBXFileReference section */
 		4D1700000000000000000002 /* AboutSettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsPane.swift; sourceTree = "<group>"; };
+		4D1920000000000000000001 /* ApplicationUpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationUpdateController.swift; sourceTree = "<group>"; };
+		4D1920000000000000000002 /* ApplicationUpdateControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationUpdateControllerTests.swift; sourceTree = "<group>"; };
 		200000000000000000000001 /* PalmosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosApp.swift; sourceTree = "<group>"; };
 		200000000000000000000002 /* PalmosAppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosAppController.swift; sourceTree = "<group>"; };
 		200000000000000000000003 /* PalmosAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmosAppState.swift; sourceTree = "<group>"; };
@@ -326,6 +331,7 @@
 				10000000000000000000004C /* libproc.tbd in Frameworks */,
 				10000000000000000000000C /* PalmosCore in Frameworks */,
 				E268DE9D187C136F974A3F7E /* MenuBarExtraAccess in Frameworks */,
+				4D1900000000000000000003 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -390,6 +396,7 @@
 		300000000000000000000004 /* Application */ = {
 			isa = PBXGroup;
 			children = (
+				4D1920000000000000000001 /* ApplicationUpdateController.swift */,
 				200000000000000000000001 /* PalmosApp.swift */,
 				200000000000000000000002 /* PalmosAppController.swift */,
 				4D1620000000000000000002 /* DeviceContextMerger.swift */,
@@ -487,6 +494,7 @@
 		300000000000000000000008 /* PalmosAppTests */ = {
 			isa = PBXGroup;
 			children = (
+				4D1920000000000000000002 /* ApplicationUpdateControllerTests.swift */,
 				4D1620000000000000000001 /* DeviceContextMergerTests.swift */,
 				200000000000000000000086 /* SystemProfilerParserBoundaryTests.swift */,
 				200000000000000000000061 /* SafeEjectIntegrationTests.swift */,
@@ -674,6 +682,7 @@
 			packageProductDependencies = (
 				500000000000000000000001 /* PalmosCore */,
 				322662F17F85D329F8C03472 /* MenuBarExtraAccess */,
+				4D1930000000000000000002 /* Sparkle */,
 			);
 			productName = Palmos;
 			productReference = 20000000000000000000000C /* Palmos.app */;
@@ -773,6 +782,7 @@
 			packageReferences = (
 				500000000000000000000003 /* XCLocalSwiftPackageReference "PalmosCore" */,
 				8832A9379E3BBB9A435FCE32 /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */,
+				4D1930000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			productRefGroup = 30000000000000000000000A /* Products */;
 			projectDirPath = "";
@@ -874,6 +884,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D1700000000000000000001 /* AboutSettingsPane.swift in Sources */,
+				4D1900000000000000000001 /* ApplicationUpdateController.swift in Sources */,
 				100000000000000000000065 /* EjectLocalization.swift in Sources */,
 				100000000000000000000066 /* EjectRecoveryView.swift in Sources */,
 				100000000000000000000067 /* EjectForceConfirmationModifier.swift in Sources */,
@@ -947,6 +958,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4D1900000000000000000002 /* ApplicationUpdateControllerTests.swift in Sources */,
 				4D1600000000000000000001 /* DeviceContextMergerTests.swift in Sources */,
 				10000000000000000000006A /* SafeEjectIntegrationTests.swift in Sources */,
 				4B4000000000000000000001 /* ExternalDeviceDiscoveryObservationTests.swift in Sources */,
@@ -1086,6 +1098,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = Palmos;
 				CURRENT_PROJECT_VERSION = 1;
 				MARKETING_VERSION = 0.1.0;
+				PALMOS_UPDATER_ENABLED = YES;
 				PRODUCT_MODULE_NAME = PalmosApp;
 				PRODUCT_NAME = Palmos;
 			};
@@ -1239,6 +1252,14 @@
 				minimumVersion = 1.3.0;
 			};
 		};
+		4D1930000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.10.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1246,6 +1267,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8832A9379E3BBB9A435FCE32 /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */;
 			productName = MenuBarExtraAccess;
+		};
+		4D1930000000000000000002 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4D1930000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 		500000000000000000000001 /* PalmosCore */ = {
 			isa = XCSwiftPackageProductDependency;

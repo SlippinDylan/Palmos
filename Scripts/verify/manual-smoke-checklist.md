@@ -88,6 +88,12 @@ Run this checklist after each significant change to the app or helper. Every ite
 - [ ] The installed helper and launchd plist exist only after the signed preflight and administrator authorization succeed
 - [ ] The installed companion exists at `/Library/PrivilegedHelperTools/com.palmos.smartservice.smartctl`, is owned by root, is not group/world writable, and matches the release Team ID
 
+## App Updates
+
+- [ ] Start from an older Palmos release installed in `Applications`, then use About → Check for Updates… to verify a signed Sparkle update reaches the published DMG
+- [ ] Confirm the update is rejected when the appcast or archive signature is invalid
+- [ ] After an App update, inspect SMART Helper status and use its explicit Settings update action when compatibility requires it; Sparkle does not install or upgrade the privileged Helper or `smartctl`
+
 ## SMART — Helper Installed
 
 - [ ] Refresh reads SMART data and shows overall health and temperature

@@ -69,6 +69,27 @@ sudo xattr -rd com.apple.quarantine /Applications/Palmos.app
 
 舊的憑證 secret 名稱 `APPLE_DEVELOPMENT_P12_BASE64` 和 `APPLE_DEVELOPMENT_P12_PASSWORD` 仍然相容。
 
+- `SPARKLE_ED_PRIVATE_KEY`：Sparkle EdDSA 更新簽署私鑰
+- `HOMEBREW_TAP_TOKEN`：僅對 `SlippinDylan/homebrew-tap` 有 Contents 寫入權限的細粒度 Token
+
+### Homebrew
+
+接入 Sparkle 的 GitHub Release 公開後，共享 Tap 會發佈固定版本 DMG checksum 和已簽署 appcast：
+
+```bash
+brew tap slippindylan/tap
+brew trust --tap slippindylan/tap
+brew install --cask palmos@beta
+```
+
+穩定版使用 `palmos`，alpha 使用 `palmos@alpha`；每個 Cask 都固定指向對應 GitHub Release 的 DMG。
+
+### App 更新
+
+Palmos 使用 Sparkle 2 自動在背景檢查更新，也可在「設定 → 關於」選擇「檢查更新…」。它會驗證 EdDSA 簽署的更新封存檔和公開 appcast：`https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml`。穩定、beta、alpha 共用一個 feed，但只接收各自允許的頻道。
+
+App 更新只會替換 `Palmos.app`，不會安裝或升級特權 SMART Helper 及其已簽署的 `smartctl` companion。Helper 需要更新時，仍須在「設定 → SMART Helper」中明確操作並通過 macOS 管理員授權。
+
 ## 特權 SMART Helper
 
 可選 Helper 透過 `SMJobBless` 安裝至 `/Library/PrivilegedHelperTools/com.palmos.smartservice`。它只提供版本協商、有界 SMART 讀取、companion 安裝和有界佔用診斷。Companion 安裝至 `/Library/PrivilegedHelperTools/com.palmos.smartservice.smartctl`；Palmos 不會從 Homebrew 或其他使用者可寫入路徑載入 `smartctl`。

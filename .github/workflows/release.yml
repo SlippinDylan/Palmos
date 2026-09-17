@@ -30,6 +30,7 @@ jobs:
       publish: ${{ steps.plan.outputs.publish || 'false' }}
       version: ${{ steps.manifest.outputs.version }}
       marketing_version: ${{ steps.manifest.outputs.marketing_version }}
+      channel: ${{ steps.manifest.outputs.channel }}
       tag: ${{ steps.manifest.outputs.tag }}
       prerelease: ${{ steps.manifest.outputs.prerelease }}
       dmg_name: ${{ steps.manifest.outputs.dmg_name }}
@@ -77,6 +78,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CURRENT_TAG: ${{ steps.manifest.outputs.tag }}
         run: |
+          visibility="$(gh repo view "$GITHUB_REPOSITORY" --json visibility --jq '.visibility')"
+          if [[ "$visibility" != 'PUBLIC' ]]; then
+            echo 'Palmos must be public before release publishing is enabled.' >&2
+            exit 1
+          fi
           all_tags="$(gh api --paginate \
             "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
             --jq '.[].tag_name')"
@@ -95,6 +101,7 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
       MARKETING_VERSION: ${{ needs.plan.outputs.marketing_version }}
+      CHANNEL: ${{ needs.plan.outputs.channel }}
       TAG: ${{ needs.plan.outputs.tag }}
       PRERELEASE: ${{ needs.plan.outputs.prerelease }}
       DMG_NAME: ${{ needs.plan.outputs.dmg_name }}
@@ -264,6 +271,7 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             MARKETING_VERSION="$MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            PALMOS_UPDATE_CHANNEL="$CHANNEL" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
             DEVELOPMENT_TEAM="$SIGNING_TEAM_ID" \
@@ -275,12 +283,72 @@ jobs:
             SMARTMONTOOLS_SOURCE_ARCHIVE_PATH="$SMARTMONTOOLS_SOURCE_ARCHIVE_PATH" \
             SMARTCTL_COMPANION_REQUIRED_FOR_SIGNED_BUILD=YES
 
+      - name: Sign embedded Sparkle components
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/DerivedData/Build/Products/Release/Palmos.app"
+          framework="$app/Contents/Frameworks/Sparkle.framework"
+          keychain="$SIGNING_KEYCHAIN_PATH"
+          test -d "$framework"
+          component_identifier() {
+            codesign --display --verbose=4 "$1" 2>&1 \
+              | sed -n 's/^Identifier=//p' \
+              | head -n 1
+          }
+          installer="$framework/Versions/B/XPCServices/Installer.xpc"
+          downloader="$framework/Versions/B/XPCServices/Downloader.xpc"
+          autoupdate="$framework/Versions/B/Autoupdate"
+          updater="$framework/Versions/B/Updater.app"
+          installer_identifier="$(component_identifier "$installer")"
+          downloader_identifier="$(component_identifier "$downloader")"
+          autoupdate_identifier="$(component_identifier "$autoupdate")"
+          updater_identifier="$(component_identifier "$updater")"
+          framework_identifier="$(component_identifier "$framework")"
+          for identifier in "$installer_identifier" "$downloader_identifier" "$autoupdate_identifier" "$updater_identifier" "$framework_identifier"; do
+            test -n "$identifier"
+          done
+          # Sparkle 2.10 requires its nested code to be signed inside out. The
+          # Downloader entitlement and each distributed code identifier are retained.
+          codesign --force --sign "$SIGNING_IDENTITY" --identifier "$installer_identifier" --options runtime --keychain "$keychain" \
+            --preserve-metadata=entitlements \
+            "$installer"
+          codesign --force --sign "$SIGNING_IDENTITY" --identifier "$downloader_identifier" --options runtime --keychain "$keychain" \
+            --preserve-metadata=entitlements \
+            "$downloader"
+          codesign --force --sign "$SIGNING_IDENTITY" --identifier "$autoupdate_identifier" --options runtime --keychain "$keychain" \
+            --preserve-metadata=entitlements \
+            "$autoupdate"
+          codesign --force --sign "$SIGNING_IDENTITY" --identifier "$updater_identifier" --options runtime --keychain "$keychain" \
+            --preserve-metadata=entitlements \
+            "$updater"
+          codesign --force --sign "$SIGNING_IDENTITY" --identifier "$framework_identifier" --options runtime --keychain "$keychain" \
+            "$framework"
+          codesign --force --sign "$SIGNING_IDENTITY" --options runtime --keychain "$keychain" \
+            --preserve-metadata=identifier,entitlements,flags,runtime \
+            "$app"
+
       - name: Verify Release signatures
         run: |
           APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release/Palmos.app"
           Scripts/verify/code-signing.sh "$APP_PATH" "$SIGNING_TEAM_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")" = "$MARKETING_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist")" = "${{ github.run_number }}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :PalmosUpdateChannel' "$APP_PATH/Contents/Info.plist")" = "$CHANNEL"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP_PATH/Contents/Info.plist")" = 'https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml'
+          assert_sparkle_component() {
+            local component="$1"
+            local expected_identifier="$2"
+            codesign --verify --strict --all-architectures --verbose=2 "$component"
+            signature="$RUNNER_TEMP/$(basename "$component").signature.txt"
+            codesign --display --verbose=4 "$component" > /dev/null 2> "$signature"
+            grep -Fq "TeamIdentifier=$SIGNING_TEAM_ID" "$signature"
+            grep -Fq "Identifier=$expected_identifier" "$signature"
+          }
+          assert_sparkle_component "$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc" 'org.sparkle-project.InstallerLauncher'
+          assert_sparkle_component "$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc" 'org.sparkle-project.DownloaderService'
+          assert_sparkle_component "$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" 'Autoupdate-55554944f723d84042cd352fbb0485760ff7597a'
+          assert_sparkle_component "$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app" 'org.sparkle-project.Sparkle.Updater'
+          assert_sparkle_component "$APP_PATH/Contents/Frameworks/Sparkle.framework" 'org.sparkle-project.Sparkle'
 
       - name: Package DMG
         run: |
@@ -387,6 +455,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      - name: Request distribution metadata publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          jq -n --arg tag "$TAG" '{event_type: "distribution_metadata_requested", client_payload: {tag: $tag}}' \
+            | gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" --input -
 
       - name: Dispatch release notification
         continue-on-error: true

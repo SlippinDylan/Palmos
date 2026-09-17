@@ -9,6 +9,8 @@ struct SettingsView: View {
     @ObservedObject var smartHelperManager: SMARTHelperManager
     let onInstallOrUpdateHelper: () -> Void
     let onRefreshHelperStatus: () -> Void
+    let canCheckForUpdates: () -> Bool
+    let onCheckForUpdates: () -> Void
 
     var body: some View {
         TabView {
@@ -27,7 +29,10 @@ struct SettingsView: View {
             }
 
             Tab("About", systemImage: "info.circle") {
-                AboutSettingsPane()
+                AboutSettingsPane(
+                    canCheckForUpdates: canCheckForUpdates,
+                    onCheckForUpdates: onCheckForUpdates
+                )
             }
         }
         .scenePadding()

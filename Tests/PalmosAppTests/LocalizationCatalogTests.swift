@@ -12,7 +12,7 @@ final class LocalizationCatalogTests: XCTestCase {
         "Bus %@", "Receptacle %@", "Duration minutes", "Duration hours", "Rate per second",
         "Critical warning %@ (%@)", "Available spare %@ (threshold %@%%)",
         "Temperature update failed. Showing the last reading.",
-        "Repair"
+        "Repair", "Check for Updates…"
     ]
 
     func testRequiredPresentationKeysHaveAllTranslatedLocales() throws {

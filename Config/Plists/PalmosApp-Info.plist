@@ -12,10 +12,26 @@
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>LSUIElement</key>
     <true/>
+    <key>PalmosUpdateChannel</key>
+    <string>$(PALMOS_UPDATE_CHANNEL)</string>
+    <key>PalmosUpdaterEnabled</key>
+    <string>$(PALMOS_UPDATER_ENABLED)</string>
     <key>SMPrivilegedExecutables</key>
     <dict>
         <key>com.palmos.smartservice</key>
         <string>anchor apple generic and certificate leaf[subject.OU] = "$(TEAM_IDENTIFIER)" and identifier "$(HELPER_BUNDLE_IDENTIFIER)"</string>
     </dict>
+    <key>SUAutomaticallyUpdate</key>
+    <true/>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUFeedURL</key>
+    <string>https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>EagyaGi+/pVuyXbZArnqGZ1g4QzJNYvRrrW1//SHfJ8=</string>
+    <key>SURequireSignedFeed</key>
+    <true/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
 </dict>
 </plist>
