@@ -164,8 +164,8 @@ jobs:
           test "$(vtool -show-build "$app_binary" | grep -c 'minos 26.0')" -eq 1
           test "$(vtool -show-build "$helper" | grep -c 'minos 26.0')" -eq 1
 
-  required-check:
-    name: Run Tests
+  build-check:
+    name: Build Check
     needs:
       - lightweight-check
       - macos-check
