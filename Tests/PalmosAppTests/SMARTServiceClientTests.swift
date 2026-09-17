@@ -1140,6 +1140,9 @@ final class SMARTPresentationTests: XCTestCase {
         XCTAssertEqual(retryDetails.snapshot, .failed("Read failed"))
         XCTAssertTrue(retryDetails.isRefreshing)
         XCTAssertEqual(controller.state.selectedDevice?.smartSnapshot, .failed("Read failed"))
+
+        await smartService.finishCurrentRefresh(with: .failed("Retry failed"))
+        await waitUntilSMARTPresentationSettles(controller)
     }
 
     func testSelectedDevicePublishesApplicationHelperNotInstalledStatus() async throws {
