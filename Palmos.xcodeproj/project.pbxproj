@@ -874,7 +874,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "output_dir=${SCRIPT_OUTPUT_FILE_0%/*}\nmkdir -p \"$output_dir\"\ncp -f \"$SCRIPT_INPUT_FILE_0\" \"$SCRIPT_OUTPUT_FILE_0\"\n";
+			shellScript = "output_dir=${SCRIPT_OUTPUT_FILE_0%/*}\nmkdir -p \"$output_dir\"\ncp -f \"$SCRIPT_INPUT_FILE_0\" \"$SCRIPT_OUTPUT_FILE_0\"\n/usr/libexec/PlistBuddy -c \"Add :AssociatedBundleIdentifiers array\" \"$SCRIPT_OUTPUT_FILE_0\"\n/usr/libexec/PlistBuddy -c \"Add :AssociatedBundleIdentifiers:0 string $APP_BUNDLE_IDENTIFIER\" \"$SCRIPT_OUTPUT_FILE_0\"\n/usr/bin/plutil -lint \"$SCRIPT_OUTPUT_FILE_0\" >/dev/null\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

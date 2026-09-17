@@ -1,6 +1,24 @@
 import Foundation
 
 enum SMARTXPCConnectionFactory {
+    static func activate(_ connection: NSXPCConnection, bundle: Bundle = .main) {
+        guard let infoDictionary = bundle.infoDictionary else {
+            preconditionFailure("Palmos is missing its Info.plist dictionary")
+        }
+
+        let requirement: String
+        do {
+            requirement = try HelperInstallationPreflight.appHelperRequirement(
+                in: infoDictionary as NSDictionary
+            )
+        } catch {
+            preconditionFailure(error.localizedDescription)
+        }
+
+        connection.setCodeSigningRequirement(requirement)
+        connection.activate()
+    }
+
     static func fetchHelperHandshake(helperMachServiceName: String) async throws -> Data {
         try await withConnection(helperMachServiceName: helperMachServiceName) { proxy, connection, gate in
             proxy.fetchHelperHandshake { data, error in
@@ -90,7 +108,7 @@ enum SMARTXPCConnectionFactory {
                 gate.resume(throwing: SMARTServiceClientError.connectionInvalidated)
             }
             connection.remoteObjectInterface = NSXPCInterface(with: PalmosSMARTXPCProtocol.self)
-            connection.activate()
+            activate(connection)
 
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
                 gate.resume(throwing: error)

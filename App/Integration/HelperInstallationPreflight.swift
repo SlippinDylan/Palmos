@@ -266,7 +266,7 @@ enum HelperInstallationPreflight {
         return plist as NSDictionary
     }
 
-    private static func appHelperRequirement(in plist: NSDictionary) throws -> String {
+    static func appHelperRequirement(in plist: NSDictionary) throws -> String {
         guard
             let requirements = plist["SMPrivilegedExecutables"] as? NSDictionary,
             let requirement = requirements[helperIdentifier] as? String,

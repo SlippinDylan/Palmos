@@ -26,6 +26,10 @@ final class Task7HelperPackagingTests: XCTestCase {
             machServices["com.palmos.smartservice"] as? Bool,
             true
         )
+        XCTAssertEqual(
+            launchdPlist["AssociatedBundleIdentifiers"] as? [String],
+            [HelperInstallationPreflight.appIdentifier]
+        )
     }
 
     func testAppBundleIncludesExactSmartmontoolsLicense() throws {
@@ -132,6 +136,26 @@ final class Task7HelperPackagingTests: XCTestCase {
                 helper: helper
             )
         )
+    }
+
+    func testAppBundleProvidesHelperRuntimeRequirement() throws {
+        let requirement = try HelperInstallationPreflight.appHelperRequirement(
+            in: try XCTUnwrap(Bundle.main.infoDictionary) as NSDictionary
+        )
+
+        XCTAssertTrue(requirement.contains("anchor apple generic"))
+        XCTAssertTrue(requirement.contains(HelperInstallationPreflight.helperIdentifier))
+    }
+
+    func testAppRejectsMissingRuntimeHelperRequirement() {
+        XCTAssertThrowsError(
+            try HelperInstallationPreflight.appHelperRequirement(in: [:])
+        ) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "Palmos does not contain an SMPrivilegedExecutables requirement for com.palmos.smartservice. Rebuild the app with the correct Info.plist."
+            )
+        }
     }
 
     private func assertBundledLicense(

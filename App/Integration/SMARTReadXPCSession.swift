@@ -117,7 +117,7 @@ final class LiveSMARTCompletionXPCSession: SMARTCompletionXPCSession, @unchecked
         connection.interruptionHandler = { eventHandler(.interrupted) }
         connection.invalidationHandler = { eventHandler(.invalidated) }
         connection.remoteObjectInterface = NSXPCInterface(with: PalmosSMARTXPCProtocol.self)
-        connection.activate()
+        SMARTXPCConnectionFactory.activate(connection)
         let proxy = connection.remoteObjectProxyWithErrorHandler { error in
             eventHandler(.failure(error))
             self.finish(connection)
@@ -207,7 +207,7 @@ final class LiveSMARTCompletionXPCSession: SMARTCompletionXPCSession, @unchecked
         connection.interruptionHandler = { eventHandler(.interrupted) }
         connection.invalidationHandler = { eventHandler(.invalidated) }
         connection.remoteObjectInterface = NSXPCInterface(with: PalmosSMARTXPCProtocol.self)
-        connection.activate()
+        SMARTXPCConnectionFactory.activate(connection)
         let proxy = connection.remoteObjectProxyWithErrorHandler { error in
             eventHandler(.failure(error))
             self.finish(connection)
