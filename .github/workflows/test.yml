@@ -113,6 +113,14 @@ jobs:
           Scripts/verify/code-signing-tests.sh
           Scripts/verify/local-smart-build-tests.sh
 
+      - name: Build smartctl companion
+        run: |
+          output="$RUNNER_TEMP/smartctl-companion"
+          Scripts/build-smartctl-companion.sh "$output"
+          test "$(lipo -archs "$output/smartctl")" = 'arm64'
+          test "$(vtool -show-build "$output/smartctl" | grep -c 'minos 26.0')" -eq 1
+          cmp "$output/smartmontools-COPYING.txt" Shared/Licensing/smartmontools-COPYING.txt
+
       - name: Run PalmosCore tests
         working-directory: Packages/PalmosCore
         run: swift test
@@ -163,6 +171,7 @@ jobs:
           test "$(lipo -archs "$helper")" = 'arm64'
           test "$(vtool -show-build "$app_binary" | grep -c 'minos 26.0')" -eq 1
           test "$(vtool -show-build "$helper" | grep -c 'minos 26.0')" -eq 1
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")" = '26.0'
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" = 'https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml'
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = 'EagyaGi+/pVuyXbZArnqGZ1g4QzJNYvRrrW1//SHfJ8='
           test "$(/usr/libexec/PlistBuddy -c 'Print :SURequireSignedFeed' "$app/Contents/Info.plist")" = 'true'
