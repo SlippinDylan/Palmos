@@ -5,6 +5,7 @@ import SwiftUI
 struct PalmosApp: App {
     @StateObject private var controller: PalmosAppController
     @StateObject private var settingsWindowActivator = SettingsWindowActivator()
+    @State private var applicationUpdater = ApplicationUpdateController()
 
     init() {
         _controller = StateObject(wrappedValue: Self.makeController())
@@ -97,7 +98,9 @@ struct PalmosApp: App {
                 launchAtLoginController: controller.launchAtLoginController,
                 smartHelperManager: controller.smartHelperManager,
                 onInstallOrUpdateHelper: controller.installSMARTHelper,
-                onRefreshHelperStatus: controller.refreshSMARTHelperStatus
+                onRefreshHelperStatus: controller.refreshSMARTHelperStatus,
+                canCheckForUpdates: { applicationUpdater.canCheckForUpdates },
+                onCheckForUpdates: { applicationUpdater.checkForUpdates() }
             )
             .background(
                 SettingsWindowAccessor(activator: settingsWindowActivator)

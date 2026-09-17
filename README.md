@@ -69,6 +69,27 @@ Release automation uses these GitHub Actions repository secrets:
 
 The legacy `APPLE_DEVELOPMENT_P12_BASE64` and `APPLE_DEVELOPMENT_P12_PASSWORD` certificate secret names remain accepted.
 
+- `SPARKLE_ED_PRIVATE_KEY`: Sparkle EdDSA private update-signing key
+- `HOMEBREW_TAP_TOKEN`: Fine-grained token with Contents write access only to `SlippinDylan/homebrew-tap`
+
+### Homebrew
+
+After a Sparkle-enabled GitHub Release is public, its immutable DMG checksum and signed appcast are published to the shared tap:
+
+```bash
+brew tap slippindylan/tap
+brew trust --tap slippindylan/tap
+brew install --cask palmos@beta
+```
+
+Stable releases use `palmos`; alpha releases use `palmos@alpha`. Casks are version-pinned to the matching GitHub Release DMG.
+
+### App Updates
+
+Palmos uses Sparkle 2 for automatic background checks and the **Check for Updates…** action in Settings → About. Sparkle verifies the EdDSA-signed update archive and signed public appcast at `https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml`. Stable, beta, and alpha builds share that feed while receiving only their allowed channel updates.
+
+An App update replaces only `Palmos.app`. It does not install or upgrade the privileged SMART Helper or its signed `smartctl` companion. Keep using Settings → SMART Helper, with macOS administrator approval, whenever Helper compatibility requires an explicit install or update.
+
 ## Privileged SMART Helper
 
 The optional helper is installed through `SMJobBless` at `/Library/PrivilegedHelperTools/com.palmos.smartservice`. It exposes only version negotiation, bounded SMART reads, companion installation, and bounded occupancy diagnostics. The companion is installed at `/Library/PrivilegedHelperTools/com.palmos.smartservice.smartctl`; Palmos never loads `smartctl` from Homebrew or another user-writable path.

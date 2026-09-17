@@ -57,6 +57,20 @@ sudo xattr -rd com.apple.quarantine /Applications/Palmos.app
 
 Публикация настраивается в [`Config/Release/manifest.json`](../Config/Release/manifest.json). Она выполняется только после успешного main CI, при `release: true`, для ещё не опубликованной версии и при наличии единственного непустого совпадающего раздела в [CHANGELOG.md](../CHANGELOG.md).
 
+### Homebrew и обновления App
+
+После публикации GitHub Release с поддержкой Sparkle фиксированная checksum DMG и подписанный appcast синхронизируются с общим tap:
+
+```bash
+brew tap slippindylan/tap
+brew trust --tap slippindylan/tap
+brew install --cask palmos@beta
+```
+
+Для stable используется `palmos`, для alpha — `palmos@alpha`. Palmos использует Sparkle 2 для фоновой проверки обновлений и ручной команды **Check for Updates…** в Settings → About. Подписанный appcast: `https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml`.
+
+Обновление App заменяет только `Palmos.app`. Оно не устанавливает и не обновляет привилегированный SMART Helper или подписанный companion `smartctl`; при необходимости обновляйте их явно через Settings → SMART Helper с подтверждением администратора.
+
 Для push в `main` и pull request всегда запускаются лёгкие проверки автоматизации выпуска. Если изменены только `README.md`, `docs/`, `LICENSE` или `AGENTS.md`, сборка macOS пропускается, кроме случаев, когда публикация включена. Для остальных изменений проверяются Core, App, безопасность Helper, упаковка и неподписанная arm64-сборка; `release: true` также принудительно включает эту полную проверку.
 
 ## SMART Helper

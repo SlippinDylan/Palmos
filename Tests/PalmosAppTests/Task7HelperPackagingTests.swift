@@ -85,6 +85,24 @@ final class Task7HelperPackagingTests: XCTestCase {
         )
     }
 
+    func testAppBundleIncludesSparkleUpdateConfiguration() throws {
+        let appBundleURL = try appBundleURL()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: appBundleURL.appendingPathComponent(
+            "Contents/Frameworks/Sparkle.framework"
+        ).path))
+        XCTAssertEqual(
+            Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+            "https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml"
+        )
+        XCTAssertEqual(
+            Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String,
+            "EagyaGi+/pVuyXbZArnqGZ1g4QzJNYvRrrW1//SHfJ8="
+        )
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "SURequireSignedFeed") as? Bool, true)
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "SUVerifyUpdateBeforeExtraction") as? Bool, true)
+    }
+
     func testAppBundleURLRequirementFailsForNonAppHostedTests() {
         let nonAppBundleURL = URL(fileURLWithPath: "/tmp/PalmosAppTests.xctest")
 

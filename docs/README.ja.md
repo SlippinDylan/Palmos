@@ -57,6 +57,20 @@ sudo xattr -rd com.apple.quarantine /Applications/Palmos.app
 
 リリース設定は [`Config/Release/manifest.json`](../Config/Release/manifest.json) にあります。main CI の成功、`release: true`、未公開のバージョン、[CHANGELOG.md](../CHANGELOG.md) 内の一致する一意で空でないセクションが揃った場合だけ公開されます。
 
+### Homebrew と App の更新
+
+Sparkle 対応の GitHub Release が公開されると、固定 DMG checksum と署名済み appcast が共有 Tap に同期されます。
+
+```bash
+brew tap slippindylan/tap
+brew trust --tap slippindylan/tap
+brew install --cask palmos@beta
+```
+
+Stable は `palmos`、alpha は `palmos@alpha` を使用します。Palmos は Sparkle 2 でバックグラウンド更新確認を行い、設定 → About の「Check for Updates…」から手動確認もできます。署名済み appcast は `https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml` です。
+
+App の更新は `Palmos.app` だけを置き換えます。特権 SMART Helper と署名済み `smartctl` companion は更新しないため、互換性のために必要な場合は Settings → SMART Helper から管理者承認付きで明示的に更新してください。
+
 `main` への push と Pull Request では、常に軽量なリリース自動化チェックを実行します。変更が `README.md`、`docs/`、`LICENSE`、`AGENTS.md` のみに限られる場合は macOS ビルドを省略しますが、公開が有効な場合は完全なチェックを強制します。それ以外の変更では Core、App、Helper のセキュリティ、パッケージング、未署名 arm64 ビルドを検証します。
 
 ## SMART Helper

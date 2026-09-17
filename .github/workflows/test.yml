@@ -163,6 +163,11 @@ jobs:
           test "$(lipo -archs "$helper")" = 'arm64'
           test "$(vtool -show-build "$app_binary" | grep -c 'minos 26.0')" -eq 1
           test "$(vtool -show-build "$helper" | grep -c 'minos 26.0')" -eq 1
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" = 'https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = 'EagyaGi+/pVuyXbZArnqGZ1g4QzJNYvRrrW1//SHfJ8='
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SURequireSignedFeed' "$app/Contents/Info.plist")" = 'true'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUVerifyUpdateBeforeExtraction' "$app/Contents/Info.plist")" = 'true'
+          test -d "$app/Contents/Frameworks/Sparkle.framework"
 
   build-check:
     name: Build Check
