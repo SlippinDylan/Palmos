@@ -3,8 +3,6 @@
   <h1>Palmos</h1>
 </div>
 
----
-
 <div align="center">
   <p>用於查看外接實體儲存裝置的原生 macOS 選單列 App。</p>
   <p><a href="README.zh-CN.md">简体中文</a> · <strong>繁體中文</strong> · <a href="../README.md">English</a> · <a href="README.ja.md">日本語</a> · <a href="README.ru.md">Русский</a></p>

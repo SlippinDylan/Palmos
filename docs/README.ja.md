@@ -3,8 +3,6 @@
   <h1>Palmos</h1>
 </div>
 
----
-
 <div align="center">
   <p>外付け物理ストレージを確認する macOS ネイティブのメニューバーアプリです。</p>
   <p><a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="../README.md">English</a> · <strong>日本語</strong> · <a href="README.ru.md">Русский</a></p>

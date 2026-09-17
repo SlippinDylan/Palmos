@@ -3,8 +3,6 @@
   <h1>Palmos</h1>
 </div>
 
----
-
 <div align="center">
   <p>A native macOS menu-bar app for external physical storage.</p>
   <p><a href="docs/README.zh-CN.md">简体中文</a> · <a href="docs/README.zh-TW.md">繁體中文</a> · <strong>English</strong> · <a href="docs/README.ja.md">日本語</a> · <a href="docs/README.ru.md">Русский</a></p>

@@ -3,8 +3,6 @@
   <h1>Palmos</h1>
 </div>
 
----
-
 <div align="center">
   <p>Нативное приложение для строки меню macOS, чтобы следить за внешними физическими накопителями.</p>
   <p><a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="../README.md">English</a> · <a href="README.ja.md">日本語</a> · <strong>Русский</strong></p>
