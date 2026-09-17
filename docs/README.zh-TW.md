@@ -1,80 +1,40 @@
 <div align="center">
   <img src="images/readme/app-icon.png" width="160" height="160" alt="Palmos App 圖示">
   <h1>Palmos</h1>
-  <p>原生 macOS 選單列 App，用來監控外接實體儲存裝置。</p>
-  <p>
-    <a href="README.zh-CN.md">简体中文</a> ·
-    <strong>繁體中文</strong> ·
-    <a href="../README.md">English</a> ·
-    <a href="README.ja.md">日本語</a> ·
-    <a href="README.ru.md">Русский</a>
-  </p>
 </div>
 
-## Palmos 是什麼
+---
 
-Palmos 把外接硬碟的狀態放進選單列。開啟原生面板即可查看容量、已掛載卷宗、連線鏈路、即時讀寫、安全退出，以及可選的 SMART 健康與溫度資料。
+<div align="center">
+  <p>用於查看外接實體儲存裝置的原生 macOS 選單列 App。</p>
+  <p><a href="README.zh-CN.md">简体中文</a> · <strong>繁體中文</strong> · <a href="../README.md">English</a> · <a href="README.ja.md">日本語</a> · <a href="README.ru.md">Русский</a></p>
+</div>
 
-頂層物件始終是外接實體裝置，卷宗與分割區顯示在裝置下方。Palmos 不顯示內建儲存、網路卷宗、虛擬磁碟，以及 iPhone 或 iPad 掛載。
-
-## 功能
+Palmos 把拔除外接硬碟前需要確認的資訊放進選單列。它以實體裝置為頂層，卷宗與分割區顯示在裝置下方；有多個卷宗的 APFS 磁碟仍會以一塊磁碟顯示。
 
 <table>
-  <tr>
-    <td width="32%">
-      <strong>常駐選單列</strong><br><br>
-      自動探索 USB、Thunderbolt、USB4、SD、外接 SSD、HDD 和 NVMe 硬碟盒，需要時開啟緊湊的原生面板。
-    </td>
-    <td width="68%" align="center"><img src="images/readme/menu-panel.png" width="406" alt="顯示概覽、吞吐、容量、SMART 和溫度資料的 Palmos 選單列面板"></td>
-  </tr>
-  <tr>
-    <td>
-      <strong>可選 SMART 監控</strong><br><br>
-      需要更廣泛的 SMART 健康與溫度涵蓋時，再安裝權限範圍受控的 Helper。未安裝 Helper 時，其他功能仍然可用。
-    </td>
-    <td align="center"><img src="images/readme/smart-helper-settings.png" width="520" alt="顯示 SMART Helper 已安裝的 Palmos 設定"></td>
-  </tr>
+  <tr><td width="32%"><strong>一眼看清</strong><br><br>無須開啟磁碟工具，即可查看即時讀寫吞吐量、目前連線工作階段的累計量、容量、已掛載卷宗與連線鏈路。</td><td width="68%" align="center"><img src="images/readme/menu-panel.png" width="406" alt="顯示裝置概覽、吞吐量、容量、SMART 和溫度的 Palmos 選單列面板"></td></tr>
+  <tr><td><strong>可用時讀取 SMART</strong><br><br>需要 SMART 健康狀態或溫度資料時，可在設定中安裝選用的 SMART Helper。未安裝時，Palmos 的其他功能仍可使用。</td><td align="center"><img src="images/readme/smart-helper-settings.png" width="520" alt="顯示 SMART Helper 的 Palmos 設定"></td></tr>
 </table>
 
-## 支援範圍
+## 可以查看什麼
 
-| 項目 | 內容 |
-|---|---|
-| 支援裝置 | USB 儲存、Thunderbolt / USB4 儲存、SD 卡、外接 SSD 和 HDD、外接 NVMe 硬碟盒 |
-| 排除裝置 | 內建儲存、網路卷宗、虛擬磁碟、iPhone 和 iPad 掛載 |
-| 頂層模型 | 外接實體裝置，已掛載卷宗顯示在裝置下方 |
-| 最低系統 | macOS 26 或更新版本 |
-| 架構 | Apple 晶片（arm64） |
-| 建置環境 | Xcode 26.4 或更新版本，並安裝 macOS 26 SDK |
-| 發佈方式 | GitHub Releases 提供 Apple Development 簽署、未經公證的 DMG |
+- 即時讀寫速度，以及目前連線工作階段的累計讀寫量。
+- 總容量、已用與可用容量；已掛載卷宗、檔案系統與分割區。
+- USB、Thunderbolt、USB4、SD 或受支援 PCIe 隧道連線資訊。
+- 針對整個實體裝置的安全退出。Palmos 會先卸載，再退出；只有退出成功才會提示可以移除。若 macOS 回報裝置正被使用，Palmos 可協助找出佔用者，讓你決定下一步。
 
-## 安裝與發佈
+## 支援裝置
 
-每個 GitHub Release 只包含一個 arm64 成品 `Palmos-v<版本號>.dmg`。開啟 DMG，把 `Palmos.app` 拖入 `Applications`。Release 使用免費的 Apple Development 憑證，使 App、特權 Helper 和隨套件提供的 `smartctl` companion 能夠互相驗證。目前 Release 未經 Apple 公證，第一次開啟前需要移除下載隔離屬性：
+Palmos 支援透過 USB、Thunderbolt、USB4、SD 以及受支援 PCIe 隧道連接的外接實體儲存，包括外接 SSD、HDD、SD 卡與外接 NVMe 硬碟盒。未掛載的實體裝置也可能顯示在列表中。
 
-```bash
-sudo xattr -rd com.apple.quarantine /Applications/Palmos.app
-```
+它不會顯示內建儲存、網路卷宗、虛擬媒體，以及 iPhone 或 iPad 掛載。需要 Apple 晶片（arm64）與 macOS 26 或更新版本。
 
-移除隔離屬性不能取代程式碼簽署驗證。正常開啟 Palmos，只在需要 SMART 時從設定中安裝 Helper。
+SMART 與裝置探索不同：硬碟本身和硬碟盒或轉接器都必須能傳遞相應命令。有些 USB 轉 SATA/NVMe 橋接晶片不會傳遞 SMART，或需要 Palmos 尚不支援的傳輸模式。遇到這種情況，Palmos 會顯示 SMART 無法使用或需要傳輸支援；安裝 Helper 無法改變橋接硬體的能力。
 
-發佈設定位於 [`Config/Release/manifest.json`](../Config/Release/manifest.json)。只有 main CI 成功、`release` 為 `true`、版本尚未發佈，且 [CHANGELOG.md](../CHANGELOG.md) 存在唯一、非空且完全同名的版本章節時，Release workflow 才會簽署、封裝及發佈。版本支援 `x.y.z`、`x.y.z-alpha.n` 和 `x.y.z-beta.n`。
-
-發佈自動化使用以下 GitHub Actions repository secrets：
-
-- `CERTIFICATES_P12`：Apple Development P12 的 Base64 內容
-- `CERTIFICATES_PASSWORD`：P12 匯出密碼
-- `FEISHU_WEBHOOK`：飛書自訂機器人 Webhook
-- `FEISHU_SECRET`：飛書自訂機器人簽署密鑰
-
-舊的憑證 secret 名稱 `APPLE_DEVELOPMENT_P12_BASE64` 和 `APPLE_DEVELOPMENT_P12_PASSWORD` 仍然相容。
-
-- `SPARKLE_ED_PRIVATE_KEY`：Sparkle EdDSA 更新簽署私鑰
-- `HOMEBREW_TAP_TOKEN`：僅對 `SlippinDylan/homebrew-tap` 有 Contents 寫入權限的細粒度 Token
+## 安裝與首次使用
 
 ### Homebrew
-
-接入 Sparkle 的 GitHub Release 公開後，共享 Tap 會發佈固定版本 DMG checksum 和已簽署 appcast：
 
 ```bash
 brew tap slippindylan/tap
@@ -82,24 +42,26 @@ brew trust --tap slippindylan/tap
 brew install --cask palmos@beta
 ```
 
-穩定版使用 `palmos`，alpha 使用 `palmos@alpha`；每個 Cask 都固定指向對應 GitHub Release 的 DMG。
+### DMG 與首次啟動
 
-### App 更新
+1. 從 [GitHub Releases](https://github.com/SlippinDylan/Palmos/releases) 下載 arm64 DMG，開啟後將 `Palmos.app` 拖到 `Applications`。
+2. 目前 Release 使用 Apple Development 憑證簽署，但未經公證。macOS 可能因下載隔離屬性阻止首次啟動；遇到這種情況，可只對已安裝的 App 移除此屬性：
 
-Palmos 使用 Sparkle 2 自動在背景檢查更新，也可在「設定 → 關於」選擇「檢查更新…」。它會驗證 EdDSA 簽署的更新封存檔和公開 appcast：`https://slippindylan.github.io/homebrew-tap/palmos/appcast.xml`。穩定、beta、alpha 共用一個 feed，但只接收各自允許的頻道。
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Palmos.app
+   ```
 
-App 更新只會替換 `Palmos.app`，不會安裝或升級特權 SMART Helper 及其已簽署的 `smartctl` companion。Helper 需要更新時，仍須在「設定 → SMART Helper」中明確操作並通過 macOS 管理員授權。
+3. 開啟 Palmos，連接外接硬碟並按一下選單列圖示。選取裝置後，即可查看卷宗、容量、吞吐量、拓撲與退出控制。
 
-## 特權 SMART Helper
+這個指令只會移除 `/Applications/Palmos.app` 的下載隔離屬性，不能略過程式碼簽署檢查。請勿對不信任的 App 執行它。
 
-可選 Helper 透過 `SMJobBless` 安裝至 `/Library/PrivilegedHelperTools/com.palmos.smartservice`。它只提供版本協商、有界 SMART 讀取、companion 安裝和有界佔用診斷。Companion 安裝至 `/Library/PrivilegedHelperTools/com.palmos.smartservice.smartctl`；Palmos 不會從 Homebrew 或其他使用者可寫入路徑載入 `smartctl`。
+## SMART Helper 與更新
 
-每次 SMART 操作前都會檢查 XPC 相容性：
+SMART Helper 是選用元件。SMART 區域要求安裝時，在設定中選擇「Install Helper」，並通過 macOS 的管理者授權。Palmos 會隨 Helper 安裝自己的受信任 `smartctl` 隨附工具，不會使用 Homebrew 或使用者可寫入目錄中的版本。
 
-- 主版本不一致會阻止操作並要求更新。
-- 次版本不一致會降級到兩端共同支援的能力。
+Palmos 會自動檢查 App 更新；也可在「Settings → About → Check for Updates…」手動檢查。App 更新只會替換 `Palmos.app`，不會自動安裝或更新特權 Helper。若 Palmos 要求更新 Helper，請回到「Settings → SMART Helper」操作。
 
-刪除 App 不會自動刪除 Helper。請在刪除 Palmos 前後手動執行：
+刪除 `Palmos.app` 不會移除已安裝的 Helper。如需一併解除安裝，請在確定不再使用 Palmos 後才執行以下指令。它們只針對列出的 Palmos 系統服務與隨附工具，不會操作你的磁碟或資料：
 
 ```bash
 sudo launchctl bootout system /Library/LaunchDaemons/com.palmos.smartservice.plist
@@ -110,36 +72,14 @@ sudo rm /Library/PrivilegedHelperTools/com.palmos.smartservice.smartctl
 
 ## 從原始碼建置
 
-開啟 `Palmos.xcworkspace`，選擇 `PalmosApp` scheme 後建置。未簽署版本可以在不使用 SMART 的情況下執行；SMART 路徑要求 App、Helper 和 companion 使用同一個 Apple Development Team。
-
-建立 Apple Development 簽署身分後，執行：
+使用安裝 macOS 26 SDK 的 Xcode 26.4 或更新版本開啟 `Palmos.xcworkspace`，選擇 `PalmosApp` scheme 後建置。未簽署建置可在不使用 SMART 的情況下執行。若要建置有 SMART 的 App，App、Helper 與 companion 必須使用同一個 Apple Development Team；設定好簽署身分後執行：
 
 ```bash
 Scripts/build-local-smart-app.sh
 ```
 
-指令碼會從固定且經 checksum 驗證的原始碼重新建置 smartctl 7.5，簽署後把 SHA-256 傳給 Helper，再使用從簽署中擷取的 Team ID 建置全部元件並執行完整簽署檢查。指令碼不會自動清理其他 Team 已安裝的 Helper。
-
-## 測試
-
-```bash
-cd Packages/PalmosCore && swift test
-
-xcodebuild test \
-  -workspace Palmos.xcworkspace \
-  -scheme PalmosApp \
-  -destination 'platform=macOS,arch=arm64' \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
-```
-
-main push 與 Pull Request 始終執行輕量發佈自動化檢查。僅修改 `README.md`、`docs/`、`LICENSE` 或 `AGENTS.md` 時會略過 macOS 建置，但啟用發佈時仍會強制執行完整檢查。其他變更會執行 Core、App、Helper 安全、封裝和未簽署 arm64 建置檢查。
-
 ## 授權條款
 
-Copyright © 2025–2026 SlippinDylan Studio。Palmos 採用 [Apache License 2.0](../LICENSE) 開放原始碼授權條款。
+Copyright © 2025–2026 SlippinDylan Studio。Palmos 採用 [Apache License 2.0](../LICENSE)。
 
-### 第三方授權條款
-
-Palmos 隨套件提供依照 MIT License 發佈的 [MenuBarExtraAccess 1.3.0](https://github.com/orchetect/MenuBarExtraAccess)，以及由 smartmontools 7.5 建置、依照 GPL version 2 or later 發佈並單獨簽署的 `smartctl`。完整聲明位於 [`Shared/Licensing`](../Shared/Licensing)，也會包含在 App 中。
-
-對應的 smartmontools 原始碼封存檔內嵌於 `Palmos.app/Contents/Resources/ThirdPartySources/smartmontools-7.5.tar.gz`，要求的 SHA-256 為 `690b83ca331378da9ea0d9d61008c4b22dde391387b9bbad7f29387f2595f76e`。
+App 包含依 MIT License 發布的 [MenuBarExtraAccess 1.3.0](https://github.com/orchetect/MenuBarExtraAccess)，以及由 smartmontools 7.5 建置、依 GPL version 2 or later 發布的 `smartctl`。完整聲明位於 [Shared/Licensing](../Shared/Licensing)。
