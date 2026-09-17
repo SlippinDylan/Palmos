@@ -77,6 +77,18 @@ assert_minimum_system() {
     || fail "$name minimum system is '$minimum_system', expected '26.0'"
 }
 
+assert_hardened_runtime() {
+  local name="$1"
+  local path="$2"
+
+  /usr/bin/codesign -d --verbose=4 "$path" 2>&1 \
+    | /usr/bin/awk '
+        /^CodeDirectory / && /flags=.*\([^)]*runtime[^)]*\)/ { found = 1 }
+        END { exit found ? 0 : 1 }
+      ' \
+    || fail "$name does not enable the hardened runtime"
+}
+
 contains_architecture() {
   local architectures="$1"
   local expected="$2"
@@ -149,6 +161,13 @@ extract_helper_info_plist() {
 /usr/bin/codesign --verify --deep --strict --all-architectures --verbose=2 "$APP_PATH"
 /usr/bin/codesign --verify --strict --all-architectures --verbose=2 "$HELPER_PATH"
 /usr/bin/codesign --verify --strict --all-architectures --verbose=2 "$COMPANION_PATH"
+assert_hardened_runtime "app" "$APP_PATH"
+assert_hardened_runtime "helper" "$HELPER_PATH"
+assert_hardened_runtime "smartctl companion" "$COMPANION_PATH"
+
+app_minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_INFO_PLIST")"
+[[ "$app_minimum_system" == 26.0 ]] \
+  || fail "app Info.plist minimum system is '$app_minimum_system', expected '26.0'"
 
 app_identifier="$(signature_field "$APP_PATH" Identifier)"
 helper_identifier="$(signature_field "$HELPER_PATH" Identifier)"

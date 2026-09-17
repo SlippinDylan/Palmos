@@ -97,6 +97,16 @@ case " $* " in
     esac
     printf 'Identifier=%s\n' "$identifier" >&2
     printf 'TeamIdentifier=%s\n' "${MOCK_TEAM_ID:?}" >&2
+    case "$path" in
+      *.app) runtime="${MOCK_APP_RUNTIME:-1}" ;;
+      */LaunchServices/*) runtime="${MOCK_HELPER_RUNTIME:-1}" ;;
+      */Helpers/*) runtime="${MOCK_COMPANION_RUNTIME:-1}" ;;
+    esac
+    if [[ "$runtime" == 1 ]]; then
+      printf 'CodeDirectory v=20500 flags=0x10000(runtime)\n' >&2
+    else
+      printf 'CodeDirectory v=20400 flags=0x0(none)\n' >&2
+    fi
     ;;
   *" --verify "*) exit 0 ;;
   *) exit 72 ;;
@@ -175,6 +185,9 @@ while (($# > 0)); do
   esac
 done
 case "$command" in
+  "Print :LSMinimumSystemVersion")
+    printf '%s\n' "${MOCK_APP_PLIST_MINOS:-26.0}"
+    ;;
   "Print :SMPrivilegedExecutables:"*)
     printf 'identifier "com.palmos.smartservice" and anchor apple generic\n'
     ;;
@@ -226,6 +239,14 @@ assert_fails "helper minimum system is '15.0', expected '26.0'" \
   run_verifier MOCK_HELPER_MINOS=15.0
 assert_fails "smartctl companion minimum system is '15.0', expected '26.0'" \
   run_verifier MOCK_COMPANION_MINOS=15.0
+assert_fails "app does not enable the hardened runtime" \
+  run_verifier MOCK_APP_RUNTIME=0
+assert_fails "helper does not enable the hardened runtime" \
+  run_verifier MOCK_HELPER_RUNTIME=0
+assert_fails "smartctl companion does not enable the hardened runtime" \
+  run_verifier MOCK_COMPANION_RUNTIME=0
+assert_fails "app Info.plist minimum system is '15.0', expected '26.0'" \
+  run_verifier MOCK_APP_PLIST_MINOS=15.0
 
 marker_path="$work_directory/inherited-plist-buddy-ran"
 /usr/bin/env \
