@@ -84,7 +84,7 @@ Palmos/
 ├── Config/Plists/                      # App/Helper Info.plist 与 SMJobBless 约束
 ├── Scripts/verify/                     # 签名与真机 smoke 验证
 ├── Palmos.xcworkspace              # 日常构建入口
-└── .github/workflows/                  # main/PR 分层 CI、飞书通知与 main 分支 release
+└── .github/workflows/                  # main/PR 分层 CI、Discord 通知与 main 分支 release
 ```
 
 新增或移动 Swift 文件时，必须同步检查 `Palmos.xcodeproj/project.pbxproj` 的 file reference、target membership 与 build phase；仅在磁盘上创建文件不代表 Xcode target 会编译它。
