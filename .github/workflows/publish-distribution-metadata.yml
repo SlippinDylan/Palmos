@@ -172,7 +172,7 @@ jobs:
           cp "$cask" "$tap_repository/Casks/$(basename "$cask")"
           cask_name="slippindylan/tap/$(basename "$cask" .rb)"
           brew style --cask "$cask_name"
-          brew readall --os=macos --arch=arm64 slippindylan/tap
+          brew readall --os all --arch all slippindylan/tap
           printf '%s' "$SPARKLE_ED_PRIVATE_KEY" \
             | "$RUNNER_TEMP/Sparkle-$SPARKLE_VERSION/bin/sign_update" --verify --ed-key-file - "$appcast"
 
