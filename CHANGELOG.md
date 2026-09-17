@@ -2,6 +2,23 @@
 
 All notable changes to Palmos releases are recorded here.
 
+## [0.3.0-beta.1] - 2026-09-17
+
+### Security
+
+- Enabled Hardened Runtime for the app and privileged SMART Helper.
+- Added bidirectional code-signing requirements for App and Helper XPC connections.
+- Associated the legacy LaunchDaemon with the Palmos app in macOS background-item management.
+
+### Fixed
+
+- Restored the app framework runpath so release builds can load Sparkle and launch successfully.
+
+### Validation
+
+- Added release checks for Hardened Runtime and the macOS 26 deployment target.
+- Added a real arm64 smartctl source build to macOS CI.
+
 ## [0.2.0-beta.1] - 2026-09-17
 
 ### Added
