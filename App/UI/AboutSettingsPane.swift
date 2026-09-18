@@ -21,40 +21,46 @@ struct AboutSettingsPane: View {
         VStack(spacing: 0) {
             Spacer(minLength: 20)
 
-            VStack(spacing: 18) {
+            VStack(spacing: 10) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable()
                     .interpolation(.high)
-                    .frame(width: 96, height: 96)
+                    .frame(width: 112, height: 112)
 
-                VStack(spacing: 5) {
-                    Text("Palmos")
-                        .font(.system(size: 28, weight: .bold))
+                Text("Palmos")
+                    .font(.system(size: 30, weight: .bold))
 
-                    Text(
-                        String.localizedStringWithFormat(
-                            String(localized: "Version %@"),
-                            metadata.versionDescription
-                        )
+                Text(
+                    String.localizedStringWithFormat(
+                        String(localized: "Version %@"),
+                        metadata.versionDescription
                     )
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                }
+                )
+                .font(.system(size: 13))
+                .padding(.horizontal, 9)
+                .frame(height: 22)
+                .background(
+                    Color(nsColor: .quaternarySystemFill),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
 
                 Text("Monitor external storage health and performance at a glance.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .padding(.top, 6)
 
                 Divider()
                     .frame(width: 200)
 
                 Button("Check for Updates…", action: onCheckForUpdates)
                     .disabled(canCheckForUpdates() == false)
+                    .padding(.top, 6)
 
                 Text("Copyright © 2025-2026 SlippinDylan Studio")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                    .padding(.top, 10)
             }
 
             Spacer(minLength: 20)

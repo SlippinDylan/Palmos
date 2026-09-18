@@ -1,186 +1,102 @@
 import AppKit
-import Combine
 import XCTest
 @testable import PalmosApp
+import PalmosCore
 
 @MainActor
 final class SettingsWindowActivatorTests: XCTestCase {
-    func testFirstOpenRaisesNewSettingsWindow() async {
+    func testOpenCreatesAndReusesOneSettingsWindowController() {
         let application = TestSettingsApplication()
-        let window = TestSettingsWindow()
-        let activator = makeActivator(application: application)
-        var requestCount = 0
-        let observation = activator.openRequests.sink {
-            requestCount += 1
-            window.isVisible = true
-            application.windows = [window]
+        var controllers: [TestSettingsWindowPresenter] = []
+        let activator = SettingsWindowActivator(application: application) {
+            let controller = TestSettingsWindowPresenter()
+            controllers.append(controller)
+            return controller
         }
-        defer { observation.cancel() }
 
         activator.open()
-        await waitUntil { window.raiseCount == 1 }
+        activator.open()
 
-        XCTAssertEqual(requestCount, 1)
-        XCTAssertEqual(window.raiseCount, 1)
-        XCTAssertEqual(window.windowIdentifier, SettingsWindowActivator.settingsWindowID)
-        XCTAssertEqual(application.activationPolicies.last, .regular)
+        XCTAssertEqual(controllers.count, 1)
+        XCTAssertEqual(controllers[0].presentCount, 2)
+        XCTAssertEqual(application.activationPolicies, [.regular, .regular])
+        XCTAssertEqual(application.activationCount, 2)
     }
 
-    func testCloseThenReopenRaisesSameSettingsWindowInstance() {
+    func testClosingSettingsWindowRestoresAccessoryPolicy() throws {
         let application = TestSettingsApplication()
-        let window = TestSettingsWindow(isVisible: true)
-        let activator = makeActivator(application: application)
-        activator.registerSettingsWindow(window)
-
-        activator.settingsWindowDidClose(window)
-        window.isVisible = false
-        activator.open()
-
-        XCTAssertEqual(window.raiseCount, 1)
-        XCTAssertTrue(window.isVisible)
-        XCTAssertEqual(application.activationPolicies, [.accessory, .regular])
-    }
-
-    func testKnownHiddenWindowIsRaisedWithoutSendingOpenRequest() {
-        let application = TestSettingsApplication()
-        let window = TestSettingsWindow(isVisible: false)
-        let activator = makeActivator(application: application)
-        activator.registerSettingsWindow(window)
-        var requestCount = 0
-        let observation = activator.openRequests.sink { requestCount += 1 }
-        defer { observation.cancel() }
+        let presenter = TestSettingsWindowPresenter()
+        let activator = SettingsWindowActivator(application: application) { presenter }
 
         activator.open()
-
-        XCTAssertEqual(window.raiseCount, 1)
-        XCTAssertEqual(requestCount, 0)
-    }
-
-    func testOpenTimeoutRestoresAccessoryPolicy() async {
-        let application = TestSettingsApplication()
-        let activator = makeActivator(application: application, maxPollAttempts: 1)
-
-        activator.open()
-        await waitUntil { application.activationPolicies.last == .accessory }
+        try XCTUnwrap(presenter.onClose)()
 
         XCTAssertEqual(application.activationPolicies, [.regular, .accessory])
     }
 
-    func testRapidConsecutiveOpenOnlySendsLatestRequest() async {
-        let application = TestSettingsApplication()
-        let window = TestSettingsWindow()
-        let activator = makeActivator(application: application)
-        var requestCount = 0
-        let observation = activator.openRequests.sink {
-            requestCount += 1
-            window.isVisible = true
-            application.windows = [window]
-        }
-        defer { observation.cancel() }
+    func testSettingsWindowMatchesAlcovePreferenceWindowStructure() {
+        let controller = makeWindowController()
+        let window = controller.window
 
-        activator.open()
-        activator.open()
-        await waitUntil { window.raiseCount == 1 }
-
-        XCTAssertEqual(requestCount, 1)
-        XCTAssertEqual(window.raiseCount, 1)
-    }
-
-    func testHiddenHostWindowIsNeverRecognizedAsSettings() async {
-        let application = TestSettingsApplication()
-        let hostWindow = TestSettingsWindow(
-            windowIdentifier: SettingsWindowActivator.hiddenHostWindowID,
-            isVisible: true
+        XCTAssertEqual(
+            window?.contentView?.bounds.size,
+            NSSize(
+                width: SettingsWindowController.contentWidth,
+                height: SettingsWindowController.minimumContentHeight
+            )
         )
-        application.windows = [hostWindow]
-        let activator = makeActivator(application: application, maxPollAttempts: 1)
-
-        activator.open()
-        await waitUntil { application.activationPolicies.last == .accessory }
-
-        XCTAssertEqual(hostWindow.raiseCount, 0)
+        XCTAssertEqual(window?.styleMask, [.titled, .closable])
+        XCTAssertEqual(window?.title, "")
+        XCTAssertEqual(window?.titleVisibility, .visible)
+        XCTAssertTrue(window?.titlebarAppearsTransparent == true)
+        XCTAssertEqual(window?.toolbarStyle, .preference)
+        XCTAssertEqual(window?.toolbar?.displayMode, .iconAndLabel)
+        XCTAssertEqual(window?.titlebarSeparatorStyle, NSTitlebarSeparatorStyle.none)
+        XCTAssertTrue(window?.standardWindowButton(.miniaturizeButton)?.isHidden == true)
+        XCTAssertTrue(window?.standardWindowButton(.zoomButton)?.isHidden == true)
+        XCTAssertTrue(window?.standardWindowButton(.closeButton)?.isHidden == false)
+        XCTAssertEqual(Set(controller.categoryItems.keys), Set(SettingsCategory.allCases))
+        XCTAssertTrue(controller.categoryItems.values.allSatisfy { $0.isBordered == false })
     }
 
-    func testCancelledOldOpenCannotRevertLatestActivationPolicy() async {
-        let application = TestSettingsApplication()
-        let window = TestSettingsWindow()
-        let waiter = ControlledSettingsWaiter()
-        let activator = SettingsWindowActivator(
-            application: application,
-            initialDelay: .zero,
-            pollInterval: .zero,
-            maxPollAttempts: 1,
-            wait: waiter.wait
-        )
-        var requestCount = 0
-        let observation = activator.openRequests.sink {
-            requestCount += 1
-            if requestCount == 2 {
-                window.isVisible = true
-                application.windows = [window]
-            }
-        }
-        defer { observation.cancel() }
+    func testSelectingCategoryUpdatesToolbarAndHostedPane() {
+        let controller = makeWindowController()
 
-        activator.open()
-        await waitUntil { waiter.pendingCount == 1 }
-        waiter.resume(at: 0)
-        await waitUntil { requestCount == 1 && waiter.pendingCount == 1 }
+        controller.selectCategory(.display)
 
-        activator.open()
-        await waitUntil { waiter.pendingCount == 2 }
-        waiter.resume(at: 1)
-        await waitUntil { window.raiseCount == 1 }
-        waiter.resume(at: 0)
-        await Task.yield()
-
-        XCTAssertEqual(requestCount, 2)
-        XCTAssertEqual(application.activationPolicies.last, .regular)
-    }
-
-    func testExistingHiddenWindowCanBeDiscoveredWhenItBecomesVisible() async {
-        let application = TestSettingsApplication()
-        let window = TestSettingsWindow(isVisible: false)
-        application.windows = [window]
-        let activator = makeActivator(application: application)
-        let observation = activator.openRequests.sink {
-            window.isVisible = true
-        }
-        defer { observation.cancel() }
-
-        activator.open()
-        await waitUntil { window.raiseCount == 1 }
-
-        XCTAssertEqual(window.raiseCount, 1)
-    }
-
-    private func makeActivator(
-        application: TestSettingsApplication,
-        initialDelay: Duration = .zero,
-        maxPollAttempts: Int = 3
-    ) -> SettingsWindowActivator {
-        SettingsWindowActivator(
-            application: application,
-            initialDelay: initialDelay,
-            pollInterval: .zero,
-            maxPollAttempts: maxPollAttempts
+        XCTAssertEqual(controller.selectedCategory, .display)
+        XCTAssertEqual(
+            controller.window?.toolbar?.selectedItemIdentifier,
+            SettingsCategory.display.toolbarItemIdentifier
         )
     }
 
-    private func waitUntil(
-        _ condition: @MainActor () -> Bool,
-        iterations: Int = 100
-    ) async {
-        for _ in 0..<iterations where condition() == false {
-            await Task.yield()
-        }
-        XCTAssertTrue(condition())
+    func testWindowHeightUsesMinimumAndExpandsForTallerContent() {
+        XCTAssertEqual(
+            SettingsWindowController.resolvedContentHeight(for: 320),
+            SettingsWindowController.minimumContentHeight
+        )
+        XCTAssertEqual(SettingsWindowController.resolvedContentHeight(for: 612), 612)
+    }
+
+    private func makeWindowController() -> SettingsWindowController {
+        SettingsWindowController(
+            settings: AppSettings(),
+            launchAtLoginController: LaunchAtLoginController(),
+            smartHelperManager: SMARTHelperManager(
+                inspector: TestSMARTHelperInspector(),
+                installer: TestHelperInstaller()
+            ),
+            onInstallOrUpdateHelper: {},
+            onRefreshHelperStatus: {},
+            canCheckForUpdates: { false },
+            onCheckForUpdates: {}
+        )
     }
 }
 
 @MainActor
 private final class TestSettingsApplication: SettingsApplicationProviding {
-    var windows: [any SettingsWindowRepresenting] = []
     private(set) var activationPolicies: [NSApplication.ActivationPolicy] = []
     private(set) var activationCount = 0
 
@@ -194,37 +110,21 @@ private final class TestSettingsApplication: SettingsApplicationProviding {
 }
 
 @MainActor
-private final class TestSettingsWindow: SettingsWindowRepresenting {
-    var windowIdentifier: String?
-    var isVisible: Bool
-    private(set) var raiseCount = 0
+private final class TestSettingsWindowPresenter: SettingsWindowPresenting {
+    var onClose: (() -> Void)?
+    private(set) var presentCount = 0
 
-    init(windowIdentifier: String? = nil, isVisible: Bool = false) {
-        self.windowIdentifier = windowIdentifier
-        self.isVisible = isVisible
-    }
-
-    func makeKeyAndOrderFront() {
-        isVisible = true
-        raiseCount += 1
+    func present() {
+        presentCount += 1
     }
 }
 
-@MainActor
-private final class ControlledSettingsWaiter {
-    private var continuations: [CheckedContinuation<Bool, Never>] = []
-
-    var pendingCount: Int {
-        continuations.count
+private struct TestSMARTHelperInspector: SMARTHelperInspecting {
+    func inspectSMARTHelper() async -> SMARTHelperInspection {
+        .notInstalled
     }
+}
 
-    func wait(for _: Duration) async -> Bool {
-        await withCheckedContinuation { continuation in
-            continuations.append(continuation)
-        }
-    }
-
-    func resume(at index: Int) {
-        continuations.remove(at: index).resume(returning: true)
-    }
+private struct TestHelperInstaller: HelperInstalling {
+    func install() async throws {}
 }

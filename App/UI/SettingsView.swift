@@ -1,9 +1,45 @@
+import AppKit
 import SwiftUI
 
 import PalmosCore
 
+enum SettingsCategory: Int, CaseIterable {
+    case general
+    case display
+    case about
+
+    var title: String {
+        switch self {
+        case .general: String(localized: "General")
+        case .display: String(localized: "Display")
+        case .about: String(localized: "About")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: "gearshape"
+        case .display: "rectangle.3.group"
+        case .about: "info.circle"
+        }
+    }
+
+    var toolbarItemIdentifier: NSToolbarItem.Identifier {
+        NSToolbarItem.Identifier("palmos-settings.\(rawValue)")
+    }
+
+    init?(toolbarItemIdentifier: NSToolbarItem.Identifier) {
+        guard let category = Self.allCases.first(where: {
+            $0.toolbarItemIdentifier == toolbarItemIdentifier
+        }) else {
+            return nil
+        }
+        self = category
+    }
+}
+
 struct SettingsView: View {
-    @Environment(\.scenePhase) private var scenePhase
+    let category: SettingsCategory
     @ObservedObject var settings: AppSettings
     @ObservedObject var launchAtLoginController: LaunchAtLoginController
     @ObservedObject var smartHelperManager: SMARTHelperManager
@@ -13,8 +49,12 @@ struct SettingsView: View {
     let onCheckForUpdates: () -> Void
 
     var body: some View {
-        TabView {
-            Tab("General", systemImage: "gearshape") {
+        VStack(spacing: 0) {
+            Divider()
+
+            Group {
+                switch category {
+                case .general:
                 GeneralSettingsPane(
                     settings: settings,
                     launchAtLoginController: launchAtLoginController,
@@ -22,31 +62,20 @@ struct SettingsView: View {
                     onInstallOrUpdateHelper: onInstallOrUpdateHelper,
                     onRefreshHelperStatus: onRefreshHelperStatus
                 )
+                case .display:
+                    DisplaySettingsPane(settings: settings)
+                case .about:
+                    AboutSettingsPane(
+                        canCheckForUpdates: canCheckForUpdates,
+                        onCheckForUpdates: onCheckForUpdates
+                    )
+                }
             }
-
-            Tab("Display", systemImage: "rectangle.3.group") {
-                DisplaySettingsPane(settings: settings)
-            }
-
-            Tab("About", systemImage: "info.circle") {
-                AboutSettingsPane(
-                    canCheckForUpdates: canCheckForUpdates,
-                    onCheckForUpdates: onCheckForUpdates
-                )
-            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 18)
         }
-        .scenePadding()
-        .frame(width: 520, height: 390)
-        .onAppear(perform: refreshExternalState)
-        .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active else { return }
-            refreshExternalState()
-        }
-    }
-
-    private func refreshExternalState() {
-        launchAtLoginController.refreshStatus()
-        onRefreshHelperStatus()
+        .frame(width: 400)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -58,10 +87,7 @@ private struct GeneralSettingsPane: View {
     let onRefreshHelperStatus: () -> Void
 
     var body: some View {
-        SettingsPane(
-            title: "General",
-            subtitle: "Choose how Palmos behaves on this Mac."
-        ) {
+        SettingsPane {
             SettingsCard {
                 SettingsControlRow(
                     title: "Temperature Unit",
@@ -133,10 +159,7 @@ private struct DisplaySettingsPane: View {
     @ObservedObject var settings: AppSettings
 
     var body: some View {
-        SettingsPane(
-            title: "Display",
-            subtitle: "Choose which device details appear in the scrollable panel area."
-        ) {
+        SettingsPane {
             SettingsGroupTitle("Always Shown")
 
             SettingsCard {
@@ -213,6 +236,7 @@ private struct SMARTHelperSettingsSection: View {
                 helperAction
                     .frame(width: 92, alignment: .trailing)
             }
+            .padding(.vertical, 8)
         }
 
         Text("The helper is installed by macOS with administrator approval and is only used for SMART access and safe-eject occupancy checks.")

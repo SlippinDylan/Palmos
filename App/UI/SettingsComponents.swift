@@ -3,36 +3,18 @@ import SwiftUI
 import PalmosCore
 
 struct SettingsPane<Content: View>: View {
-    let title: LocalizedStringKey
-    let subtitle: LocalizedStringKey
     let content: Content
 
-    init(
-        title: LocalizedStringKey,
-        subtitle: LocalizedStringKey,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.subtitle = subtitle
+    init(@ViewBuilder content: () -> Content) {
         self.content = content()
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.title2.weight(.semibold))
-                    Text(subtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-
-                content
-            }
-            .padding(.top, 4)
-            .padding(.horizontal, 2)
+        VStack(alignment: .leading, spacing: 12) {
+            content
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -44,14 +26,15 @@ struct SettingsCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             content
         }
-        .padding(14)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            Color.primary.opacity(0.055),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            Color(nsColor: .quaternarySystemFill),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
     }
 }
@@ -82,6 +65,7 @@ struct SettingsControlRow<Control: View>: View {
                 .fixedSize(horizontal: true, vertical: false)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
     }
 }
 
@@ -122,6 +106,7 @@ struct FixedPanelRow: View {
                 .foregroundStyle(.tertiary)
                 .accessibilityLabel("Always Shown")
         }
+        .padding(.vertical, 8)
     }
 }
 
@@ -150,6 +135,7 @@ struct SettingsNotice<Action: View>: View {
             Spacer()
             action
         }
+        .padding(.vertical, 8)
     }
 }
 
@@ -162,9 +148,10 @@ struct SettingsGroupTitle: View {
 
     var body: some View {
         Text(title)
-            .font(.headline)
-            .padding(.horizontal, 4)
-            .padding(.top, 2)
+            .font(.system(size: 13, weight: .semibold))
+            .frame(height: 24)
+            .padding(.horizontal, 10)
+            .padding(.bottom, -6)
     }
 }
 

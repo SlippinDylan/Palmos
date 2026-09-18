@@ -4,11 +4,31 @@ import SwiftUI
 @main
 struct PalmosApp: App {
     @StateObject private var controller: PalmosAppController
-    @StateObject private var settingsWindowActivator = SettingsWindowActivator()
-    @State private var applicationUpdater = ApplicationUpdateController()
+    @StateObject private var settingsWindowActivator: SettingsWindowActivator
+    private let applicationUpdater: ApplicationUpdateController
 
     init() {
-        _controller = StateObject(wrappedValue: Self.makeController())
+        let controller = Self.makeController()
+        let applicationUpdater = ApplicationUpdateController()
+        _controller = StateObject(wrappedValue: controller)
+        _settingsWindowActivator = StateObject(wrappedValue: SettingsWindowActivator(
+            settings: controller.settings,
+            launchAtLoginController: controller.launchAtLoginController,
+            smartHelperManager: controller.smartHelperManager,
+            onInstallOrUpdateHelper: { [weak controller] in
+                controller?.installSMARTHelper()
+            },
+            onRefreshHelperStatus: { [weak controller] in
+                controller?.refreshSMARTHelperStatus()
+            },
+            canCheckForUpdates: { [weak applicationUpdater] in
+                applicationUpdater?.canCheckForUpdates == true
+            },
+            onCheckForUpdates: { [weak applicationUpdater] in
+                applicationUpdater?.checkForUpdates()
+            }
+        ))
+        self.applicationUpdater = applicationUpdater
     }
 
     @MainActor
@@ -63,16 +83,6 @@ struct PalmosApp: App {
     }
 
     var body: some Scene {
-        // Must be declared before `Settings` — it hosts the `openSettings()`
-        // call for the accessory-policy menu bar panel. See
-        // SettingsWindowActivator.swift for why this is required.
-        Window("Settings Bridge", id: SettingsWindowActivator.hiddenHostWindowID) {
-            SettingsWindowHostView(activator: settingsWindowActivator)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultSize(width: 1, height: 1)
-
         MenuBarExtra(
             "Palmos",
             systemImage: MenuBarIcon.systemImageName(
@@ -84,6 +94,13 @@ struct PalmosApp: App {
         .menuBarExtraAccess(isPresented: $controller.isMenuBarPanelPresented)
         .menuBarExtraStyle(.window)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings") {
+                    settingsWindowActivator.open()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
             CommandGroup(replacing: .appTermination) {
                 Button("Quit Palmos") {
                     controller.quit()
@@ -91,23 +108,6 @@ struct PalmosApp: App {
                 .keyboardShortcut("q", modifiers: .command)
             }
         }
-
-        Settings {
-            SettingsView(
-                settings: controller.settings,
-                launchAtLoginController: controller.launchAtLoginController,
-                smartHelperManager: controller.smartHelperManager,
-                onInstallOrUpdateHelper: controller.installSMARTHelper,
-                onRefreshHelperStatus: controller.refreshSMARTHelperStatus,
-                canCheckForUpdates: { applicationUpdater.canCheckForUpdates },
-                onCheckForUpdates: { applicationUpdater.checkForUpdates() }
-            )
-            .background(
-                SettingsWindowAccessor(activator: settingsWindowActivator)
-                    .frame(width: 0, height: 0)
-            )
-        }
-        .windowResizability(.contentSize)
     }
 }
 

@@ -103,7 +103,7 @@ force-unmount 成功但 eject 失败仍是失败。占用范围由 device node�
 
 ## UI、设置与更新
 
-应用以 `MenuBarExtra` 的 window style 展示固定宽度面板，设置使用独立 SwiftUI `Settings` scene；少量 AppKit bridge 处理窗口激活和 eject recovery window。界面状态来自 controller 或专用 presentation model，不复制发现、SMART 或 eject 的业务判断。
+应用以 `MenuBarExtra` 的 window style 展示固定宽度面板。设置由 AppKit 管理 close-only preference window、原生 toolbar 和内容驱动的窗口尺寸，各 pane 仍由 SwiftUI 呈现；eject recovery window 也由专用 AppKit presenter 管理。界面状态来自 controller 或专用 presentation model，不复制发现、SMART 或 eject 的业务判断。
 
 `AppSettings` 保存温度单位等轻量偏好，`LaunchAtLoginController` 管理登录启动。用户可见字符串集中在 `App/Localization/Localizable.xcstrings`，至少维护 English、Simplified Chinese 和 Traditional Chinese。
 
