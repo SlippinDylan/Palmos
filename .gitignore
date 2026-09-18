@@ -4,6 +4,8 @@
 # Local docs and working memory
 docs/*
 !docs/README.*.md
+!docs/architecture.md
+!docs/development.md
 !docs/images/
 docs/images/*
 !docs/images/readme/
