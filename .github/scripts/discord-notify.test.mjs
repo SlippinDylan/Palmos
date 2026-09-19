@@ -188,6 +188,27 @@ test('builds a packaging-started dispatch with Palmos packaging facts', () => {
   assert.equal(buildNotification('repository_dispatch', { action: 'other_event' }), null);
 });
 
+test('builds a release-published dispatch with Palmos packaging facts', () => {
+  const notification = buildNotification('repository_dispatch', {
+    repository,
+    sender,
+    action: 'release_published',
+    client_payload: {
+      version: '1.1.0-beta.1',
+      prerelease: true,
+      dmg_name: 'Palmos-v1.1.0-beta.1.dmg',
+      changelog: '- Added automation.',
+      release_url: 'https://github.com/owner/Palmos/releases/tag/v1.1.0-beta.1',
+      download_url: 'https://github.com/owner/Palmos/releases/download/v1.1.0-beta.1/Palmos-v1.1.0-beta.1.dmg',
+    },
+  });
+  const payload = buildDiscordPayload(notification);
+  assert.equal(notification.title, 'Palmos 1.1.0-beta.1 发布成功');
+  assert.equal(notification.color, 0x57F287);
+  assert.ok(notification.details.includes('SMART Helper：已随 App 签名打包'));
+  assert.match(payload.embeds[0].description, /\[下载 DMG\]/);
+});
+
 test('accepts any Discord 2xx response and preserves wait=true', async () => {
   let endpoint;
   await sendDiscordNotification({}, 'https://discord.com/api/webhooks/id/token?thread_id=1', {
