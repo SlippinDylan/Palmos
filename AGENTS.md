@@ -58,6 +58,7 @@ Palmos 是面向 macOS 26+、仅支持 Apple Silicon（arm64）的原生菜单�
 xcodebuild test -workspace Palmos.xcworkspace -scheme PalmosApp -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 xcodebuild test -workspace Palmos.xcworkspace -scheme PalmosSMARTServiceTests -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 xcodebuild build -workspace Palmos.xcworkspace -scheme PalmosApp -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+node .github/scripts/sync-version.mjs --check
 ```
 
 仓库没有 Makefile、SwiftLint、SwiftFormat 或统一架构 lint 命令，不要声称已运行不存在的检查。

@@ -5,5 +5,4 @@ PRODUCT_BUNDLE_IDENTIFIER = com.palmos.app
 HELPER_BUNDLE_IDENTIFIER = com.palmos.smartservice
 LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
 SWIFT_EMIT_LOC_STRINGS = YES
-PALMOS_UPDATE_CHANNEL = stable
 PALMOS_UPDATER_ENABLED = NO

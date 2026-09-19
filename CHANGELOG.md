@@ -2,6 +2,17 @@
 
 All notable changes to Palmos releases are recorded here.
 
+## [0.4.0] - 2026-09-19
+
+### Changed
+
+- Redesigned Settings as a native preference window with compact Alcove-aligned layout and content-driven height.
+- Made the release manifest the single version source for App, Helper, tests, update channel, and release automation.
+
+### Documentation
+
+- Reorganized Agent guidance into a concise repository contract with dedicated architecture and development references.
+
 ## [0.3.0-beta.1] - 2026-09-17
 
 ### Security
@@ -18,6 +29,7 @@ All notable changes to Palmos releases are recorded here.
 
 - Added release checks for Hardened Runtime and the macOS 26 deployment target.
 - Added a real arm64 smartctl source build to macOS CI.
+- Made the release manifest the single version source and added CI drift checks for generated Xcode settings.
 
 ## [0.2.0-beta.1] - 2026-09-17
 

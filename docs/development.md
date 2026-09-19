@@ -118,6 +118,7 @@ bash -n Scripts/verify/code-signing-tests.sh
 bash -n Scripts/verify/local-smart-build-tests.sh
 Scripts/build-local-smart-app.sh --help >/dev/null
 node .github/scripts/release-manifest.mjs validate
+node .github/scripts/sync-version.mjs --check
 node --test .github/scripts/*.test.mjs
 ```
 
@@ -151,7 +152,7 @@ UI 改动完成相关测试和构建后交由用户视觉验收。除非用户�
 
 ## 发布
 
-`Config/Release/manifest.json` 是发布候选版本和显式发布开关的人工入口：
+`Config/Release/manifest.json` 是版本号和发布开关的唯一人工编辑入口：
 
 ```json
 {
@@ -160,7 +161,15 @@ UI 改动完成相关测试和构建后交由用户视觉验收。除非用户�
 }
 ```
 
-版本支持 stable、alpha 和 beta；预发布后缀不进入 App 的数字型 `MARKETING_VERSION`。修改版本语义时同步检查 manifest validator、CHANGELOG、release workflow 和用户文档。
+版本支持 stable、alpha 和 beta。修改 manifest 后运行：
+
+```bash
+node .github/scripts/sync-version.mjs
+```
+
+该命令更新受版本控制的 `Config/Generated/Version.xcconfig`，供 App、Helper、测试及普通 Xcode Debug、Release 和 Archive 构建读取。预发布后缀不进入数字型 `MARKETING_VERSION`，而是生成对应的 `PALMOS_UPDATE_CHANNEL`；生成文件不得手工修改，CI 使用 `--check` 阻止它与 manifest 漂移。应用运行时只从 Bundle 读取版本信息，构建号仍由本地默认值或发布流水线的 GitHub run number 提供。
+
+修改版本语义时同步检查 manifest validator、CHANGELOG、release workflow 和用户文档。
 
 `.github/workflows/release.yml` 只接收 main 分支成功 CI 的 tested commit。release job 使用 Apple Development certificate，构建并签名 smartctl、App、Helper 和 Sparkle 嵌套组件，验证签名/架构/许可，生成 DMG 并发布 GitHub Release；随后由 distribution metadata workflow 更新对应 Homebrew Cask 和签名 appcast。当前分发不使用 paid Developer ID 或 notarization，不要局部改变这一模型。
 

@@ -114,7 +114,7 @@ force-unmount 成功但 eject 失败仍是失败。占用范围由 device node�
 - Swift 版本、部署目标、架构、bundle ID 和 Team ID 的配置入口在 `Config/xcconfigs/` 与对应 plist。
 - App、Helper 和 companion 必须为 arm64，并使用同一 Team ID；App/Helper reciprocal signing requirements 不得弱化。
 - Helper launchd plist、Info.plist section、embedded helper 路径、`SMAuthorizedClients` 和 `SMPrivilegedExecutables` 是一个耦合契约。
-- `Config/Release/manifest.json` 是发布版本和发布开关的人工入口；release workflow 从通过 CI 的 main commit 构建签名 DMG。
+- `Config/Release/manifest.json` 是版本号和发布开关的唯一人工入口；生成的 `Config/Generated/Version.xcconfig` 将版本与更新频道提供给 App、Helper 和测试，CI 阻止两者漂移。release workflow 从通过 CI 的 main commit 构建签名 DMG。
 - Palmos 源码使用 Apache License 2.0；MenuBarExtraAccess、Sparkle 和 smartmontools 的随包许可必须与实际分发内容同步。
 
 ## 稳定不变量
