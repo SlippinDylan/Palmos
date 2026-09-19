@@ -45,6 +45,7 @@ struct SettingsView: View {
     @ObservedObject var smartHelperManager: SMARTHelperManager
     let onInstallOrUpdateHelper: () -> Void
     let onRefreshHelperStatus: () -> Void
+    let onRequestRelaunch: () -> Void
     let canCheckForUpdates: () -> Bool
     let onCheckForUpdates: () -> Void
 
@@ -60,7 +61,8 @@ struct SettingsView: View {
                     launchAtLoginController: launchAtLoginController,
                     smartHelperManager: smartHelperManager,
                     onInstallOrUpdateHelper: onInstallOrUpdateHelper,
-                    onRefreshHelperStatus: onRefreshHelperStatus
+                    onRefreshHelperStatus: onRefreshHelperStatus,
+                    onRequestRelaunch: onRequestRelaunch
                 )
                 case .display:
                     DisplaySettingsPane(settings: settings)
@@ -85,6 +87,8 @@ private struct GeneralSettingsPane: View {
     @ObservedObject var smartHelperManager: SMARTHelperManager
     let onInstallOrUpdateHelper: () -> Void
     let onRefreshHelperStatus: () -> Void
+    let onRequestRelaunch: () -> Void
+    @State private var showsLanguageRestartPrompt = false
 
     var body: some View {
         SettingsPane {
@@ -124,11 +128,46 @@ private struct GeneralSettingsPane: View {
                 launchAtLoginMessages
             }
 
+            SettingsGroupTitle("Language")
+
+            SettingsCard {
+                SettingsControlRow(
+                    title: "App Language",
+                    systemImage: "globe"
+                ) {
+                    Picker(
+                        "App Language",
+                        selection: Binding(
+                            get: { settings.applicationLanguage },
+                            set: { language in
+                                guard settings.setApplicationLanguage(language) else { return }
+                                showsLanguageRestartPrompt = true
+                            }
+                        )
+                    ) {
+                        ForEach(ApplicationLanguage.allCases) { language in
+                            Text(language.title).tag(language)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 130)
+                }
+            }
+
             SMARTHelperSettingsSection(
                 manager: smartHelperManager,
                 onInstallOrUpdate: onInstallOrUpdateHelper,
                 onRefreshStatus: onRefreshHelperStatus
             )
+        }
+        .alert(
+            "Restart Palmos to Change Language?",
+            isPresented: $showsLanguageRestartPrompt
+        ) {
+            Button("Later", role: .cancel) {}
+            Button("Restart Now", action: onRequestRelaunch)
+        } message: {
+            Text("Palmos will quit and reopen using the selected language.")
         }
     }
 
@@ -151,6 +190,17 @@ private struct GeneralSettingsPane: View {
             SettingsNotice(message: message, color: .red) {
                 EmptyView()
             }
+        }
+    }
+}
+
+private extension ApplicationLanguage {
+    var title: LocalizedStringKey {
+        switch self {
+        case .system: "Follow System"
+        case .english: "English"
+        case .simplifiedChinese: "简体中文"
+        case .traditionalChinese: "繁體中文"
         }
     }
 }

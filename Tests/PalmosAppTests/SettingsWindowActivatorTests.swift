@@ -79,6 +79,53 @@ final class SettingsWindowActivatorTests: XCTestCase {
         XCTAssertEqual(SettingsWindowController.resolvedContentHeight(for: 612), 612)
     }
 
+    func testRelaunchWaitsForTerminationAndStartsOneActivatedInstance() {
+        let applicationURL = URL(fileURLWithPath: "/Applications/Palmos.app", isDirectory: true)
+        var launchedURL: URL?
+        var launchesNewInstance = false
+        var activates = false
+        var terminateCount = 0
+        let notificationCenter = NotificationCenter()
+        let controller = ApplicationRelaunchController(
+            applicationURL: applicationURL,
+            notificationCenter: notificationCenter,
+            launchHandler: { url, configuration in
+                launchedURL = url
+                launchesNewInstance = configuration.createsNewApplicationInstance
+                activates = configuration.activates
+            }
+        )
+
+        controller.requestRelaunch { terminateCount += 1 }
+
+        XCTAssertEqual(terminateCount, 1)
+        XCTAssertNil(launchedURL)
+
+        notificationCenter.post(name: NSApplication.willTerminateNotification, object: nil)
+
+        XCTAssertEqual(launchedURL, applicationURL)
+        XCTAssertTrue(launchesNewInstance)
+        XCTAssertTrue(activates)
+
+        launchedURL = nil
+        notificationCenter.post(name: NSApplication.willTerminateNotification, object: nil)
+        XCTAssertNil(launchedURL)
+    }
+
+    func testOrdinaryTerminationDoesNotRelaunch() {
+        let notificationCenter = NotificationCenter()
+        var launchCount = 0
+        let controller = ApplicationRelaunchController(
+            notificationCenter: notificationCenter,
+            launchHandler: { _, _ in launchCount += 1 }
+        )
+
+        notificationCenter.post(name: NSApplication.willTerminateNotification, object: nil)
+
+        XCTAssertEqual(launchCount, 0)
+        withExtendedLifetime(controller) {}
+    }
+
     private func makeWindowController() -> SettingsWindowController {
         SettingsWindowController(
             settings: AppSettings(),
@@ -89,6 +136,7 @@ final class SettingsWindowActivatorTests: XCTestCase {
             ),
             onInstallOrUpdateHelper: {},
             onRefreshHelperStatus: {},
+            onRequestRelaunch: {},
             canCheckForUpdates: { false },
             onCheckForUpdates: {}
         )

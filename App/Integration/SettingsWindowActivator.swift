@@ -21,6 +21,60 @@ private final class LiveSettingsApplication: SettingsApplicationProviding {
 }
 
 @MainActor
+final class ApplicationRelaunchController: NSObject {
+    typealias LaunchHandler = @MainActor (URL, NSWorkspace.OpenConfiguration) -> Void
+
+    private let applicationURL: URL
+    private let launchHandler: LaunchHandler
+    private var relaunchRequested = false
+
+    init(
+        applicationURL: URL = Bundle.main.bundleURL,
+        notificationCenter: NotificationCenter = .default,
+        launchHandler: @escaping LaunchHandler = { applicationURL, configuration in
+            NSWorkspace.shared.openApplication(
+                at: applicationURL,
+                configuration: configuration
+            ) { _, error in
+                guard let error else { return }
+                FileHandle.standardError.write(
+                    Data("Unable to relaunch Palmos: \(error)\n".utf8)
+                )
+            }
+        }
+    ) {
+        self.applicationURL = applicationURL
+        self.launchHandler = launchHandler
+        super.init()
+        notificationCenter.addObserver(
+            self,
+            selector: #selector(applicationWillTerminate),
+            name: NSApplication.willTerminateNotification,
+            object: nil
+        )
+    }
+
+    func requestRelaunch(terminate: @MainActor () -> Void) {
+        relaunchRequested = true
+        terminate()
+    }
+
+    func relaunchIfRequested() {
+        guard relaunchRequested else { return }
+        relaunchRequested = false
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        configuration.activates = true
+        launchHandler(applicationURL, configuration)
+    }
+
+    @objc
+    private func applicationWillTerminate() {
+        relaunchIfRequested()
+    }
+}
+
+@MainActor
 protocol SettingsWindowPresenting: AnyObject {
     var onClose: (() -> Void)? { get set }
     func present()
@@ -41,6 +95,7 @@ final class SettingsWindowActivator: ObservableObject {
         smartHelperManager: SMARTHelperManager,
         onInstallOrUpdateHelper: @escaping () -> Void,
         onRefreshHelperStatus: @escaping () -> Void,
+        onRequestRelaunch: @escaping () -> Void,
         canCheckForUpdates: @escaping () -> Bool,
         onCheckForUpdates: @escaping () -> Void,
         application: any SettingsApplicationProviding = LiveSettingsApplication()
@@ -53,6 +108,7 @@ final class SettingsWindowActivator: ObservableObject {
                 smartHelperManager: smartHelperManager,
                 onInstallOrUpdateHelper: onInstallOrUpdateHelper,
                 onRefreshHelperStatus: onRefreshHelperStatus,
+                onRequestRelaunch: onRequestRelaunch,
                 canCheckForUpdates: canCheckForUpdates,
                 onCheckForUpdates: onCheckForUpdates
             )
@@ -95,6 +151,7 @@ final class SettingsWindowController: NSWindowController, SettingsWindowPresenti
     private let smartHelperManager: SMARTHelperManager
     private let onInstallOrUpdateHelper: () -> Void
     private let onRefreshHelperStatus: () -> Void
+    private let onRequestRelaunch: () -> Void
     private let canCheckForUpdates: () -> Bool
     private let onCheckForUpdates: () -> Void
     private let settingsToolbar = NSToolbar(identifier: "palmos-settings")
@@ -110,6 +167,7 @@ final class SettingsWindowController: NSWindowController, SettingsWindowPresenti
         smartHelperManager: SMARTHelperManager,
         onInstallOrUpdateHelper: @escaping () -> Void,
         onRefreshHelperStatus: @escaping () -> Void,
+        onRequestRelaunch: @escaping () -> Void,
         canCheckForUpdates: @escaping () -> Bool,
         onCheckForUpdates: @escaping () -> Void
     ) {
@@ -118,6 +176,7 @@ final class SettingsWindowController: NSWindowController, SettingsWindowPresenti
         self.smartHelperManager = smartHelperManager
         self.onInstallOrUpdateHelper = onInstallOrUpdateHelper
         self.onRefreshHelperStatus = onRefreshHelperStatus
+        self.onRequestRelaunch = onRequestRelaunch
         self.canCheckForUpdates = canCheckForUpdates
         self.onCheckForUpdates = onCheckForUpdates
 
@@ -205,6 +264,7 @@ final class SettingsWindowController: NSWindowController, SettingsWindowPresenti
                 smartHelperManager: smartHelperManager,
                 onInstallOrUpdateHelper: onInstallOrUpdateHelper,
                 onRefreshHelperStatus: onRefreshHelperStatus,
+                onRequestRelaunch: onRequestRelaunch,
                 canCheckForUpdates: canCheckForUpdates,
                 onCheckForUpdates: onCheckForUpdates
             )

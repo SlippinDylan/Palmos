@@ -51,6 +51,8 @@ brew install --cask palmos@beta
 
 3. 開啟 Palmos，連接外接硬碟並按一下選單列圖示。選取裝置後，即可查看卷宗、容量、吞吐量、拓撲與退出控制。
 
+Palmos 預設跟隨 macOS 的 App 語言。你也可以在**設定 → 一般**中明確選擇 English、简体中文或繁體中文；更改 App 語言後需要重新啟動。
+
 這個指令只會移除 `/Applications/Palmos.app` 的下載隔離屬性，不能略過程式碼簽署檢查。請勿對不信任的 App 執行它。
 
 ## SMART Helper 與更新

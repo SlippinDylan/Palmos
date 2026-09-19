@@ -26,6 +26,15 @@ public enum TemperatureUnit: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+public enum ApplicationLanguage: String, CaseIterable, Identifiable, Sendable {
+    case system
+    case english = "en"
+    case simplifiedChinese = "zh-Hans"
+    case traditionalChinese = "zh-Hant"
+
+    public var id: Self { self }
+}
+
 /// User-configurable sections in the menu bar panel's detail area.
 /// Fixed content such as overview, throughput, and capacity deliberately stays outside this model.
 public enum PanelDetailSection: String, CaseIterable, Identifiable, Sendable {
@@ -41,6 +50,8 @@ public enum PanelDetailSection: String, CaseIterable, Identifiable, Sendable {
 public final class AppSettings: ObservableObject {
     public static let temperatureUnitDefaultsKey = "palmos.temperatureUnit"
     public static let hiddenPanelDetailSectionsDefaultsKey = "palmos.hiddenPanelDetailSections"
+    public static let applicationLanguageDefaultsKey = "palmos.applicationLanguage"
+    public static let appleLanguagesDefaultsKey = "AppleLanguages"
 
     @Published public var temperatureUnit: TemperatureUnit {
         didSet {
@@ -56,6 +67,8 @@ public final class AppSettings: ObservableObject {
             )
         }
     }
+
+    @Published public private(set) var applicationLanguage: ApplicationLanguage
 
     public var visiblePanelDetailSections: Set<PanelDetailSection> {
         Set(PanelDetailSection.allCases).subtracting(hiddenPanelDetailSections)
@@ -75,6 +88,20 @@ public final class AppSettings: ObservableObject {
         }
     }
 
+    @discardableResult
+    public func setApplicationLanguage(_ language: ApplicationLanguage) -> Bool {
+        guard language != applicationLanguage else { return false }
+        applicationLanguage = language
+        defaults.set(language.rawValue, forKey: Self.applicationLanguageDefaultsKey)
+        switch language {
+        case .system:
+            defaults.removeObject(forKey: Self.appleLanguagesDefaultsKey)
+        case .english, .simplifiedChinese, .traditionalChinese:
+            defaults.set([language.rawValue], forKey: Self.appleLanguagesDefaultsKey)
+        }
+        return true
+    }
+
     private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
@@ -86,5 +113,7 @@ public final class AppSettings: ObservableObject {
             defaults.stringArray(forKey: Self.hiddenPanelDetailSectionsDefaultsKey)?
                 .compactMap(PanelDetailSection.init(rawValue:)) ?? []
         )
+        self.applicationLanguage = defaults.string(forKey: Self.applicationLanguageDefaultsKey)
+            .flatMap(ApplicationLanguage.init(rawValue:)) ?? .system
     }
 }

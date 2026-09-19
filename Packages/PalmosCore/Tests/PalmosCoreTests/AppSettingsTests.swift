@@ -21,7 +21,7 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testAllPanelDetailSectionsAreVisibleByDefault() {
-        withIsolatedDefaults { defaults in
+        withIsolatedDefaults { defaults, _ in
             let settings = AppSettings(defaults: defaults)
 
             XCTAssertEqual(
@@ -35,7 +35,7 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testEachPanelDetailSectionVisibilityPersistsIndependently() {
-        withIsolatedDefaults { defaults in
+        withIsolatedDefaults { defaults, _ in
             let settings = AppSettings(defaults: defaults)
 
             for section in PanelDetailSection.allCases {
@@ -61,7 +61,7 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testUnknownPersistedSectionsDoNotHideKnownOrFutureSections() {
-        withIsolatedDefaults { defaults in
+        withIsolatedDefaults { defaults, _ in
             defaults.set(
                 [PanelDetailSection.temperature.rawValue, "futureSection"],
                 forKey: AppSettings.hiddenPanelDetailSectionsDefaultsKey
@@ -77,7 +77,51 @@ final class AppSettingsTests: XCTestCase {
         }
     }
 
-    private func withIsolatedDefaults(_ operation: (UserDefaults) -> Void) {
+    func testApplicationLanguageDefaultsToFollowingTheSystem() {
+        withIsolatedDefaults { defaults, suiteName in
+            let settings = AppSettings(defaults: defaults)
+
+            XCTAssertEqual(settings.applicationLanguage, .system)
+            XCTAssertNil(
+                defaults.persistentDomain(forName: suiteName)?[AppSettings.appleLanguagesDefaultsKey]
+            )
+        }
+    }
+
+    func testApplicationLanguagePersistsOverridesAndRestoresSystemDefault() {
+        withIsolatedDefaults { defaults, suiteName in
+            let settings = AppSettings(defaults: defaults)
+
+            XCTAssertTrue(settings.setApplicationLanguage(.english))
+            XCTAssertEqual(defaults.stringArray(forKey: AppSettings.appleLanguagesDefaultsKey), ["en"])
+            XCTAssertFalse(settings.setApplicationLanguage(.english))
+
+            XCTAssertTrue(settings.setApplicationLanguage(.simplifiedChinese))
+            XCTAssertEqual(defaults.stringArray(forKey: AppSettings.appleLanguagesDefaultsKey), ["zh-Hans"])
+
+            XCTAssertTrue(settings.setApplicationLanguage(.traditionalChinese))
+            XCTAssertEqual(defaults.stringArray(forKey: AppSettings.appleLanguagesDefaultsKey), ["zh-Hant"])
+            XCTAssertEqual(
+                AppSettings(defaults: defaults).applicationLanguage,
+                .traditionalChinese
+            )
+
+            XCTAssertTrue(settings.setApplicationLanguage(.system))
+            XCTAssertNil(
+                defaults.persistentDomain(forName: suiteName)?[AppSettings.appleLanguagesDefaultsKey]
+            )
+            XCTAssertEqual(AppSettings(defaults: defaults).applicationLanguage, .system)
+        }
+    }
+
+    func testApplicationLanguageOffersTheSupportedCatalogLocales() {
+        XCTAssertEqual(
+            ApplicationLanguage.allCases,
+            [.system, .english, .simplifiedChinese, .traditionalChinese]
+        )
+    }
+
+    private func withIsolatedDefaults(_ operation: (UserDefaults, String) -> Void) {
         let suiteName = "AppSettingsTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -85,6 +129,6 @@ final class AppSettingsTests: XCTestCase {
             defaults.removePersistentDomain(forName: suiteName)
         }
 
-        operation(defaults)
+        operation(defaults, suiteName)
     }
 }

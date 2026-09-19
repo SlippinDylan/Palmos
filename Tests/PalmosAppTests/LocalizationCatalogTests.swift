@@ -12,7 +12,9 @@ final class LocalizationCatalogTests: XCTestCase {
         "Bus %@", "Receptacle %@", "Duration minutes", "Duration hours", "Rate per second",
         "Critical warning %@ (%@)", "Available spare %@ (threshold %@%%)",
         "Temperature update failed. Showing the last reading.",
-        "Repair", "Check for Updates…"
+        "Repair", "Check for Updates…", "Language", "App Language", "Follow System",
+        "English", "简体中文", "繁體中文", "Restart Palmos to Change Language?",
+        "Palmos will quit and reopen using the selected language.", "Restart Now", "Later"
     ]
 
     func testRequiredPresentationKeysHaveAllTranslatedLocales() throws {

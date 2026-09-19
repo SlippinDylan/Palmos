@@ -1,6 +1,76 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "App Language" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "App Language" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "应用语言" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "App 語言" } }
+      }
+    },
+    "English" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "English" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "English" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "English" } }
+      }
+    },
+    "Follow System" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Follow System" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "跟随系统" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "跟隨系統" } }
+      }
+    },
+    "Language" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Language" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "语言" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "語言" } }
+      }
+    },
+    "Later" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Later" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "稍后" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "稍後" } }
+      }
+    },
+    "Palmos will quit and reopen using the selected language." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Palmos will quit and reopen using the selected language." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Palmos 将退出并使用所选语言重新打开。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Palmos 將結束並使用所選語言重新開啟。" } }
+      }
+    },
+    "Restart Now" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Restart Now" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "立即重启" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "立即重新啟動" } }
+      }
+    },
+    "Restart Palmos to Change Language?" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Restart Palmos to Change Language?" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重启 Palmos 以更改语言？" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "重新啟動 Palmos 以更改語言？" } }
+      }
+    },
+    "简体中文" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "简体中文" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "简体中文" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "简体中文" } }
+      }
+    },
+    "繁體中文" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "繁體中文" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "繁體中文" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "繁體中文" } }
+      }
+    },
     "Action couldn't be completed." : {
       "localizations" : {
         "en" : {

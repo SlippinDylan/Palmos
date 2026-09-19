@@ -76,6 +76,10 @@ Run this checklist after each significant change to the app or helper. Every ite
 
 - [ ] Launch at Login toggle saves and persists across app restarts
 - [ ] Temperature unit toggle updates the displayed temperature in the UI
+- [ ] App Language defaults to Follow System and offers English, Simplified Chinese, and Traditional Chinese
+- [ ] Choosing Later keeps the current process language and applies the selection on the next launch
+- [ ] Choosing Restart Now safely exits Palmos, reopens one app instance, and applies the selected language throughout the menu panel and Settings
+- [ ] Returning App Language to Follow System removes the explicit override and uses the current macOS app language after restart
 
 ## SMART — Helper Not Installed
 

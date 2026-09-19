@@ -6,10 +6,12 @@ struct PalmosApp: App {
     @StateObject private var controller: PalmosAppController
     @StateObject private var settingsWindowActivator: SettingsWindowActivator
     private let applicationUpdater: ApplicationUpdateController
+    private let applicationRelauncher: ApplicationRelaunchController
 
     init() {
         let controller = Self.makeController()
         let applicationUpdater = ApplicationUpdateController()
+        let applicationRelauncher = ApplicationRelaunchController()
         _controller = StateObject(wrappedValue: controller)
         _settingsWindowActivator = StateObject(wrappedValue: SettingsWindowActivator(
             settings: controller.settings,
@@ -21,6 +23,9 @@ struct PalmosApp: App {
             onRefreshHelperStatus: { [weak controller] in
                 controller?.refreshSMARTHelperStatus()
             },
+            onRequestRelaunch: {
+                applicationRelauncher.requestRelaunch(terminate: controller.quit)
+            },
             canCheckForUpdates: { [weak applicationUpdater] in
                 applicationUpdater?.canCheckForUpdates == true
             },
@@ -29,6 +34,7 @@ struct PalmosApp: App {
             }
         ))
         self.applicationUpdater = applicationUpdater
+        self.applicationRelauncher = applicationRelauncher
     }
 
     @MainActor

@@ -105,7 +105,7 @@ force-unmount 成功但 eject 失败仍是失败。占用范围由 device node�
 
 应用以 `MenuBarExtra` 的 window style 展示固定宽度面板。设置由 AppKit 管理 close-only preference window、原生 toolbar 和内容驱动的窗口尺寸，各 pane 仍由 SwiftUI 呈现；eject recovery window 也由专用 AppKit presenter 管理。界面状态来自 controller 或专用 presentation model，不复制发现、SMART 或 eject 的业务判断。
 
-`AppSettings` 保存温度单位等轻量偏好，`LaunchAtLoginController` 管理登录启动。用户可见字符串集中在 `App/Localization/Localizable.xcstrings`，至少维护 English、Simplified Chinese 和 Traditional Chinese。
+`AppSettings` 保存温度单位、面板可见性和 App 语言等轻量偏好，`LaunchAtLoginController` 管理登录启动。语言默认跟随系统，也可显式选择 English、Simplified Chinese 或 Traditional Chinese；切换后通过现有安全退出路径终止 App，再由生命周期监听启动新实例。用户可见字符串集中在 `App/Localization/Localizable.xcstrings`，至少维护上述三种 locale。
 
 `ApplicationUpdateController` 封装 Sparkle。Debug 配置默认通过 `PALMOS_UPDATER_ENABLED = NO` 关闭更新能力，发布流水线显式配置频道。应用更新只替换 App，不隐式安装或升级 privileged Helper 或 companion；若能力不兼容，由 Helper 状态显式要求用户安装或升级。
 

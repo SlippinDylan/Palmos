@@ -51,6 +51,8 @@ brew install --cask palmos@beta
 
 3. Open Palmos, connect an external drive, and click its menu-bar icon. Select a device to view its volumes, capacity, throughput, topology, and eject control.
 
+Palmos follows the macOS app language by default. In **Settings → General**, you can explicitly choose English, Simplified Chinese, or Traditional Chinese; changing the app language requires a restart.
+
 The command only removes the download-quarantine attribute from `/Applications/Palmos.app`; it does not bypass code-signature checks. Do not run it against an app you do not trust.
 
 ## SMART Helper and updates

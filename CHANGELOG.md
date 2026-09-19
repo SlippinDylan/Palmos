@@ -2,6 +2,12 @@
 
 All notable changes to Palmos releases are recorded here.
 
+## [0.5.0] - 2026-09-19
+
+### Added
+
+- Added an in-app language selector for English, Simplified Chinese, Traditional Chinese, and the macOS system default.
+
 ## [0.4.0] - 2026-09-19
 
 ### Changed
